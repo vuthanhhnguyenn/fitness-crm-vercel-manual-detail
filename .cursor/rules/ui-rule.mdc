@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+
+## UI Component Rules
+
+- Use shadcn components for building UI interfaces
+- Use lucide-react for all icon implementations
+- Use the navigate function from '@/lib/routes/routes.util' for all navigation links
+- Prefer colors defined in /src/app/globals.css or /src/styles/tailwind.theme.css for consistency
+- NEVER use raw color codes (hex like #0A0A0A, rgba like rgba(255,255,255,0.1), oklch, hsl, etc.) directly in components. Always use TailwindCSS color utilities that reference CSS variables or Tailwind's built-in palette (e.g. `bg-background`, `text-foreground`, `border-border`, `text-neutral-500`, `bg-sidebar`). If an exact match doesn't exist, map to the closest defined color in [globals.css](mdc:src/app/globals.css), [tailwind.theme.css](mdc:src/styles/tailwind.theme.css), or the Tailwind default theme (`node_modules/tailwindcss/theme.css`).
+- Maintain consistent spacing using TailwindCSS utility classes
+- Ensure components are responsive: min-768px

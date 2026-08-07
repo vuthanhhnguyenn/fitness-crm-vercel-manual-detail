@@ -1,0 +1,15 @@
+---
+alwaysApply: true
+---
+
+## Form Rules
+
+- Use react-hook-form for form state management and validation
+- Use zod for schema validation and type inference
+- Implement proper error handling and user feedback
+- Use controlled components for complex form interactions
+- Separate zod schemas into dedicated files in a schemas/ directory
+    - Each form/feature should have its own schema file
+    - Example structure: _schemas/auth.schema.ts, _schemas/profile.schema.ts
+    - Export both the schema and inferred TypeScript type: z.infer<typeof formSchema>
+    - Keep schemas modular and reusable across components

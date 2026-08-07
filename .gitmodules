@@ -1,0 +1,6 @@
+[submodule ".specify/external/spec"]
+	path = .specify/external/spec
+	url = git@github.com:dx-fitness/fitness-spec.git
+[submodule ".specify/external/ui"]
+	path = .specify/external/ui
+	url = git@github.com:dx-fitness/fitness-crm-ui.git

@@ -1,0 +1,14 @@
+hooks:
+  before_specify:
+    - extension: "fitness-crm-ui-loader"
+      command: "speckit.load-external"
+      description: "Load spec requirements from dx-fitness/fitness-spec and UI mockups from dx-fitness/fitness-crm-ui before creating spec"
+      optional: false        # required to run, not optional
+      prompt: "Load external context from fitness-crm-ui repo"
+
+  after_implement:
+    - extension: "review-output-implementation"
+      command: "speckit.review"
+      description: "Review implemented code against project rules and compare UI against fitness-crm-ui prototype, then fix all violations"
+      optional: false        # required to run, not optional
+      prompt: "Run post-implementation review: audit code against constitution/rules and align UI with prototype"

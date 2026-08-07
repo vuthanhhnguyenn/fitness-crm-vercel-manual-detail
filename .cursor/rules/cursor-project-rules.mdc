@@ -1,0 +1,58 @@
+---
+description: Rules for this project
+globs: 
+alwaysApply: true
+---
+# Base-Frontend Project Rules
+
+## Technology Requirements
+- Node version must be **v22.14.0**
+- Next.js version must be **15.3.1**
+- Ensure compatibility with these versions for all code changes
+
+## API Development
+- Use the `hey-api` library for API definitions (see [documentation](mdc:https:/heyapi.dev/openapi-ts/get-started))
+- Generate API definition files using either:
+  - `npm run generate-api` to connect to backend server
+  - `npm run generate-client` when you have the `openapi.json` file in `src/lib/`
+- Follow the established pattern for API calls with React Query:
+  - Use `useQuery` for data fetching
+  - Use `useInfiniteQuery` for paginated data
+  - Use `useMutation` for data modifications
+
+## Page Creation and Routing
+- When creating a new page:
+  1. Create a new folder for the page in one of the 3 folders app/(public), app/(private), app/(shared)
+  2. The automatic route generation library will generate a route file in /src/lib/routes/routes.config.ts
+  3. Use navigate in @/lib/routes/routes.util to declare the route when using with useRouter or href to comply with typescript
+
+## Folder Structure and Code Organization
+- Maintain the established project folder structure:
+  - `app/`: Next.js App Router pages and routing
+  - `components/`: Reusable UI components
+  - `configs/`: Application configuration files
+  - `constants/`: Application constants and enums
+  - `hooks/`: Custom React hooks
+  - `providers/`: React Context Providers
+  - `stores/`: Jotai atoms for state management
+  - `styles/`: TailwindCSS styles and configurations
+  - `types/`: TypeScript type definitions
+  - `utils/`: Utility functions
+
+## File Naming Conventions
+- Follow established naming patterns:
+  - Type files: `[fileName].type.ts`
+  - Hook files: `[hookName].hook.ts`
+  - Utility files: `[utilityName].util.ts`
+  - Store files: Organize atoms in dedicated folders
+
+<!-- ## State Management
+- Use Jotai for state management
+- Organize atoms by domain in the `stores/atoms/` directory
+- Use derived atoms for complex logic -->
+
+## Static Assets
+- Place all static assets in the `public` directory for browser access
+
+## QueryParams:
+- Use nuqs to sync state with URL params.

@@ -1,0 +1,11 @@
+---
+alwaysApply: true
+---
+
+## API Call Rules
+- Use generated hooks from @/lib/api/@tanstack/react-query.gen with TanStack Query
+- Use useQuery for data fetching operations
+- Use useInfiniteQuery for paginated data
+- Use useMutation for data modification operations
+- Implement proper loading states and error handling
+- Follow React Query best practices for caching and synchronization
