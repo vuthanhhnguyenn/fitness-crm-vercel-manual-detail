@@ -56,10 +56,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       { status: 404 },
     );
   }
+  const allowedStoreIds = getAllowedStoreIds(auth.user);
+  const canMutate = hasPermissions(auth.user.role as UserRole, [
+    Permission.ManualNotificationsCreate,
+  ]);
   if (
-    auth.user.role === 'Staff' &&
-    row.createdByUserId !== auth.user.id &&
-    !row.targetStoreIds.some((storeId) => (getAllowedStoreIds(auth.user) ?? []).includes(storeId))
+    canMutate &&
+    allowedStoreIds !== null &&
+    (allowedStoreIds.length === 0 ||
+      (row.createdByUserId !== auth.user.id &&
+        !row.targetStoreIds.some((storeId) => allowedStoreIds.includes(storeId))))
   ) {
     return NextResponse.json(
       {

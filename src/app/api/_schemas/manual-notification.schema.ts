@@ -16,14 +16,22 @@ export const ManualNotificationChannelSchema = z.enum(['sms', 'push', 'email', '
 });
 
 export const ManualNotificationBrandSchema = z
-  .enum(['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus', 'fit365'])
+  .enum(['joyfit_all', 'joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus', 'fit365'])
   .openapi({
     title: 'ManualNotificationBrand',
     description: 'Brand or JOYFIT sub-brand defined by I-03',
   });
 
-export const ManualNotificationTargetTypeSchema = z
-  .enum(['all_members', 'brands', 'stores', 'contract_type', 'membership_duration'])
+const ManualNotificationTargetTypeSchema = z
+  .enum([
+    'all_members',
+    'brands',
+    'stores',
+    'contract_type',
+    'membership_duration',
+    'dynamic_attribute',
+    'members',
+  ])
   .openapi({
     title: 'ManualNotificationTargetType',
     description: 'Manual notification target segmentation type',
@@ -34,7 +42,7 @@ const ManualNotificationStoreSchema = z.object({
   name: z.string().min(1),
 });
 
-const ManualNotificationTargetSchema = z.discriminatedUnion('type', [
+export const ManualNotificationTargetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('all_members') }),
   z.object({
     type: z.literal('brands'),
@@ -52,8 +60,45 @@ const ManualNotificationTargetSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('membership_duration'),
     condition: z.enum(['within', 'at_least']),
-    months: z.number().int().nonnegative(),
+    months: z.number().int().min(1).max(60),
   }),
+  z.object({
+    type: z.literal('dynamic_attribute'),
+    attribute: z.enum(['unpaid', 'dormant', 'withdrawal_pending', 'birthday_month', 'trial']),
+  }),
+  z.object({
+    type: z.literal('members'),
+    members: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          name: z.string().min(1),
+          memberNumber: z.string().min(1).optional(),
+          storeName: z.string().min(1).optional(),
+        }),
+      )
+      .min(1),
+  }),
+]);
+
+export const ManualNotificationTargetInputSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('all_members') }),
+  z.object({
+    type: z.literal('brands'),
+    brands: z.array(ManualNotificationBrandSchema).min(1),
+  }),
+  z.object({ type: z.literal('stores'), storeIds: z.array(z.string().min(1)).min(1) }),
+  z.object({ type: z.literal('contract_type'), contractTypeId: z.string().min(1) }),
+  z.object({
+    type: z.literal('membership_duration'),
+    condition: z.enum(['within', 'at_least']),
+    months: z.number().int().min(1).max(60),
+  }),
+  z.object({
+    type: z.literal('dynamic_attribute'),
+    attribute: z.enum(['unpaid', 'dormant', 'withdrawal_pending', 'birthday_month', 'trial']),
+  }),
+  z.object({ type: z.literal('members'), memberIds: z.array(z.string().min(1)).min(1) }),
 ]);
 
 const ManualNotificationRecurringTimingSchema = z
@@ -61,15 +106,20 @@ const ManualNotificationRecurringTimingSchema = z
     type: z.literal('recurring'),
     frequency: z.enum(['daily', 'weekly', 'monthly', 'custom']),
     startAt: z.string().datetime({ offset: true }),
+    intervalValue: z.number().int().positive().max(365).optional(),
+    intervalUnit: z.enum(['day', 'week', 'month']).optional(),
     endAt: z.string().datetime({ offset: true }).optional(),
     maxOccurrences: z.number().int().positive().optional(),
   })
   .superRefine((value, context) => {
-    if (value.endAt === undefined && value.maxOccurrences === undefined) {
+    if (
+      value.frequency !== 'custom' &&
+      (value.intervalValue !== undefined || value.intervalUnit !== undefined)
+    ) {
       context.addIssue({
         code: 'custom',
-        message: 'Recurring timing requires endAt or maxOccurrences',
-        path: ['endAt'],
+        message: 'intervalValue and intervalUnit are only valid for custom frequency',
+        path: ['intervalValue'],
       });
     }
 
@@ -108,14 +158,20 @@ export const ManualNotificationListItemSchema = z
     description: 'Manual notification list projection for I-03',
   });
 
-const ManualNotificationMessagesSchema = z
+export const ManualNotificationContentsSchema = z
   .object({
-    sms: z.string().optional(),
-    push: z.string().optional(),
-    email: z.string().optional(),
-    in_app: z.string().optional(),
+    sms: z.object({ body: z.string() }).optional(),
+    push: z.object({ title: z.string().trim().max(255), body: z.string() }).optional(),
+    email: z.object({ subject: z.string().trim().max(255), body: z.string() }).optional(),
+    in_app: z
+      .object({
+        title: z.string().trim().max(255),
+        body: z.string(),
+        linkUrl: z.string().trim().url().or(z.literal('')).optional(),
+      })
+      .optional(),
   })
-  .openapi({ title: 'ManualNotificationMessages' });
+  .openapi({ title: 'ManualNotificationContents' });
 
 const ManualNotificationChannelResultSchema = z.object({
   channel: ManualNotificationChannelSchema,
@@ -133,7 +189,7 @@ const ManualNotificationDeliveryResultSchema = z.object({
 });
 
 export const ManualNotificationDetailSchema = ManualNotificationListItemSchema.extend({
-  messages: ManualNotificationMessagesSchema,
+  contents: ManualNotificationContentsSchema,
   createdAt: z.string().datetime({ offset: true }),
   createdBy: z.string().min(1),
   approvedBy: z.string().min(1).optional(),
@@ -148,6 +204,58 @@ export const ManualNotificationDetailSchema = ManualNotificationListItemSchema.e
 export const GetManualNotificationDetailResponseSchema = z.object({
   item: ManualNotificationDetailSchema,
 });
+
+export const ManualNotificationUpsertResponseSchema = z.object({
+  item: ManualNotificationDetailSchema,
+});
+
+export const ManualNotificationUpsertIntentSchema = z.enum(['save', 'submit']);
+
+export const ManualNotificationUpsertBodySchema = z
+  .object({
+    title: z.string().trim().min(1).max(255),
+    target: ManualNotificationTargetInputSchema,
+    channels: z.array(ManualNotificationChannelSchema).min(1),
+    contents: ManualNotificationContentsSchema,
+    timing: ManualNotificationTimingSchema,
+    intent: ManualNotificationUpsertIntentSchema.default('save'),
+  })
+  .superRefine((value, context) => {
+    if (
+      value.timing.type === 'recurring' &&
+      value.timing.frequency === 'custom' &&
+      (value.timing.intervalValue === undefined || value.timing.intervalUnit === undefined)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Custom recurring timing requires intervalValue and intervalUnit',
+        path: ['timing', 'intervalValue'],
+      });
+    }
+    for (const channel of value.channels) {
+      const content = value.contents[channel];
+      const body = content?.body.replace(/<[^>]*>/g, '').trim();
+      const heading =
+        channel === 'push'
+          ? value.contents.push?.title.trim()
+          : channel === 'in_app'
+            ? value.contents.in_app?.title.trim()
+            : channel === 'email'
+              ? value.contents.email?.subject.trim()
+              : true;
+      if (!body || !heading) {
+        context.addIssue({
+          code: 'custom',
+          message: `Content is required for ${channel}`,
+          path: ['contents', channel],
+        });
+      }
+    }
+  })
+  .openapi({
+    title: 'ManualNotificationUpsertBody',
+    description: 'Create or update a manual notification and optionally submit it',
+  });
 
 const commaSeparated = <TSchema extends z.ZodTypeAny>(schema: TSchema) =>
   z.preprocess((value) => {
@@ -211,18 +319,11 @@ export const ManualNotificationActionResponseSchema = z.object({
   item: ManualNotificationListItemSchema,
 });
 
-export type ManualNotificationStatus = z.infer<typeof ManualNotificationStatusSchema>;
 export type ManualNotificationChannel = z.infer<typeof ManualNotificationChannelSchema>;
-export type ManualNotificationBrand = z.infer<typeof ManualNotificationBrandSchema>;
-export type ManualNotificationTargetType = z.infer<typeof ManualNotificationTargetTypeSchema>;
 export type ManualNotificationTarget = z.infer<typeof ManualNotificationTargetSchema>;
-export type ManualNotificationTiming = z.infer<typeof ManualNotificationTimingSchema>;
+export type ManualNotificationTargetInput = z.infer<typeof ManualNotificationTargetInputSchema>;
+export type ManualNotificationContents = z.infer<typeof ManualNotificationContentsSchema>;
 export type ManualNotificationListItem = z.infer<typeof ManualNotificationListItemSchema>;
-export type ManualNotificationDetail = z.infer<typeof ManualNotificationDetailSchema>;
-export type GetManualNotificationDetailResponse = z.infer<
-  typeof GetManualNotificationDetailResponseSchema
->;
-export type GetManualNotificationsQuery = z.infer<typeof GetManualNotificationsQuerySchema>;
 export type GetManualNotificationsResponse = z.infer<typeof GetManualNotificationsResponseSchema>;
 export type ManualNotificationErrorResponse = z.infer<typeof ManualNotificationErrorResponseSchema>;
-export type ManualNotificationAction = z.infer<typeof ManualNotificationActionSchema>;
+export type ManualNotificationUpsertBody = z.infer<typeof ManualNotificationUpsertBodySchema>;

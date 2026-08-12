@@ -1,3 +1,4 @@
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import {
   Bell,
   BellOff,
@@ -21,29 +22,16 @@ import type { GetCrmNotificationsByIdResponse } from '@/lib/api/types.gen';
 import {
   MANUAL_NOTIFICATION_BRAND_LABELS,
   MANUAL_NOTIFICATION_CHANNEL_LABELS,
+  MANUAL_NOTIFICATION_FREQUENCY_LABELS,
   MANUAL_NOTIFICATION_STATUS_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
+  getManualNotificationDynamicAttributeLabel,
 } from '../../_constants/manual-notification.constants';
 
-export type Detail = GetCrmNotificationsByIdResponse['item'];
+type Detail = GetCrmNotificationsByIdResponse['item'];
 type Channel = Detail['channels'][number];
 
 const CHANNEL_ICONS = { sms: MessageSquare, push: Bell, email: Mail, in_app: Smartphone } as const;
-
-export function formatDate(value?: string) {
-  if (!value) return '—';
-  const parts = new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date(value));
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}/${values.month}/${values.day} ${values.hour}:${values.minute}`;
-}
 
 export function timingName(timing: Detail['timing']) {
   if (timing.type === 'immediate') return '即時';
@@ -65,6 +53,10 @@ function formatTarget(target: Detail['target']) {
       return target.condition === 'within'
         ? `入会後${target.months}ヶ月以内`
         : `入会後${target.months}ヶ月以上`;
+    case 'dynamic_attribute':
+      return getManualNotificationDynamicAttributeLabel(target.attribute);
+    case 'members':
+      return `${target.members.length}名を指定`;
   }
 }
 
@@ -134,7 +126,7 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                 {item.channels.map((channel) => (
                   <TabsContent key={channel} value={channel}>
                     <div className="bg-muted/50 rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line">
-                      {item.messages[channel] ?? '本文未設定'}
+                      {item.contents[channel]?.body ?? '本文未設定'}
                     </div>
                   </TabsContent>
                 ))}
@@ -188,7 +180,7 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                 </div>
                 {item.timing.type === 'scheduled' && (
                   <p className="text-muted-foreground mt-1 ml-6 text-xs">
-                    {formatDate(item.timing.scheduledAt)}
+                    {formatDateYYYYMMDD_HHMM(item.timing.scheduledAt, '—')}
                   </p>
                 )}
                 {item.timing.type === 'recurring' && (
@@ -196,11 +188,7 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">配信間隔</span>
                       <span className="font-medium">
-                        {
-                          { daily: '毎日', weekly: '毎週', monthly: '毎月', custom: 'カスタム' }[
-                            item.timing.frequency
-                          ]
-                        }
+                        {MANUAL_NOTIFICATION_FREQUENCY_LABELS[item.timing.frequency]}
                       </span>
                     </div>
                     <Separator />
@@ -209,7 +197,7 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                       <span className="font-medium">
                         {item.timing.maxOccurrences
                           ? `${item.timing.maxOccurrences}回で終了`
-                          : `${formatDate(item.timing.endAt)}まで`}
+                          : `${formatDateYYYYMMDD_HHMM(item.timing.endAt, '—')}まで`}
                       </span>
                     </div>
                   </div>
@@ -253,7 +241,7 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                 <div>
                   <p className="text-muted-foreground text-[10px]">配信対象件数</p>
                   <p className="text-lg font-semibold tabular-nums">
-                    {item.targetCount.toLocaleString('ja-JP').replace(/,/g, '.')}
+                    {item.targetCount.toLocaleString('ja-JP')}
                     <span className="text-muted-foreground ml-1 text-sm font-normal">名</span>
                   </p>
                 </div>
@@ -269,16 +257,16 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
               icon={statusIcon(item.status)}
               label={MANUAL_NOTIFICATION_STATUS_LABELS[item.status]}
               meta={[
-                `作成: ${formatDate(item.createdAt)}`,
-                `更新: ${formatDate(item.updatedAt)}`,
+                `作成: ${formatDateYYYYMMDD_HHMM(item.createdAt, '—')}`,
+                `更新: ${formatDateYYYYMMDD_HHMM(item.updatedAt, '—')}`,
                 ...(item.status === 'pending_approval'
                   ? ['本部承認待ちです。承認後に配信予約が確定します。']
                   : []),
                 ...(item.approvedBy && item.approvedAt
-                  ? [`承認: ${formatDate(item.approvedAt)}（${item.approvedBy}）`]
+                  ? [`承認: ${formatDateYYYYMMDD_HHMM(item.approvedAt, '—')}（${item.approvedBy}）`]
                   : []),
                 ...(item.deliveryResult?.deliveredAt
-                  ? [`配信: ${formatDate(item.deliveryResult.deliveredAt)}`]
+                  ? [`配信: ${formatDateYYYYMMDD_HHMM(item.deliveryResult.deliveredAt, '—')}`]
                   : []),
               ]}
             />

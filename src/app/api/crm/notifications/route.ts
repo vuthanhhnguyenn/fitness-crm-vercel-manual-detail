@@ -10,8 +10,20 @@ import {
   type ManualNotificationErrorResponse,
   ManualNotificationErrorResponseSchema,
   ManualNotificationListItemSchema,
+  ManualNotificationUpsertBodySchema,
+  ManualNotificationUpsertResponseSchema,
 } from '@/app/api/_schemas/manual-notification.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { hasPermissions } from '@/utils/permission.util';
+
+import { Permission } from '@/types/permission.type';
+import type { UserRole } from '@/types/permission.type';
+
+import {
+  buildManualNotificationRow,
+  isManualNotificationTargetOutOfScope,
+  validateManualNotificationTiming,
+} from './_lib/manual-notification-upsert.util';
 
 registerRoute({
   method: 'get',
@@ -23,6 +35,25 @@ registerRoute({
   query: GetManualNotificationsQuerySchema,
   responses: [
     { status: 200, schema: GetManualNotificationsResponseSchema, description: 'Notification list' },
+    { status: 400, schema: ManualNotificationErrorResponseSchema, description: 'Bad request' },
+    { status: 401, schema: ManualNotificationErrorResponseSchema, description: 'Unauthorized' },
+    { status: 403, schema: ManualNotificationErrorResponseSchema, description: 'Forbidden' },
+  ],
+});
+
+registerRoute({
+  method: 'post',
+  path: '/crm/notifications',
+  summary: 'Create a manual notification',
+  description: 'Create a manual notification as draft or submit it for delivery',
+  tags: ['Notification CRUD'],
+  requestBody: { schema: ManualNotificationUpsertBodySchema },
+  responses: [
+    {
+      status: 201,
+      schema: ManualNotificationUpsertResponseSchema,
+      description: 'Notification created',
+    },
     { status: 400, schema: ManualNotificationErrorResponseSchema, description: 'Bad request' },
     { status: 401, schema: ManualNotificationErrorResponseSchema, description: 'Unauthorized' },
     { status: 403, schema: ManualNotificationErrorResponseSchema, description: 'Forbidden' },
@@ -60,6 +91,10 @@ function targetSearchText(item: ManualNotificationRow): string {
       return `${item.target.contractTypeId} ${item.target.contractTypeName}`;
     case 'membership_duration':
       return `${item.target.condition} ${item.target.months}`;
+    case 'dynamic_attribute':
+      return item.target.attribute;
+    case 'members':
+      return item.target.members.map((member) => `${member.id} ${member.name}`).join(' ');
   }
 }
 
@@ -84,7 +119,7 @@ export async function GET(request: NextRequest) {
     return errorResponse(auth.status, code, auth.error, 'Authentication or authorization failed');
   }
 
-  if (auth.user.role === 'Trainer') {
+  if (!hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsView])) {
     return errorResponse(
       403,
       'E-AUTH-006',
@@ -123,16 +158,22 @@ export async function GET(request: NextRequest) {
 
   const { includeTotalAll, page, limit, sort, order, status, channel, targetType, q } =
     parsedQuery.data;
-  const allowedStoreIds = getAllowedStoreIds(auth.user);
-
   let baseline = db.manualNotifications.getList().filter((item) => item.deletedAt === null);
 
-  if (auth.user.role === 'Staff') {
-    baseline = baseline.filter(
-      (item) =>
-        item.createdByUserId === auth.user.id ||
-        item.targetStoreIds.some((storeId) => allowedStoreIds?.includes(storeId)),
-    );
+  const allowedStoreIds = getAllowedStoreIds(auth.user);
+  const canMutate = hasPermissions(auth.user.role as UserRole, [
+    Permission.ManualNotificationsCreate,
+  ]);
+  if (allowedStoreIds !== null) {
+    if (allowedStoreIds.length === 0 && canMutate) {
+      baseline = baseline.filter((item) => item.createdByUserId === auth.user.id);
+    } else if (allowedStoreIds.length > 0 && canMutate) {
+      baseline = baseline.filter(
+        (item) =>
+          item.createdByUserId === auth.user.id ||
+          item.targetStoreIds.some((storeId) => allowedStoreIds.includes(storeId)),
+      );
+    }
   }
 
   const totalAllItems = baseline.length;
@@ -183,4 +224,73 @@ export async function GET(request: NextRequest) {
   };
 
   return NextResponse.json(response);
+}
+
+export async function POST(request: NextRequest) {
+  const auth = getAuthUserFromRequest(request);
+  if (!auth.ok) {
+    const code = auth.status === 401 ? 'E-AUTH-001' : 'E-AUTH-006';
+    return errorResponse(auth.status, code, auth.error, 'Authentication or authorization failed');
+  }
+  if (!hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsCreate])) {
+    return errorResponse(
+      403,
+      'E-AUTH-006',
+      'Insufficient permissions',
+      'この操作を実行する権限がありません',
+    );
+  }
+
+  const parsed = ManualNotificationUpsertBodySchema.safeParse(
+    await request.json().catch(() => null),
+  );
+  if (!parsed.success) {
+    return errorResponse(400, 'E-VAL-001', 'Invalid notification payload', '通知内容が不正です');
+  }
+
+  const body = parsed.data;
+  const allowedStoreIds = getAllowedStoreIds(auth.user);
+  if (isManualNotificationTargetOutOfScope(body.target, allowedStoreIds)) {
+    return errorResponse(
+      403,
+      'E-AUTH-006',
+      'Target is outside the caller store scope',
+      '所属店舗以外の会員には配信できません',
+    );
+  }
+
+  const timingError =
+    body.intent === 'submit' ? validateManualNotificationTiming(body.timing) : undefined;
+  if (timingError) {
+    return errorResponse(400, 'E-VAL-001', timingError, timingError);
+  }
+
+  const targetCount = db.manualNotifications.estimateTargetCount(body.target);
+  if (body.intent === 'submit' && targetCount === 0) {
+    return errorResponse(
+      400,
+      'E-VAL-001',
+      'No eligible recipients',
+      '配信対象の会員が存在しません',
+    );
+  }
+
+  const row = db.manualNotifications.create(
+    buildManualNotificationRow({
+      body,
+      targetCount,
+      createdByUserId: auth.user.id,
+    }),
+  );
+
+  const creator = db.users.getById(row.createdByUserId);
+  return NextResponse.json(
+    {
+      item: {
+        ...row,
+        createdBy: creator?.name ?? row.createdByUserId,
+      },
+    },
+    { status: 201 },
+  );
 }

@@ -35,6 +35,10 @@ function targetDetail(row: ManualNotificationRow): string {
       return row.target.condition === 'within'
         ? `入会後${row.target.months}ヶ月以内`
         : `入会後${row.target.months}ヶ月以上`;
+    case 'dynamic_attribute':
+      return row.target.attribute;
+    case 'members':
+      return `${row.target.members.length}名を指定`;
   }
 }
 

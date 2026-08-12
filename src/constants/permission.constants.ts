@@ -90,6 +90,8 @@ export const PAGE_PERMISSIONS: Partial<Record<RoutePattern, Permission>> = {
   // Manual notifications (I-03)
   '/manual-notifications': Permission.ManualNotificationsView,
   '/manual-notifications/:id': Permission.ManualNotificationsView,
+  '/manual-notifications/create': Permission.ManualNotificationsCreate,
+  '/manual-notifications/:id/edit': Permission.ManualNotificationsEdit,
 
   // Option discounts
   '/option-discount': Permission.OptionDiscountsView,

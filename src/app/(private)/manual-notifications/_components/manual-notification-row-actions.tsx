@@ -2,9 +2,9 @@
 
 import { type MouseEvent, useState } from 'react';
 
+import { useRouter } from 'next/navigation';
+
 import { CheckCircle2, MoreHorizontal, Pencil, RefreshCw, Send, Trash2, Undo2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { z } from 'zod';
 
 import { RoleGatedMenuItem } from '@/components/common/role-gated-menu-item';
 import {
@@ -25,6 +25,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 
+import { navigate } from '@/lib/routes/routes.util';
+
 import { Permission } from '@/types/permission.type';
 
 import {
@@ -34,16 +36,16 @@ import {
 } from '../_constants/manual-notification.constants';
 import {
   type ManualNotificationAction,
+  manualNotificationReturnReasonSchema,
   useManualNotificationAction,
 } from '../_hooks/use-manual-notification-action';
-
-const returnReasonSchema = z.string().trim().min(1, '差し戻し理由を入力してください');
 
 interface ManualNotificationRowActionsProps {
   readonly row: ManualNotificationRow;
 }
 
 export function ManualNotificationRowActions({ row }: ManualNotificationRowActionsProps) {
+  const router = useRouter();
   const [dialog, setDialog] = useState<
     'request-approval' | 'approve' | 'return' | 'resubmit' | 'delete' | null
   >(null);
@@ -61,7 +63,7 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
 
   const executeAction = (action: Exclude<ManualNotificationAction, 'return'>, reason?: string) => {
     actionMutation.mutate(
-      { id: row.id, action, ...(reason ? { reason } : {}) },
+      { path: { id: row.id }, body: { action, ...(reason ? { reason } : {}) } },
       {
         onSuccess: () => setDialog(null),
       },
@@ -69,14 +71,14 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
   };
 
   const handleReturn = (event: MouseEvent<HTMLButtonElement>) => {
-    const result = returnReasonSchema.safeParse(returnReason);
+    const result = manualNotificationReturnReasonSchema.safeParse(returnReason);
     if (!result.success) {
       event.preventDefault();
       setReturnError(result.error.issues[0]?.message ?? '差し戻し理由を入力してください');
       return;
     }
     actionMutation.mutate(
-      { id: row.id, action: 'return', reason: result.data },
+      { path: { id: row.id }, body: { action: 'return', reason: result.data } },
       {
         onSuccess: closeReturnDialog,
       },
@@ -288,7 +290,9 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
                 ? `${getManualNotificationStatusLabel(row.status)}は編集できません`
                 : undefined
             }
-            onClick={() => canEdit && toast.info('編集フォームは次の実装範囲です')}
+            onClick={() =>
+              canEdit && router.push(navigate('/manual-notifications/[id]/edit', row.id))
+            }
           >
             <Pencil className="size-4" />
             編集

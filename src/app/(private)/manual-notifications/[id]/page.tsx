@@ -4,10 +4,9 @@ import { useRef, useState } from 'react';
 
 import { useParams, useRouter } from 'next/navigation';
 
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Pencil, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
-import { toast } from 'sonner';
-import { z } from 'zod';
 
 import { BackLink } from '@/components/common/back-link';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
@@ -36,19 +35,17 @@ import {
   MANUAL_NOTIFICATION_STATUS_CLASSES,
   MANUAL_NOTIFICATION_STATUS_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
+  getManualNotificationActionPolicy,
 } from '../_constants/manual-notification.constants';
-import { useManualNotificationAction } from '../_hooks/use-manual-notification-action';
+import {
+  type ManualNotificationAction,
+  manualNotificationReturnReasonSchema,
+  useManualNotificationAction,
+} from '../_hooks/use-manual-notification-action';
 import {
   ManualNotificationDetailContent,
-  formatDate,
   timingName,
 } from './_components/manual-notification-detail-content';
-
-const returnReasonSchema = z
-  .string()
-  .trim()
-  .min(1, '差し戻し理由を入力してください')
-  .max(500, '差し戻し理由は500文字以内で入力してください');
 
 function isNotificationNotFoundError(error: unknown): boolean {
   const candidate = error as { code?: unknown } | null;
@@ -93,18 +90,15 @@ export default function ManualNotificationDetailPage() {
   const item = query.data.item;
   const approvalTiming =
     item.timing.type === 'scheduled'
-      ? `予約: ${formatDate(item.timing.scheduledAt)}`
+      ? `予約: ${formatDateYYYYMMDD_HHMM(item.timing.scheduledAt, '—')}`
       : timingName(item.timing);
   const approvalTarget = `${MANUAL_NOTIFICATION_TARGET_LABELS[item.target.type]}（${item.targetCount.toLocaleString('ja-JP')}名）`;
-  const canEdit = ['draft', 'returned', 'pending_approval'].includes(item.status);
-  const canDelete = ['draft', 'returned'].includes(item.status);
+  const { canRequestApproval, canSend, canApprove, canReturn, canResubmit, canEdit, canDelete } =
+    getManualNotificationActionPolicy(item);
   const isDeliveryActive = item.status === 'sending' || item.status === 'sent';
-  const runAction = (
-    action: 'approve' | 'return' | 'delete' | 'request_approval' | 'send' | 'resubmit',
-    reason?: string,
-  ) => {
+  const runAction = (action: ManualNotificationAction, reason?: string) => {
     actionMutation.mutate(
-      { id, action, ...(reason ? { reason } : {}) },
+      { path: { id }, body: { action, ...(reason ? { reason } : {}) } },
       {
         onSuccess: () => {
           setDialog(null);
@@ -161,13 +155,13 @@ export default function ManualNotificationDetailPage() {
                 variant="outline"
                 size="sm"
                 className="gap-1"
-                onClick={() => toast.info('編集フォームは次の実装範囲です')}
+                onClick={() => router.push(navigate('/manual-notifications/[id]/edit', id))}
               >
                 <Pencil className="size-4" />
                 編集
               </RoleGatedButton>
             )}
-            {item.status === 'draft' && item.requiresApproval && (
+            {canRequestApproval && (
               <RoleGatedButton
                 requiredPermission={Permission.ManualNotificationsCreate}
                 variant="outline"
@@ -180,7 +174,7 @@ export default function ManualNotificationDetailPage() {
                 承認依頼
               </RoleGatedButton>
             )}
-            {item.status === 'draft' && !item.requiresApproval && (
+            {canSend && (
               <RoleGatedButton
                 requiredPermission={Permission.ManualNotificationsCreate}
                 variant="outline"
@@ -193,7 +187,7 @@ export default function ManualNotificationDetailPage() {
                 配信する
               </RoleGatedButton>
             )}
-            {item.status === 'returned' && (
+            {canResubmit && (
               <RoleGatedButton
                 requiredPermission={Permission.ManualNotificationsEdit}
                 variant="outline"
@@ -206,7 +200,7 @@ export default function ManualNotificationDetailPage() {
                 再申請
               </RoleGatedButton>
             )}
-            {item.status === 'pending_approval' && (
+            {canApprove && canReturn && (
               <>
                 <RoleGatedButton
                   requiredPermission={Permission.ManualNotificationsApprove}
@@ -333,7 +327,7 @@ export default function ManualNotificationDetailPage() {
               className="bg-destructive/10 text-destructive hover:bg-destructive/20"
               disabled={actionMutation.isPending}
               onClick={(event) => {
-                const result = returnReasonSchema.safeParse(returnReason);
+                const result = manualNotificationReturnReasonSchema.safeParse(returnReason);
                 if (!result.success) {
                   event.preventDefault();
                   setReturnError(

@@ -16,7 +16,7 @@ export type ManualNotificationDetail = {
         type: 'all_members';
     } | {
         type: 'brands';
-        brands: Array<'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+        brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
     } | {
         type: 'stores';
         stores: Array<{
@@ -31,6 +31,17 @@ export type ManualNotificationDetail = {
         type: 'membership_duration';
         condition: 'within' | 'at_least';
         months: number;
+    } | {
+        type: 'dynamic_attribute';
+        attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+    } | {
+        type: 'members';
+        members: Array<{
+            id: string;
+            name: string;
+            memberNumber?: string;
+            storeName?: string;
+        }>;
     };
     channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
     timing: {
@@ -42,6 +53,8 @@ export type ManualNotificationDetail = {
         type: 'recurring';
         frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
         startAt: string;
+        intervalValue?: number;
+        intervalUnit?: 'day' | 'week' | 'month';
         endAt?: string;
         maxOccurrences?: number;
     };
@@ -55,13 +68,25 @@ export type ManualNotificationDetail = {
     requiresApproval: boolean;
     updatedAt: string;
     /**
-     * ManualNotificationMessages
+     * ManualNotificationContents
      */
-    messages: {
-        sms?: string;
-        push?: string;
-        email?: string;
-        in_app?: string;
+    contents: {
+        sms?: {
+            body: string;
+        };
+        push?: {
+            title: string;
+            body: string;
+        };
+        email?: {
+            subject: string;
+            body: string;
+        };
+        in_app?: {
+            title: string;
+            body: string;
+            linkUrl?: string | '';
+        };
     };
     createdAt: string;
     createdBy: string;
@@ -100,7 +125,7 @@ export type GetManualNotificationDetailResponse = {
             type: 'all_members';
         } | {
             type: 'brands';
-            brands: Array<'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+            brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
         } | {
             type: 'stores';
             stores: Array<{
@@ -115,6 +140,17 @@ export type GetManualNotificationDetailResponse = {
             type: 'membership_duration';
             condition: 'within' | 'at_least';
             months: number;
+        } | {
+            type: 'dynamic_attribute';
+            attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+        } | {
+            type: 'members';
+            members: Array<{
+                id: string;
+                name: string;
+                memberNumber?: string;
+                storeName?: string;
+            }>;
         };
         channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
         timing: {
@@ -126,6 +162,8 @@ export type GetManualNotificationDetailResponse = {
             type: 'recurring';
             frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
             startAt: string;
+            intervalValue?: number;
+            intervalUnit?: 'day' | 'week' | 'month';
             endAt?: string;
             maxOccurrences?: number;
         };
@@ -139,13 +177,203 @@ export type GetManualNotificationDetailResponse = {
         requiresApproval: boolean;
         updatedAt: string;
         /**
-         * ManualNotificationMessages
+         * ManualNotificationContents
          */
-        messages: {
-            sms?: string;
-            push?: string;
-            email?: string;
-            in_app?: string;
+        contents: {
+            sms?: {
+                body: string;
+            };
+            push?: {
+                title: string;
+                body: string;
+            };
+            email?: {
+                subject: string;
+                body: string;
+            };
+            in_app?: {
+                title: string;
+                body: string;
+                linkUrl?: string | '';
+            };
+        };
+        createdAt: string;
+        createdBy: string;
+        approvedBy?: string;
+        approvedAt?: string;
+        returnReason?: string;
+        deliveryResult?: {
+            deliveredAt?: string;
+            deliveredCount: number;
+            reachedCount?: number;
+            openedCount?: number;
+            channelResults?: Array<{
+                /**
+                 * ManualNotificationChannel
+                 *
+                 * Manual notification delivery channel
+                 */
+                channel: 'sms' | 'push' | 'email' | 'in_app';
+                deliveredCount: number;
+                reachedCount?: number;
+                openedCount?: number;
+            }>;
+        };
+    };
+};
+
+/**
+ * ManualNotificationUpsertBody
+ *
+ * Create or update a manual notification and optionally submit it
+ */
+export type ManualNotificationUpsertBody = {
+    title: string;
+    target: {
+        type: 'all_members';
+    } | {
+        type: 'brands';
+        brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+    } | {
+        type: 'stores';
+        storeIds: Array<string>;
+    } | {
+        type: 'contract_type';
+        contractTypeId: string;
+    } | {
+        type: 'membership_duration';
+        condition: 'within' | 'at_least';
+        months: number;
+    } | {
+        type: 'dynamic_attribute';
+        attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+    } | {
+        type: 'members';
+        memberIds: Array<string>;
+    };
+    channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+    /**
+     * ManualNotificationContents
+     */
+    contents: {
+        sms?: {
+            body: string;
+        };
+        push?: {
+            title: string;
+            body: string;
+        };
+        email?: {
+            subject: string;
+            body: string;
+        };
+        in_app?: {
+            title: string;
+            body: string;
+            linkUrl?: string | '';
+        };
+    };
+    timing: {
+        type: 'immediate';
+    } | {
+        type: 'scheduled';
+        scheduledAt: string;
+    } | {
+        type: 'recurring';
+        frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+        startAt: string;
+        intervalValue?: number;
+        intervalUnit?: 'day' | 'week' | 'month';
+        endAt?: string;
+        maxOccurrences?: number;
+    };
+    intent?: 'save' | 'submit';
+};
+
+export type ManualNotificationUpsertResponse = {
+    /**
+     * ManualNotificationDetail
+     *
+     * Manual notification detail projection for I-03
+     */
+    item: {
+        id: string;
+        title: string;
+        target: {
+            type: 'all_members';
+        } | {
+            type: 'brands';
+            brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+        } | {
+            type: 'stores';
+            stores: Array<{
+                id: string;
+                name: string;
+            }>;
+        } | {
+            type: 'contract_type';
+            contractTypeId: string;
+            contractTypeName: string;
+        } | {
+            type: 'membership_duration';
+            condition: 'within' | 'at_least';
+            months: number;
+        } | {
+            type: 'dynamic_attribute';
+            attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+        } | {
+            type: 'members';
+            members: Array<{
+                id: string;
+                name: string;
+                memberNumber?: string;
+                storeName?: string;
+            }>;
+        };
+        channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+        timing: {
+            type: 'immediate';
+        } | {
+            type: 'scheduled';
+            scheduledAt: string;
+        } | {
+            type: 'recurring';
+            frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+            startAt: string;
+            intervalValue?: number;
+            intervalUnit?: 'day' | 'week' | 'month';
+            endAt?: string;
+            maxOccurrences?: number;
+        };
+        targetCount: number;
+        /**
+         * ManualNotificationStatus
+         *
+         * Manual notification lifecycle state defined by I-03
+         */
+        status: 'draft' | 'pending_approval' | 'returned' | 'scheduled' | 'sending' | 'sent';
+        requiresApproval: boolean;
+        updatedAt: string;
+        /**
+         * ManualNotificationContents
+         */
+        contents: {
+            sms?: {
+                body: string;
+            };
+            push?: {
+                title: string;
+                body: string;
+            };
+            email?: {
+                subject: string;
+                body: string;
+            };
+            in_app?: {
+                title: string;
+                body: string;
+                linkUrl?: string | '';
+            };
         };
         createdAt: string;
         createdBy: string;
@@ -43396,7 +43624,7 @@ export type PatchCrmNotificationsByIdActionResponses = {
                 type: 'all_members';
             } | {
                 type: 'brands';
-                brands: Array<'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+                brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
             } | {
                 type: 'stores';
                 stores: Array<{
@@ -43411,6 +43639,17 @@ export type PatchCrmNotificationsByIdActionResponses = {
                 type: 'membership_duration';
                 condition: 'within' | 'at_least';
                 months: number;
+            } | {
+                type: 'dynamic_attribute';
+                attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+            } | {
+                type: 'members';
+                members: Array<{
+                    id: string;
+                    name: string;
+                    memberNumber?: string;
+                    storeName?: string;
+                }>;
             };
             channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
             timing: {
@@ -43422,6 +43661,8 @@ export type PatchCrmNotificationsByIdActionResponses = {
                 type: 'recurring';
                 frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
                 startAt: string;
+                intervalValue?: number;
+                intervalUnit?: 'day' | 'week' | 'month';
                 endAt?: string;
                 maxOccurrences?: number;
             };
@@ -43507,7 +43748,7 @@ export type GetCrmNotificationsByIdResponses = {
                 type: 'all_members';
             } | {
                 type: 'brands';
-                brands: Array<'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+                brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
             } | {
                 type: 'stores';
                 stores: Array<{
@@ -43522,6 +43763,17 @@ export type GetCrmNotificationsByIdResponses = {
                 type: 'membership_duration';
                 condition: 'within' | 'at_least';
                 months: number;
+            } | {
+                type: 'dynamic_attribute';
+                attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+            } | {
+                type: 'members';
+                members: Array<{
+                    id: string;
+                    name: string;
+                    memberNumber?: string;
+                    storeName?: string;
+                }>;
             };
             channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
             timing: {
@@ -43533,6 +43785,8 @@ export type GetCrmNotificationsByIdResponses = {
                 type: 'recurring';
                 frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
                 startAt: string;
+                intervalValue?: number;
+                intervalUnit?: 'day' | 'week' | 'month';
                 endAt?: string;
                 maxOccurrences?: number;
             };
@@ -43546,13 +43800,25 @@ export type GetCrmNotificationsByIdResponses = {
             requiresApproval: boolean;
             updatedAt: string;
             /**
-             * ManualNotificationMessages
+             * ManualNotificationContents
              */
-            messages: {
-                sms?: string;
-                push?: string;
-                email?: string;
-                in_app?: string;
+            contents: {
+                sms?: {
+                    body: string;
+                };
+                push?: {
+                    title: string;
+                    body: string;
+                };
+                email?: {
+                    subject: string;
+                    body: string;
+                };
+                in_app?: {
+                    title: string;
+                    body: string;
+                    linkUrl?: string | '';
+                };
             };
             createdAt: string;
             createdBy: string;
@@ -43582,6 +43848,251 @@ export type GetCrmNotificationsByIdResponses = {
 
 export type GetCrmNotificationsByIdResponse = GetCrmNotificationsByIdResponses[keyof GetCrmNotificationsByIdResponses];
 
+export type PatchCrmNotificationsByIdData = {
+    /**
+     * ManualNotificationUpsertBody
+     *
+     * Create or update a manual notification and optionally submit it
+     */
+    body?: {
+        title: string;
+        target: {
+            type: 'all_members';
+        } | {
+            type: 'brands';
+            brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+        } | {
+            type: 'stores';
+            storeIds: Array<string>;
+        } | {
+            type: 'contract_type';
+            contractTypeId: string;
+        } | {
+            type: 'membership_duration';
+            condition: 'within' | 'at_least';
+            months: number;
+        } | {
+            type: 'dynamic_attribute';
+            attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+        } | {
+            type: 'members';
+            memberIds: Array<string>;
+        };
+        channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+        /**
+         * ManualNotificationContents
+         */
+        contents: {
+            sms?: {
+                body: string;
+            };
+            push?: {
+                title: string;
+                body: string;
+            };
+            email?: {
+                subject: string;
+                body: string;
+            };
+            in_app?: {
+                title: string;
+                body: string;
+                linkUrl?: string | '';
+            };
+        };
+        timing: {
+            type: 'immediate';
+        } | {
+            type: 'scheduled';
+            scheduledAt: string;
+        } | {
+            type: 'recurring';
+            frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+            startAt: string;
+            intervalValue?: number;
+            intervalUnit?: 'day' | 'week' | 'month';
+            endAt?: string;
+            maxOccurrences?: number;
+        };
+        intent?: 'save' | 'submit';
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/crm/notifications/{id}';
+};
+
+export type PatchCrmNotificationsByIdErrors = {
+    /**
+     * Bad request
+     */
+    400: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Unauthorized
+     */
+    401: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Forbidden
+     */
+    403: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Not found
+     */
+    404: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PatchCrmNotificationsByIdError = PatchCrmNotificationsByIdErrors[keyof PatchCrmNotificationsByIdErrors];
+
+export type PatchCrmNotificationsByIdResponses = {
+    /**
+     * Notification updated
+     */
+    200: {
+        /**
+         * ManualNotificationDetail
+         *
+         * Manual notification detail projection for I-03
+         */
+        item: {
+            id: string;
+            title: string;
+            target: {
+                type: 'all_members';
+            } | {
+                type: 'brands';
+                brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+            } | {
+                type: 'stores';
+                stores: Array<{
+                    id: string;
+                    name: string;
+                }>;
+            } | {
+                type: 'contract_type';
+                contractTypeId: string;
+                contractTypeName: string;
+            } | {
+                type: 'membership_duration';
+                condition: 'within' | 'at_least';
+                months: number;
+            } | {
+                type: 'dynamic_attribute';
+                attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+            } | {
+                type: 'members';
+                members: Array<{
+                    id: string;
+                    name: string;
+                    memberNumber?: string;
+                    storeName?: string;
+                }>;
+            };
+            channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+            timing: {
+                type: 'immediate';
+            } | {
+                type: 'scheduled';
+                scheduledAt: string;
+            } | {
+                type: 'recurring';
+                frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+                startAt: string;
+                intervalValue?: number;
+                intervalUnit?: 'day' | 'week' | 'month';
+                endAt?: string;
+                maxOccurrences?: number;
+            };
+            targetCount: number;
+            /**
+             * ManualNotificationStatus
+             *
+             * Manual notification lifecycle state defined by I-03
+             */
+            status: 'draft' | 'pending_approval' | 'returned' | 'scheduled' | 'sending' | 'sent';
+            requiresApproval: boolean;
+            updatedAt: string;
+            /**
+             * ManualNotificationContents
+             */
+            contents: {
+                sms?: {
+                    body: string;
+                };
+                push?: {
+                    title: string;
+                    body: string;
+                };
+                email?: {
+                    subject: string;
+                    body: string;
+                };
+                in_app?: {
+                    title: string;
+                    body: string;
+                    linkUrl?: string | '';
+                };
+            };
+            createdAt: string;
+            createdBy: string;
+            approvedBy?: string;
+            approvedAt?: string;
+            returnReason?: string;
+            deliveryResult?: {
+                deliveredAt?: string;
+                deliveredCount: number;
+                reachedCount?: number;
+                openedCount?: number;
+                channelResults?: Array<{
+                    /**
+                     * ManualNotificationChannel
+                     *
+                     * Manual notification delivery channel
+                     */
+                    channel: 'sms' | 'push' | 'email' | 'in_app';
+                    deliveredCount: number;
+                    reachedCount?: number;
+                    openedCount?: number;
+                }>;
+            };
+        };
+    };
+};
+
+export type PatchCrmNotificationsByIdResponse = PatchCrmNotificationsByIdResponses[keyof PatchCrmNotificationsByIdResponses];
+
 export type GetCrmNotificationsData = {
     body?: never;
     path?: never;
@@ -43593,7 +44104,7 @@ export type GetCrmNotificationsData = {
         order?: 'asc' | 'desc';
         status?: Array<'draft' | 'pending_approval' | 'returned' | 'scheduled' | 'sending' | 'sent'> | null;
         channel?: Array<'sms' | 'push' | 'email' | 'in_app'> | null;
-        targetType?: Array<'all_members' | 'brands' | 'stores' | 'contract_type' | 'membership_duration'> | null;
+        targetType?: Array<'all_members' | 'brands' | 'stores' | 'contract_type' | 'membership_duration' | 'dynamic_attribute' | 'members'> | null;
         q?: string;
     };
     url: '/crm/notifications';
@@ -43652,7 +44163,7 @@ export type GetCrmNotificationsResponses = {
                 type: 'all_members';
             } | {
                 type: 'brands';
-                brands: Array<'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+                brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
             } | {
                 type: 'stores';
                 stores: Array<{
@@ -43667,6 +44178,17 @@ export type GetCrmNotificationsResponses = {
                 type: 'membership_duration';
                 condition: 'within' | 'at_least';
                 months: number;
+            } | {
+                type: 'dynamic_attribute';
+                attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+            } | {
+                type: 'members';
+                members: Array<{
+                    id: string;
+                    name: string;
+                    memberNumber?: string;
+                    storeName?: string;
+                }>;
             };
             channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
             timing: {
@@ -43678,6 +44200,8 @@ export type GetCrmNotificationsResponses = {
                 type: 'recurring';
                 frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
                 startAt: string;
+                intervalValue?: number;
+                intervalUnit?: 'day' | 'week' | 'month';
                 endAt?: string;
                 maxOccurrences?: number;
             };
@@ -43702,6 +44226,237 @@ export type GetCrmNotificationsResponses = {
 };
 
 export type GetCrmNotificationsResponse = GetCrmNotificationsResponses[keyof GetCrmNotificationsResponses];
+
+export type PostCrmNotificationsData = {
+    /**
+     * ManualNotificationUpsertBody
+     *
+     * Create or update a manual notification and optionally submit it
+     */
+    body?: {
+        title: string;
+        target: {
+            type: 'all_members';
+        } | {
+            type: 'brands';
+            brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+        } | {
+            type: 'stores';
+            storeIds: Array<string>;
+        } | {
+            type: 'contract_type';
+            contractTypeId: string;
+        } | {
+            type: 'membership_duration';
+            condition: 'within' | 'at_least';
+            months: number;
+        } | {
+            type: 'dynamic_attribute';
+            attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+        } | {
+            type: 'members';
+            memberIds: Array<string>;
+        };
+        channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+        /**
+         * ManualNotificationContents
+         */
+        contents: {
+            sms?: {
+                body: string;
+            };
+            push?: {
+                title: string;
+                body: string;
+            };
+            email?: {
+                subject: string;
+                body: string;
+            };
+            in_app?: {
+                title: string;
+                body: string;
+                linkUrl?: string | '';
+            };
+        };
+        timing: {
+            type: 'immediate';
+        } | {
+            type: 'scheduled';
+            scheduledAt: string;
+        } | {
+            type: 'recurring';
+            frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+            startAt: string;
+            intervalValue?: number;
+            intervalUnit?: 'day' | 'week' | 'month';
+            endAt?: string;
+            maxOccurrences?: number;
+        };
+        intent?: 'save' | 'submit';
+    };
+    path?: never;
+    query?: never;
+    url: '/crm/notifications';
+};
+
+export type PostCrmNotificationsErrors = {
+    /**
+     * Bad request
+     */
+    400: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Unauthorized
+     */
+    401: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Forbidden
+     */
+    403: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PostCrmNotificationsError = PostCrmNotificationsErrors[keyof PostCrmNotificationsErrors];
+
+export type PostCrmNotificationsResponses = {
+    /**
+     * Notification created
+     */
+    201: {
+        /**
+         * ManualNotificationDetail
+         *
+         * Manual notification detail projection for I-03
+         */
+        item: {
+            id: string;
+            title: string;
+            target: {
+                type: 'all_members';
+            } | {
+                type: 'brands';
+                brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+            } | {
+                type: 'stores';
+                stores: Array<{
+                    id: string;
+                    name: string;
+                }>;
+            } | {
+                type: 'contract_type';
+                contractTypeId: string;
+                contractTypeName: string;
+            } | {
+                type: 'membership_duration';
+                condition: 'within' | 'at_least';
+                months: number;
+            } | {
+                type: 'dynamic_attribute';
+                attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+            } | {
+                type: 'members';
+                members: Array<{
+                    id: string;
+                    name: string;
+                    memberNumber?: string;
+                    storeName?: string;
+                }>;
+            };
+            channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+            timing: {
+                type: 'immediate';
+            } | {
+                type: 'scheduled';
+                scheduledAt: string;
+            } | {
+                type: 'recurring';
+                frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+                startAt: string;
+                intervalValue?: number;
+                intervalUnit?: 'day' | 'week' | 'month';
+                endAt?: string;
+                maxOccurrences?: number;
+            };
+            targetCount: number;
+            /**
+             * ManualNotificationStatus
+             *
+             * Manual notification lifecycle state defined by I-03
+             */
+            status: 'draft' | 'pending_approval' | 'returned' | 'scheduled' | 'sending' | 'sent';
+            requiresApproval: boolean;
+            updatedAt: string;
+            /**
+             * ManualNotificationContents
+             */
+            contents: {
+                sms?: {
+                    body: string;
+                };
+                push?: {
+                    title: string;
+                    body: string;
+                };
+                email?: {
+                    subject: string;
+                    body: string;
+                };
+                in_app?: {
+                    title: string;
+                    body: string;
+                    linkUrl?: string | '';
+                };
+            };
+            createdAt: string;
+            createdBy: string;
+            approvedBy?: string;
+            approvedAt?: string;
+            returnReason?: string;
+            deliveryResult?: {
+                deliveredAt?: string;
+                deliveredCount: number;
+                reachedCount?: number;
+                openedCount?: number;
+                channelResults?: Array<{
+                    /**
+                     * ManualNotificationChannel
+                     *
+                     * Manual notification delivery channel
+                     */
+                    channel: 'sms' | 'push' | 'email' | 'in_app';
+                    deliveredCount: number;
+                    reachedCount?: number;
+                    openedCount?: number;
+                }>;
+            };
+        };
+    };
+};
+
+export type PostCrmNotificationsResponse = PostCrmNotificationsResponses[keyof PostCrmNotificationsResponses];
 
 export type GetCrmOptionDiscountsByIdChangeHistoryData = {
     body?: never;

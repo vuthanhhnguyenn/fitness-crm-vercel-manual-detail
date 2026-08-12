@@ -20,5 +20,3 @@ export const ManualNotificationListQuerySchema = z.object({
   sort: z.enum(['id', 'title', 'status', 'updatedAt']),
   order: z.enum(['asc', 'desc']),
 });
-
-export type ManualNotificationListQuery = z.infer<typeof ManualNotificationListQuerySchema>;

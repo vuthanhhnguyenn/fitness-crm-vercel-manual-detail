@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { SortingState } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { PageHeader } from '@/components/common/page-header';
 import { RoleGatedButton } from '@/components/common/role-gated-button';
@@ -80,7 +79,7 @@ export function ManualNotificationsPageContent() {
             requiredPermission={Permission.ManualNotificationsCreate}
             size="sm"
             className="h-8 rounded-lg px-3 text-sm"
-            onClick={() => toast.info('新規登録フォームは次の実装範囲です')}
+            onClick={() => router.push(navigate('/manual-notifications/create'))}
           >
             <Plus className="size-3.5" />
             新規登録

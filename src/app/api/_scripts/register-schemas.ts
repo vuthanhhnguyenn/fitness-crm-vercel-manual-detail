@@ -59,6 +59,20 @@ export function registerAllSchemas() {
       manualNotificationSchemas.GetManualNotificationDetailResponseSchema,
     ),
   );
+  registeredSchemaMap.set(
+    'ManualNotificationUpsertBody',
+    registry.register(
+      'ManualNotificationUpsertBody',
+      manualNotificationSchemas.ManualNotificationUpsertBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ManualNotificationUpsertResponse',
+    registry.register(
+      'ManualNotificationUpsertResponse',
+      manualNotificationSchemas.ManualNotificationUpsertResponseSchema,
+    ),
+  );
   // Register auth schemas
   registeredSchemaMap.set(
     'LoginRequest',

@@ -10,10 +10,23 @@ const STAFF_IDS = {
 
 const CHANNEL_ORDER = { sms: 0, push: 1, email: 2, in_app: 3 } as const;
 
-type SeedInput = Omit<ManualNotificationRow, 'targetStoreIds' | 'messages'> & {
+type SeedInput = Omit<ManualNotificationRow, 'targetStoreIds' | 'contents'> & {
   targetStoreIds?: string[];
-  messages?: Partial<Record<ManualNotificationChannel, string>>;
+  bodies?: Partial<Record<ManualNotificationChannel, string>>;
 };
+
+function buildContents(input: SeedInput): ManualNotificationRow['contents'] {
+  const contents: ManualNotificationRow['contents'] = {};
+  for (const channel of input.channels) {
+    const body =
+      input.bodies?.[channel] ?? `「${input.title}」のお知らせです。詳細をご確認ください。`;
+    if (channel === 'sms') contents.sms = { body };
+    if (channel === 'push') contents.push = { title: input.title, body };
+    if (channel === 'email') contents.email = { subject: input.title, body };
+    if (channel === 'in_app') contents.in_app = { title: input.title, body };
+  }
+  return contents;
+}
 
 function notification(input: SeedInput): ManualNotificationRow {
   return {
@@ -22,15 +35,7 @@ function notification(input: SeedInput): ManualNotificationRow {
       (first, second) => CHANNEL_ORDER[first] - CHANNEL_ORDER[second],
     ),
     targetStoreIds: [...(input.targetStoreIds ?? [])],
-    messages: {
-      ...Object.fromEntries(
-        input.channels.map((channel) => [
-          channel,
-          `「${input.title}」のお知らせです。詳細をご確認ください。`,
-        ]),
-      ),
-      ...input.messages,
-    },
+    contents: buildContents(input),
   };
 }
 
@@ -38,7 +43,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
   notification({
     id: 'N-001',
     title: '夏キャンペーン告知',
-    messages: {
+    bodies: {
       push: '【JOYFIT】サマーキャンペーン開催中！オプション料金が最大30%オフ。詳細はアプリでチェック',
       email:
         '会員の皆様へ\n\nこの夏、JOYFITでは「サマーキャンペーン」を開催いたします！\n\n期間中はオプション料金が最大30%オフとなります。\n\nこの機会にぜひ新しいオプションをお試しください。\n\n詳細・お申し込みはアプリ内キャンペーンページをご確認ください。\n\n▼キャンペーンページはこちら\nhttps://joyfit.example.com/campaign/summer2026\n今後ともJOYFITをよろしくお願いいたします。',
@@ -133,12 +138,16 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
       type: 'recurring',
       frequency: 'custom',
       startAt: '2026-05-01T09:00:00+09:00',
+      intervalValue: 2,
+      intervalUnit: 'week',
       maxOccurrences: 12,
     },
     targetCount: 3180,
     status: 'sending',
-    requiresApproval: false,
+    requiresApproval: true,
     createdByUserId: STAFF_IDS.staff,
+    approvedBy: 'Headquarter',
+    approvedAt: '2026-05-01T08:30:00+09:00',
     createdAt: '2026-05-01T09:00:00+09:00',
     updatedAt: '2026-07-30T09:00:00+09:00',
     deletedAt: null,
@@ -148,14 +157,14 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     title: '会員様限定イベントご案内',
     target: {
       type: 'contract_type',
-      contractTypeId: 'contract-premium',
+      contractTypeId: 'MC009',
       contractTypeName: 'プレミアム会員',
     },
     channels: ['email', 'in_app'],
     timing: { type: 'scheduled', scheduledAt: '2026-06-15T12:00:00+09:00' },
     targetCount: 5640,
     status: 'draft',
-    requiresApproval: false,
+    requiresApproval: true,
     createdByUserId: STAFF_IDS.manager,
     createdAt: '2026-06-01T10:00:00+09:00',
     updatedAt: '2026-07-29T09:00:00+09:00',
