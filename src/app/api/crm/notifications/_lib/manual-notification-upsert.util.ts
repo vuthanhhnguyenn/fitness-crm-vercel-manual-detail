@@ -39,14 +39,6 @@ function resolveManualNotificationTarget(
       stores: target.storeIds.map((id) => ({ id, name: db.stores.getById(id)?.name ?? id })),
     };
   }
-  if (target.type === 'contract_type') {
-    const contract = db.mainContracts.getById(target.contractTypeId);
-    return {
-      type: 'contract_type',
-      contractTypeId: target.contractTypeId,
-      contractTypeName: contract?.name ?? target.contractTypeId,
-    };
-  }
   if (target.type === 'members') {
     return {
       type: 'members',

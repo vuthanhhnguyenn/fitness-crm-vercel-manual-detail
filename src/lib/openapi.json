@@ -98,16 +98,14 @@
                     "type": "string",
                     "enum": ["contract_type"]
                   },
-                  "contractTypeId": {
+                  "contractType": {
                     "type": "string",
-                    "minLength": 1
-                  },
-                  "contractTypeName": {
-                    "type": "string",
-                    "minLength": 1
+                    "enum": ["regular", "premium", "visitor", "corporate"],
+                    "title": "ManualNotificationContractType",
+                    "description": "Member contract category for manual notification targeting"
                   }
                 },
-                "required": ["type", "contractTypeId", "contractTypeName"]
+                "required": ["type", "contractType"]
               },
               {
                 "type": "object",
@@ -513,16 +511,14 @@
                         "type": "string",
                         "enum": ["contract_type"]
                       },
-                      "contractTypeId": {
+                      "contractType": {
                         "type": "string",
-                        "minLength": 1
-                      },
-                      "contractTypeName": {
-                        "type": "string",
-                        "minLength": 1
+                        "enum": ["regular", "premium", "visitor", "corporate"],
+                        "title": "ManualNotificationContractType",
+                        "description": "Member contract category for manual notification targeting"
                       }
                     },
-                    "required": ["type", "contractTypeId", "contractTypeName"]
+                    "required": ["type", "contractType"]
                   },
                   {
                     "type": "object",
@@ -921,12 +917,14 @@
                     "type": "string",
                     "enum": ["contract_type"]
                   },
-                  "contractTypeId": {
+                  "contractType": {
                     "type": "string",
-                    "minLength": 1
+                    "enum": ["regular", "premium", "visitor", "corporate"],
+                    "title": "ManualNotificationContractType",
+                    "description": "Member contract category for manual notification targeting"
                   }
                 },
-                "required": ["type", "contractTypeId"]
+                "required": ["type", "contractType"]
               },
               {
                 "type": "object",
@@ -1220,16 +1218,14 @@
                         "type": "string",
                         "enum": ["contract_type"]
                       },
-                      "contractTypeId": {
+                      "contractType": {
                         "type": "string",
-                        "minLength": 1
-                      },
-                      "contractTypeName": {
-                        "type": "string",
-                        "minLength": 1
+                        "enum": ["regular", "premium", "visitor", "corporate"],
+                        "title": "ManualNotificationContractType",
+                        "description": "Member contract category for manual notification targeting"
                       }
                     },
-                    "required": ["type", "contractTypeId", "contractTypeName"]
+                    "required": ["type", "contractType"]
                   },
                   {
                     "type": "object",
@@ -71653,16 +71649,14 @@
                                   "type": "string",
                                   "enum": ["contract_type"]
                                 },
-                                "contractTypeId": {
+                                "contractType": {
                                   "type": "string",
-                                  "minLength": 1
-                                },
-                                "contractTypeName": {
-                                  "type": "string",
-                                  "minLength": 1
+                                  "enum": ["regular", "premium", "visitor", "corporate"],
+                                  "title": "ManualNotificationContractType",
+                                  "description": "Member contract category for manual notification targeting"
                                 }
                               },
-                              "required": ["type", "contractTypeId", "contractTypeName"]
+                              "required": ["type", "contractType"]
                             },
                             {
                               "type": "object",
@@ -72095,16 +72089,14 @@
                                   "type": "string",
                                   "enum": ["contract_type"]
                                 },
-                                "contractTypeId": {
+                                "contractType": {
                                   "type": "string",
-                                  "minLength": 1
-                                },
-                                "contractTypeName": {
-                                  "type": "string",
-                                  "minLength": 1
+                                  "enum": ["regular", "premium", "visitor", "corporate"],
+                                  "title": "ManualNotificationContractType",
+                                  "description": "Member contract category for manual notification targeting"
                                 }
                               },
-                              "required": ["type", "contractTypeId", "contractTypeName"]
+                              "required": ["type", "contractType"]
                             },
                             {
                               "type": "object",
@@ -72624,12 +72616,14 @@
                             "type": "string",
                             "enum": ["contract_type"]
                           },
-                          "contractTypeId": {
+                          "contractType": {
                             "type": "string",
-                            "minLength": 1
+                            "enum": ["regular", "premium", "visitor", "corporate"],
+                            "title": "ManualNotificationContractType",
+                            "description": "Member contract category for manual notification targeting"
                           }
                         },
-                        "required": ["type", "contractTypeId"]
+                        "required": ["type", "contractType"]
                       },
                       {
                         "type": "object",
@@ -72937,16 +72931,14 @@
                                   "type": "string",
                                   "enum": ["contract_type"]
                                 },
-                                "contractTypeId": {
+                                "contractType": {
                                   "type": "string",
-                                  "minLength": 1
-                                },
-                                "contractTypeName": {
-                                  "type": "string",
-                                  "minLength": 1
+                                  "enum": ["regular", "premium", "visitor", "corporate"],
+                                  "title": "ManualNotificationContractType",
+                                  "description": "Member contract category for manual notification targeting"
                                 }
                               },
-                              "required": ["type", "contractTypeId", "contractTypeName"]
+                              "required": ["type", "contractType"]
                             },
                             {
                               "type": "object",
@@ -73410,6 +73402,175 @@
         }
       }
     },
+    "/crm/notifications/form-config": {
+      "get": {
+        "summary": "Get manual notification form configuration",
+        "description": "Returns manual notification form metadata and target preview counts.",
+        "tags": ["Notification CRUD"],
+        "responses": {
+          "200": {
+            "description": "Manual notification form configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "templates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "label": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "body": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id", "label", "body"]
+                      }
+                    },
+                    "targetPreviewCounts": {
+                      "type": "object",
+                      "properties": {
+                        "allMembers": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "brands": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "stores": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "contractType": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "membershipDuration": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "dynamicAttributes": {
+                          "type": "object",
+                          "properties": {
+                            "unpaid": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "dormant": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "withdrawal_pending": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "birthday_month": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "trial": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "unpaid",
+                            "dormant",
+                            "withdrawal_pending",
+                            "birthday_month",
+                            "trial"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "allMembers",
+                        "brands",
+                        "stores",
+                        "contractType",
+                        "membershipDuration",
+                        "dynamicAttributes"
+                      ]
+                    }
+                  },
+                  "required": ["templates", "targetPreviewCounts"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "userMessage": {
+                      "type": "string"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
+                    }
+                  },
+                  "required": ["code", "message", "userMessage", "traceId"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "userMessage": {
+                      "type": "string"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "nullable": true
+                      }
+                    }
+                  },
+                  "required": ["code", "message", "userMessage", "traceId"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/crm/notifications": {
       "get": {
         "summary": "List manual notifications in caller scope",
@@ -73624,16 +73785,14 @@
                                     "type": "string",
                                     "enum": ["contract_type"]
                                   },
-                                  "contractTypeId": {
+                                  "contractType": {
                                     "type": "string",
-                                    "minLength": 1
-                                  },
-                                  "contractTypeName": {
-                                    "type": "string",
-                                    "minLength": 1
+                                    "enum": ["regular", "premium", "visitor", "corporate"],
+                                    "title": "ManualNotificationContractType",
+                                    "description": "Member contract category for manual notification targeting"
                                   }
                                 },
-                                "required": ["type", "contractTypeId", "contractTypeName"]
+                                "required": ["type", "contractType"]
                               },
                               {
                                 "type": "object",
@@ -74033,12 +74192,14 @@
                             "type": "string",
                             "enum": ["contract_type"]
                           },
-                          "contractTypeId": {
+                          "contractType": {
                             "type": "string",
-                            "minLength": 1
+                            "enum": ["regular", "premium", "visitor", "corporate"],
+                            "title": "ManualNotificationContractType",
+                            "description": "Member contract category for manual notification targeting"
                           }
                         },
-                        "required": ["type", "contractTypeId"]
+                        "required": ["type", "contractType"]
                       },
                       {
                         "type": "object",
@@ -74346,16 +74507,14 @@
                                   "type": "string",
                                   "enum": ["contract_type"]
                                 },
-                                "contractTypeId": {
+                                "contractType": {
                                   "type": "string",
-                                  "minLength": 1
-                                },
-                                "contractTypeName": {
-                                  "type": "string",
-                                  "minLength": 1
+                                  "enum": ["regular", "premium", "visitor", "corporate"],
+                                  "title": "ManualNotificationContractType",
+                                  "description": "Member contract category for manual notification targeting"
                                 }
                               },
-                              "required": ["type", "contractTypeId", "contractTypeName"]
+                              "required": ["type", "contractType"]
                             },
                             {
                               "type": "object",

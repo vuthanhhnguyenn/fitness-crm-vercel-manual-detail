@@ -13,6 +13,10 @@ type ManualNotificationDynamicAttribute = Extract<
   ManualNotificationTarget,
   { type: 'dynamic_attribute' }
 >['attribute'];
+type ManualNotificationContractType = Extract<
+  ManualNotificationTarget,
+  { type: 'contract_type' }
+>['contractType'];
 type ManualNotificationMembershipDurationCondition = Extract<
   ManualNotificationTarget,
   { type: 'membership_duration' }
@@ -116,6 +120,23 @@ export const MANUAL_NOTIFICATION_DYNAMIC_ATTRIBUTE_OPTIONS = [
   description: string;
 }>;
 
+export const MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS = [
+  'regular',
+  'premium',
+  'visitor',
+  'corporate',
+] as const satisfies readonly ManualNotificationContractType[];
+
+export const MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS: Record<
+  ManualNotificationContractType,
+  string
+> = {
+  regular: 'レギュラー会員',
+  premium: 'プレミアム会員',
+  visitor: 'ビジター会員',
+  corporate: '法人会員',
+};
+
 export const MANUAL_NOTIFICATION_MEMBERSHIP_DURATION_CONDITION_LABELS: Record<
   ManualNotificationMembershipDurationCondition,
   string
@@ -186,7 +207,7 @@ interface ManualNotificationActionPolicy {
 }
 
 export function getManualNotificationActionPolicy(
-  row: Pick<ManualNotificationRow, 'status' | 'target' | 'requiresApproval'>,
+  row: Pick<ManualNotificationRow, 'status' | 'requiresApproval'>,
 ): ManualNotificationActionPolicy {
   return {
     canRequestApproval: row.status === 'draft' && row.requiresApproval,

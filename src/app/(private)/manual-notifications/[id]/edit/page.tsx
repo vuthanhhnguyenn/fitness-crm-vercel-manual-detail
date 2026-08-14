@@ -17,10 +17,14 @@ import { Form } from '@/components/ui/form';
 import {
   getCrmNotificationsByIdOptions,
   getCrmNotificationsByIdQueryKey,
+  getCrmNotificationsFormConfigOptions,
   getCrmNotificationsQueryKey,
   patchCrmNotificationsByIdMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { PatchCrmNotificationsByIdError } from '@/lib/api/types.gen';
+import type {
+  GetCrmNotificationsFormConfigResponse,
+  PatchCrmNotificationsByIdError,
+} from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import { ManualNotificationForm } from '../../_components/manual-notification-form';
@@ -38,9 +42,14 @@ import {
 interface ManualNotificationEditFormProps {
   readonly id: string;
   readonly defaultValues: ManualNotificationFormValues;
+  readonly formConfig: GetCrmNotificationsFormConfigResponse;
 }
 
-function ManualNotificationEditForm({ id, defaultValues }: ManualNotificationEditFormProps) {
+function ManualNotificationEditForm({
+  id,
+  defaultValues,
+  formConfig,
+}: ManualNotificationEditFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const form = useForm<ManualNotificationFormValues>({
@@ -76,6 +85,7 @@ function ManualNotificationEditForm({ id, defaultValues }: ManualNotificationEdi
       <Form {...form}>
         <div className="mx-auto max-w-[960px]">
           <ManualNotificationForm
+            formConfig={formConfig}
             isEdit
             notificationId={id}
             isSubmitting={mutation.isPending}
@@ -91,6 +101,7 @@ function ManualNotificationEditForm({ id, defaultValues }: ManualNotificationEdi
 export default function ManualNotificationEditPage() {
   const { id } = useParams<{ id: string }>();
   const query = useQuery({ ...getCrmNotificationsByIdOptions({ path: { id } }) });
+  const formConfigQuery = useQuery({ ...getCrmNotificationsFormConfigOptions() });
   const item = query.data?.item;
   const isEditable = item ? getManualNotificationActionPolicy(item).canEdit : false;
   const defaultValues = useMemo(
@@ -100,11 +111,14 @@ export default function ManualNotificationEditPage() {
 
   return (
     <DataStateBoundary
-      isLoading={query.isLoading}
-      isError={query.isError}
-      isEmpty={!defaultValues}
+      isLoading={query.isLoading || formConfigQuery.isLoading}
+      isError={query.isError || formConfigQuery.isError}
+      isEmpty={!defaultValues || !formConfigQuery.data}
       emptyTitle={item ? 'この通知は編集できません' : '通知が見つかりません'}
-      onRetry={() => void query.refetch()}
+      onRetry={() => {
+        void query.refetch();
+        void formConfigQuery.refetch();
+      }}
     >
       <PageHeader
         breadcrumb={
@@ -112,7 +126,13 @@ export default function ManualNotificationEditPage() {
         }
         title="手動配信通知 編集"
       />
-      {defaultValues ? <ManualNotificationEditForm id={id} defaultValues={defaultValues} /> : null}
+      {defaultValues && formConfigQuery.data ? (
+        <ManualNotificationEditForm
+          id={id}
+          defaultValues={defaultValues}
+          formConfig={formConfigQuery.data}
+        />
+      ) : null}
     </DataStateBoundary>
   );
 }

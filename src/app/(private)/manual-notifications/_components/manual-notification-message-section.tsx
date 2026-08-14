@@ -28,6 +28,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 
+import type { GetCrmNotificationsFormConfigResponse } from '@/lib/api/types.gen';
+
 import { Permission } from '@/types/permission.type';
 
 import {
@@ -48,41 +50,22 @@ const RichTextEditor = dynamic(
   { ssr: false },
 );
 
-const TEMPLATES = [
-  [
-    'TPL-001',
-    '入会完了通知（標準）',
-    '{会員名}様、{店舗名}へのご入会ありがとうございます。{利用開始日}よりご利用いただけます。',
-  ],
-  [
-    'TPL-002',
-    'レッスン予約確認',
-    '{会員名}様、レッスンのご予約を承りました。{利用開始日}にお待ちしております。',
-  ],
-  [
-    'TPL-005',
-    'キャンペーン告知（汎用）',
-    '{会員名}様、{店舗名}からお得なキャンペーンのご案内です。詳細はアプリをご確認ください。',
-  ],
-  [
-    'TPL-006',
-    'メンテナンスのお知らせ',
-    '{会員名}様、{店舗名}にてメンテナンスを実施します。期間中はご不便をおかけします。',
-  ],
-] as const;
-
-export function ManualNotificationMessageSection() {
+export function ManualNotificationMessageSection({
+  templates,
+}: {
+  readonly templates: GetCrmNotificationsFormConfigResponse['templates'];
+}) {
   const form = useFormContext<ManualNotificationFormValues>();
   const channels = useWatch({ control: form.control, name: 'channels' });
   const [activeChannel, setActiveChannel] = useState<ManualNotificationChannel>('push');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>();
-  const selectedTemplate = TEMPLATES.find(([id]) => id === selectedTemplateId);
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
 
   const applyTemplate = (id: string | null) => {
-    const template = TEMPLATES.find(([templateId]) => templateId === id);
+    const template = templates.find((item) => item.id === id);
     if (!template) return;
-    setSelectedTemplateId(template[0]);
-    const [, , body] = template;
+    setSelectedTemplateId(template.id);
+    const { body } = template;
     const currentContents = form.getValues('contents');
     form.setValue(
       'contents',
@@ -105,13 +88,13 @@ export function ManualNotificationMessageSection() {
             <Select value={selectedTemplateId ?? ''} onValueChange={applyTemplate}>
               <SelectTrigger className="bg-background h-8 w-52 text-xs">
                 <SelectValue placeholder="テンプレートから選択（任意）">
-                  {selectedTemplate?.[1]}
+                  {selectedTemplate?.label}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {TEMPLATES.map(([id, label]) => (
-                  <SelectItem key={id} value={id}>
-                    {label}
+                {templates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.label}
                   </SelectItem>
                 ))}
               </SelectContent>

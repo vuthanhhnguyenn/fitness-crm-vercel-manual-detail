@@ -7,8 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import {
   MANUAL_NOTIFICATION_BRAND_LABELS,
   MANUAL_NOTIFICATION_CHANNEL_LABELS,
+  MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
   type ManualNotificationRow,
+  getManualNotificationDynamicAttributeLabel,
   getManualNotificationStatusClass,
   getManualNotificationStatusLabel,
 } from '../_constants/manual-notification.constants';
@@ -30,13 +32,13 @@ function targetDetail(row: ManualNotificationRow): string {
     case 'stores':
       return row.target.stores.map((store) => store.name).join(' · ');
     case 'contract_type':
-      return row.target.contractTypeName;
+      return MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[row.target.contractType];
     case 'membership_duration':
       return row.target.condition === 'within'
         ? `入会後${row.target.months}ヶ月以内`
         : `入会後${row.target.months}ヶ月以上`;
     case 'dynamic_attribute':
-      return row.target.attribute;
+      return getManualNotificationDynamicAttributeLabel(row.target.attribute);
     case 'members':
       return `${row.target.members.length}名を指定`;
   }

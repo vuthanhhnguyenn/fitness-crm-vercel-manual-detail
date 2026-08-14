@@ -25,8 +25,12 @@ export type ManualNotificationDetail = {
         }>;
     } | {
         type: 'contract_type';
-        contractTypeId: string;
-        contractTypeName: string;
+        /**
+         * ManualNotificationContractType
+         *
+         * Member contract category for manual notification targeting
+         */
+        contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
     } | {
         type: 'membership_duration';
         condition: 'within' | 'at_least';
@@ -134,8 +138,12 @@ export type GetManualNotificationDetailResponse = {
             }>;
         } | {
             type: 'contract_type';
-            contractTypeId: string;
-            contractTypeName: string;
+            /**
+             * ManualNotificationContractType
+             *
+             * Member contract category for manual notification targeting
+             */
+            contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
         } | {
             type: 'membership_duration';
             condition: 'within' | 'at_least';
@@ -239,7 +247,12 @@ export type ManualNotificationUpsertBody = {
         storeIds: Array<string>;
     } | {
         type: 'contract_type';
-        contractTypeId: string;
+        /**
+         * ManualNotificationContractType
+         *
+         * Member contract category for manual notification targeting
+         */
+        contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
     } | {
         type: 'membership_duration';
         condition: 'within' | 'at_least';
@@ -312,8 +325,12 @@ export type ManualNotificationUpsertResponse = {
             }>;
         } | {
             type: 'contract_type';
-            contractTypeId: string;
-            contractTypeName: string;
+            /**
+             * ManualNotificationContractType
+             *
+             * Member contract category for manual notification targeting
+             */
+            contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
         } | {
             type: 'membership_duration';
             condition: 'within' | 'at_least';
@@ -43633,8 +43650,12 @@ export type PatchCrmNotificationsByIdActionResponses = {
                 }>;
             } | {
                 type: 'contract_type';
-                contractTypeId: string;
-                contractTypeName: string;
+                /**
+                 * ManualNotificationContractType
+                 *
+                 * Member contract category for manual notification targeting
+                 */
+                contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
             } | {
                 type: 'membership_duration';
                 condition: 'within' | 'at_least';
@@ -43757,8 +43778,12 @@ export type GetCrmNotificationsByIdResponses = {
                 }>;
             } | {
                 type: 'contract_type';
-                contractTypeId: string;
-                contractTypeName: string;
+                /**
+                 * ManualNotificationContractType
+                 *
+                 * Member contract category for manual notification targeting
+                 */
+                contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
             } | {
                 type: 'membership_duration';
                 condition: 'within' | 'at_least';
@@ -43866,7 +43891,12 @@ export type PatchCrmNotificationsByIdData = {
             storeIds: Array<string>;
         } | {
             type: 'contract_type';
-            contractTypeId: string;
+            /**
+             * ManualNotificationContractType
+             *
+             * Member contract category for manual notification targeting
+             */
+            contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
         } | {
             type: 'membership_duration';
             condition: 'within' | 'at_least';
@@ -44002,8 +44032,12 @@ export type PatchCrmNotificationsByIdResponses = {
                 }>;
             } | {
                 type: 'contract_type';
-                contractTypeId: string;
-                contractTypeName: string;
+                /**
+                 * ManualNotificationContractType
+                 *
+                 * Member contract category for manual notification targeting
+                 */
+                contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
             } | {
                 type: 'membership_duration';
                 condition: 'within' | 'at_least';
@@ -44093,6 +44127,71 @@ export type PatchCrmNotificationsByIdResponses = {
 
 export type PatchCrmNotificationsByIdResponse = PatchCrmNotificationsByIdResponses[keyof PatchCrmNotificationsByIdResponses];
 
+export type GetCrmNotificationsFormConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/crm/notifications/form-config';
+};
+
+export type GetCrmNotificationsFormConfigErrors = {
+    /**
+     * Unauthorized
+     */
+    401: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Forbidden
+     */
+    403: {
+        code: string;
+        message: string;
+        userMessage: string;
+        traceId: string;
+        details?: {
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type GetCrmNotificationsFormConfigError = GetCrmNotificationsFormConfigErrors[keyof GetCrmNotificationsFormConfigErrors];
+
+export type GetCrmNotificationsFormConfigResponses = {
+    /**
+     * Manual notification form configuration
+     */
+    200: {
+        templates: Array<{
+            id: string;
+            label: string;
+            body: string;
+        }>;
+        targetPreviewCounts: {
+            allMembers: number;
+            brands: number;
+            stores: number;
+            contractType: number;
+            membershipDuration: number;
+            dynamicAttributes: {
+                unpaid: number;
+                dormant: number;
+                withdrawal_pending: number;
+                birthday_month: number;
+                trial: number;
+            };
+        };
+    };
+};
+
+export type GetCrmNotificationsFormConfigResponse = GetCrmNotificationsFormConfigResponses[keyof GetCrmNotificationsFormConfigResponses];
+
 export type GetCrmNotificationsData = {
     body?: never;
     path?: never;
@@ -44172,8 +44271,12 @@ export type GetCrmNotificationsResponses = {
                 }>;
             } | {
                 type: 'contract_type';
-                contractTypeId: string;
-                contractTypeName: string;
+                /**
+                 * ManualNotificationContractType
+                 *
+                 * Member contract category for manual notification targeting
+                 */
+                contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
             } | {
                 type: 'membership_duration';
                 condition: 'within' | 'at_least';
@@ -44245,7 +44348,12 @@ export type PostCrmNotificationsData = {
             storeIds: Array<string>;
         } | {
             type: 'contract_type';
-            contractTypeId: string;
+            /**
+             * ManualNotificationContractType
+             *
+             * Member contract category for manual notification targeting
+             */
+            contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
         } | {
             type: 'membership_duration';
             condition: 'within' | 'at_least';
@@ -44367,8 +44475,12 @@ export type PostCrmNotificationsResponses = {
                 }>;
             } | {
                 type: 'contract_type';
-                contractTypeId: string;
-                contractTypeName: string;
+                /**
+                 * ManualNotificationContractType
+                 *
+                 * Member contract category for manual notification targeting
+                 */
+                contractType: 'regular' | 'premium' | 'visitor' | 'corporate';
             } | {
                 type: 'membership_duration';
                 condition: 'within' | 'at_least';

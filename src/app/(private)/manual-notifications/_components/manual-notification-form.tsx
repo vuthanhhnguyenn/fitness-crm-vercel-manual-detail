@@ -24,6 +24,8 @@ import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/comp
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 
+import type { GetCrmNotificationsFormConfigResponse } from '@/lib/api/types.gen';
+
 import {
   type ManualNotificationChannel,
   manualNotificationRequiresApproval,
@@ -118,6 +120,7 @@ function ManualNotificationChannelsSection() {
 }
 
 interface ManualNotificationFormProps {
+  readonly formConfig: GetCrmNotificationsFormConfigResponse;
   readonly isEdit?: boolean;
   readonly notificationId?: string;
   readonly isSubmitting?: boolean;
@@ -126,6 +129,7 @@ interface ManualNotificationFormProps {
 }
 
 export function ManualNotificationForm({
+  formConfig,
   isEdit = false,
   notificationId,
   isSubmitting = false,
@@ -188,10 +192,13 @@ export function ManualNotificationForm({
           </CardContent>
         </Card>
 
-        <ManualNotificationTargetSection approvalRequired={approvalRequired} />
+        <ManualNotificationTargetSection
+          approvalRequired={approvalRequired}
+          formConfig={formConfig}
+        />
 
         <ManualNotificationChannelsSection />
-        <ManualNotificationMessageSection />
+        <ManualNotificationMessageSection templates={formConfig.templates} />
         <ManualNotificationTimingSection />
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t p-4">

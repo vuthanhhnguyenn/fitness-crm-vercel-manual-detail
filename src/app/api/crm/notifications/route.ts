@@ -88,7 +88,7 @@ function targetSearchText(item: ManualNotificationRow): string {
     case 'stores':
       return item.target.stores.map((store) => `${store.id} ${store.name}`).join(' ');
     case 'contract_type':
-      return `${item.target.contractTypeId} ${item.target.contractTypeName}`;
+      return item.target.contractType;
     case 'membership_duration':
       return `${item.target.condition} ${item.target.months}`;
     case 'dynamic_attribute':

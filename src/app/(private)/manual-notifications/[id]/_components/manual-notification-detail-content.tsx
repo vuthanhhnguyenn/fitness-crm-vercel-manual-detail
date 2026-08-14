@@ -22,6 +22,7 @@ import type { GetCrmNotificationsByIdResponse } from '@/lib/api/types.gen';
 import {
   MANUAL_NOTIFICATION_BRAND_LABELS,
   MANUAL_NOTIFICATION_CHANNEL_LABELS,
+  MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS,
   MANUAL_NOTIFICATION_FREQUENCY_LABELS,
   MANUAL_NOTIFICATION_STATUS_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
@@ -48,7 +49,7 @@ function formatTarget(target: Detail['target']) {
     case 'stores':
       return target.stores.map((store) => store.name).join(' · ');
     case 'contract_type':
-      return target.contractTypeName;
+      return MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[target.contractType];
     case 'membership_duration':
       return target.condition === 'within'
         ? `入会後${target.months}ヶ月以内`

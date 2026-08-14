@@ -22,6 +22,13 @@ export const ManualNotificationBrandSchema = z
     description: 'Brand or JOYFIT sub-brand defined by I-03',
   });
 
+export const ManualNotificationContractTypeSchema = z
+  .enum(['regular', 'premium', 'visitor', 'corporate'])
+  .openapi({
+    title: 'ManualNotificationContractType',
+    description: 'Member contract category for manual notification targeting',
+  });
+
 const ManualNotificationTargetTypeSchema = z
   .enum([
     'all_members',
@@ -54,8 +61,7 @@ export const ManualNotificationTargetSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('contract_type'),
-    contractTypeId: z.string().min(1),
-    contractTypeName: z.string().min(1),
+    contractType: ManualNotificationContractTypeSchema,
   }),
   z.object({
     type: z.literal('membership_duration'),
@@ -88,7 +94,10 @@ export const ManualNotificationTargetInputSchema = z.discriminatedUnion('type', 
     brands: z.array(ManualNotificationBrandSchema).min(1),
   }),
   z.object({ type: z.literal('stores'), storeIds: z.array(z.string().min(1)).min(1) }),
-  z.object({ type: z.literal('contract_type'), contractTypeId: z.string().min(1) }),
+  z.object({
+    type: z.literal('contract_type'),
+    contractType: ManualNotificationContractTypeSchema,
+  }),
   z.object({
     type: z.literal('membership_duration'),
     condition: z.enum(['within', 'at_least']),
@@ -100,6 +109,32 @@ export const ManualNotificationTargetInputSchema = z.discriminatedUnion('type', 
   }),
   z.object({ type: z.literal('members'), memberIds: z.array(z.string().min(1)).min(1) }),
 ]);
+
+const ManualNotificationTargetPreviewCountsSchema = z.object({
+  allMembers: z.number().int().nonnegative(),
+  brands: z.number().int().nonnegative(),
+  stores: z.number().int().nonnegative(),
+  contractType: z.number().int().nonnegative(),
+  membershipDuration: z.number().int().nonnegative(),
+  dynamicAttributes: z.object({
+    unpaid: z.number().int().nonnegative(),
+    dormant: z.number().int().nonnegative(),
+    withdrawal_pending: z.number().int().nonnegative(),
+    birthday_month: z.number().int().nonnegative(),
+    trial: z.number().int().nonnegative(),
+  }),
+});
+
+const ManualNotificationTemplateSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  body: z.string(),
+});
+
+export const GetManualNotificationFormConfigResponseSchema = z.object({
+  templates: z.array(ManualNotificationTemplateSchema),
+  targetPreviewCounts: ManualNotificationTargetPreviewCountsSchema,
+});
 
 const ManualNotificationRecurringTimingSchema = z
   .object({
@@ -243,11 +278,18 @@ export const ManualNotificationUpsertBodySchema = z
             : channel === 'email'
               ? value.contents.email?.subject.trim()
               : true;
-      if (!body || !heading) {
+      if (!body) {
         context.addIssue({
           code: 'custom',
           message: `Content is required for ${channel}`,
-          path: ['contents', channel],
+          path: ['contents', channel, 'body'],
+        });
+      }
+      if (!heading) {
+        context.addIssue({
+          code: 'custom',
+          message: `Title is required for ${channel}`,
+          path: ['contents', channel, channel === 'email' ? 'subject' : 'title'],
         });
       }
     }
@@ -324,6 +366,10 @@ export type ManualNotificationTarget = z.infer<typeof ManualNotificationTargetSc
 export type ManualNotificationTargetInput = z.infer<typeof ManualNotificationTargetInputSchema>;
 export type ManualNotificationContents = z.infer<typeof ManualNotificationContentsSchema>;
 export type ManualNotificationListItem = z.infer<typeof ManualNotificationListItemSchema>;
+export type GetManualNotificationFormConfigResponse = z.infer<
+  typeof GetManualNotificationFormConfigResponseSchema
+>;
+export type ManualNotificationTemplate = z.infer<typeof ManualNotificationTemplateSchema>;
 export type GetManualNotificationsResponse = z.infer<typeof GetManualNotificationsResponseSchema>;
 export type ManualNotificationErrorResponse = z.infer<typeof ManualNotificationErrorResponseSchema>;
 export type ManualNotificationUpsertBody = z.infer<typeof ManualNotificationUpsertBodySchema>;

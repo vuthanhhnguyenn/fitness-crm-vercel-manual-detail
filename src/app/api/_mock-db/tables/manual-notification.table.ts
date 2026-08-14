@@ -1,4 +1,7 @@
-import { MANUAL_NOTIFICATION_SEED } from '../seeds/manual-notification.seed';
+import {
+  MANUAL_NOTIFICATION_SEED,
+  getManualNotificationTargetPreviewCount,
+} from '../seeds/manual-notification.seed';
 import type { ManualNotificationsType } from '../types';
 import type { ManualNotificationRow } from '../types/manual-notifications.type';
 
@@ -45,28 +48,7 @@ export function createManualNotificationTable(): { manualNotifications: ManualNo
         return this._rows.find((row) => row.id === id);
       },
       estimateTargetCount(target) {
-        switch (target.type) {
-          case 'all_members':
-            return 42_580;
-          case 'brands':
-            return 8_420;
-          case 'stores':
-            return 1_240;
-          case 'contract_type':
-            return 5_640;
-          case 'membership_duration':
-            return 3_180;
-          case 'dynamic_attribute':
-            return {
-              unpaid: 128,
-              dormant: 1_840,
-              withdrawal_pending: 32,
-              birthday_month: 3_420,
-              trial: 260,
-            }[target.attribute];
-          case 'members':
-            return target.memberIds.length;
-        }
+        return getManualNotificationTargetPreviewCount(target);
       },
       updateStatus(id, status) {
         this._seed();

@@ -5,6 +5,7 @@ import type { ManualNotificationDetail, ManualNotificationUpsertBody } from '@/l
 import {
   MANUAL_NOTIFICATION_BRAND_OPTIONS,
   MANUAL_NOTIFICATION_CHANNEL_OPTIONS,
+  MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS,
 } from '../_constants/manual-notification.constants';
 
 const optionalNumber = (message: string) =>
@@ -29,8 +30,7 @@ const targetSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('contract_type'),
-    contractTypeId: z.string().min(1, '契約種別を選択してください'),
-    contractTypeName: z.string().min(1),
+    contractType: z.enum(MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS),
   }),
   z.object({
     type: z.literal('membership_duration'),
@@ -134,12 +134,19 @@ export const manualNotificationFormSchema = z
             : channel === 'email'
               ? value.contents.email.subject.trim()
               : true;
-      const requiredText = body && heading;
-      if (!requiredText) {
+      if (!body) {
         context.addIssue({
           code: 'custom',
-          path: ['contents', channel],
-          message: '選択したチャネルの本文は必須です',
+          path: ['contents', channel, 'body'],
+          message: '本文は必須です',
+        });
+      }
+      if (!heading) {
+        const headingField = channel === 'email' ? 'subject' : 'title';
+        context.addIssue({
+          code: 'custom',
+          path: ['contents', channel, headingField],
+          message: channel === 'email' ? '件名は必須です' : '通知タイトルは必須です',
         });
       }
     }
@@ -152,9 +159,6 @@ function manualNotificationTargetToRequest(
 ): ManualNotificationUpsertBody['target'] {
   if (target.type === 'stores') {
     return { type: 'stores', storeIds: target.stores.map((store) => store.id) };
-  }
-  if (target.type === 'contract_type') {
-    return { type: 'contract_type', contractTypeId: target.contractTypeId };
   }
   if (target.type === 'members') {
     return { type: 'members', memberIds: target.members.map((member) => member.id) };

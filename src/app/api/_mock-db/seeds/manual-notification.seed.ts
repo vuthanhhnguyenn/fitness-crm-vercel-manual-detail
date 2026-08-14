@@ -1,4 +1,7 @@
-import type { ManualNotificationChannel } from '@/app/api/_schemas/manual-notification.schema';
+import type {
+  ManualNotificationChannel,
+  ManualNotificationTargetInput,
+} from '@/app/api/_schemas/manual-notification.schema';
 
 import type { ManualNotificationRow } from '../types/manual-notifications.type';
 
@@ -9,6 +12,68 @@ const STAFF_IDS = {
 } as const;
 
 const CHANNEL_ORDER = { sms: 0, push: 1, email: 2, in_app: 3 } as const;
+
+export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
+  templates: [
+    {
+      id: 'TPL-001',
+      label: '入会完了通知（標準）',
+      body: '{会員名}様、{店舗名}へのご入会ありがとうございます。{利用開始日}よりご利用いただけます。',
+    },
+    {
+      id: 'TPL-002',
+      label: 'レッスン予約確認',
+      body: '{会員名}様、レッスンのご予約を承りました。{利用開始日}にお待ちしております。',
+    },
+    {
+      id: 'TPL-005',
+      label: 'キャンペーン告知（汎用）',
+      body: '{会員名}様、{店舗名}からお得なキャンペーンのご案内です。詳細はアプリをご確認ください。',
+    },
+    {
+      id: 'TPL-006',
+      label: 'メンテナンスのお知らせ',
+      body: '{会員名}様、{店舗名}にてメンテナンスを実施します。期間中はご不便をおかけします。',
+    },
+  ],
+  targetPreviewCounts: {
+    allMembers: 42_580,
+    brands: 8_420,
+    stores: 1_240,
+    contractType: 5_640,
+    membershipDuration: 3_180,
+    dynamicAttributes: {
+      unpaid: 128,
+      dormant: 1_840,
+      withdrawal_pending: 32,
+      birthday_month: 3_420,
+      trial: 260,
+    },
+  },
+} as const;
+
+export function getManualNotificationTargetPreviewCount(
+  target: ManualNotificationTargetInput,
+): number {
+  const { targetPreviewCounts } = MANUAL_NOTIFICATION_FORM_CONFIG_SEED;
+
+  switch (target.type) {
+    case 'all_members':
+      return targetPreviewCounts.allMembers;
+    case 'brands':
+      return targetPreviewCounts.brands;
+    case 'stores':
+      return targetPreviewCounts.stores;
+    case 'contract_type':
+      return targetPreviewCounts.contractType;
+    case 'membership_duration':
+      return targetPreviewCounts.membershipDuration;
+    case 'dynamic_attribute':
+      return targetPreviewCounts.dynamicAttributes[target.attribute];
+    case 'members':
+      return target.memberIds.length;
+  }
+}
 
 type SeedInput = Omit<ManualNotificationRow, 'targetStoreIds' | 'contents'> & {
   targetStoreIds?: string[];
@@ -157,8 +222,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     title: '会員様限定イベントご案内',
     target: {
       type: 'contract_type',
-      contractTypeId: 'MC009',
-      contractTypeName: 'プレミアム会員',
+      contractType: 'premium',
     },
     channels: ['email', 'in_app'],
     timing: { type: 'scheduled', scheduledAt: '2026-06-15T12:00:00+09:00' },

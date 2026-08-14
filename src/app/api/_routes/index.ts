@@ -164,6 +164,7 @@ import '@/app/api/crm/membership-applications/enrollment-fee-masters/route';
 import '@/app/api/crm/membership-applications/route';
 import '@/app/api/crm/notifications/[id]/action/route';
 import '@/app/api/crm/notifications/[id]/route';
+import '@/app/api/crm/notifications/form-config/route';
 import '@/app/api/crm/notifications/route';
 import '@/app/api/crm/option-discounts/[id]/change-history/route';
 import '@/app/api/crm/option-discounts/[id]/route';

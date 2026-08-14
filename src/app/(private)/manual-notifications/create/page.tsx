@@ -1,22 +1,27 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { type UseFormReturn, useForm } from 'react-hook-form';
 
 import { useRouter } from 'next/navigation';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { BackLink } from '@/components/common/back-link';
+import { DataStateBoundary } from '@/components/common/data-state-boundary';
 import { PageHeader } from '@/components/common/page-header';
 import { Form } from '@/components/ui/form';
 
 import {
+  getCrmNotificationsFormConfigOptions,
   getCrmNotificationsQueryKey,
   postCrmNotificationsMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { PostCrmNotificationsError } from '@/lib/api/types.gen';
+import type {
+  GetCrmNotificationsFormConfigResponse,
+  PostCrmNotificationsError,
+} from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import { ManualNotificationForm } from '../_components/manual-notification-form';
@@ -31,6 +36,7 @@ import {
 export default function ManualNotificationCreatePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const formConfigQuery = useQuery({ ...getCrmNotificationsFormConfigOptions() });
   const form = useForm<ManualNotificationFormValues>({
     resolver: zodResolver(manualNotificationFormSchema) as never,
     mode: 'onChange',
@@ -63,17 +69,51 @@ export default function ManualNotificationCreatePage() {
         }
         title="手動配信通知 新規作成"
       />
-      <div className="px-6 py-4">
-        <Form {...form}>
-          <div className="mx-auto max-w-[960px]">
-            <ManualNotificationForm
-              isSubmitting={mutation.isPending}
-              onCancel={() => router.push(navigate('/manual-notifications'))}
-              onSubmit={handleSubmit}
-            />
-          </div>
-        </Form>
-      </div>
+      <DataStateBoundary
+        isLoading={formConfigQuery.isLoading}
+        isError={formConfigQuery.isError}
+        isEmpty={!formConfigQuery.data}
+        onRetry={() => void formConfigQuery.refetch()}
+      >
+        {formConfigQuery.data ? (
+          <CreateFormContent
+            form={form}
+            formConfig={formConfigQuery.data}
+            isSubmitting={mutation.isPending}
+            onCancel={() => router.push(navigate('/manual-notifications'))}
+            onSubmit={handleSubmit}
+          />
+        ) : null}
+      </DataStateBoundary>
     </>
+  );
+}
+
+function CreateFormContent({
+  form,
+  formConfig,
+  isSubmitting,
+  onCancel,
+  onSubmit,
+}: {
+  readonly form: UseFormReturn<ManualNotificationFormValues>;
+  readonly formConfig: GetCrmNotificationsFormConfigResponse;
+  readonly isSubmitting: boolean;
+  readonly onCancel: () => void;
+  readonly onSubmit: (values: ManualNotificationFormValues, intent: 'save' | 'submit') => void;
+}) {
+  return (
+    <div className="px-6 py-4">
+      <Form {...form}>
+        <div className="mx-auto max-w-[960px]">
+          <ManualNotificationForm
+            formConfig={formConfig}
+            isSubmitting={isSubmitting}
+            onCancel={onCancel}
+            onSubmit={onSubmit}
+          />
+        </div>
+      </Form>
+    </div>
   );
 }

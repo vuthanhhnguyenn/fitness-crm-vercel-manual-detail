@@ -1,9 +1,9 @@
 'use client';
 
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { Bell, ChevronsUpDown, Users } from 'lucide-react';
 
 import { useDebounce } from '@/hooks/use-debounce.hook';
@@ -24,15 +24,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import {
-  getCrmMainContractsOptions,
-  getCrmStoresInfiniteOptions,
-} from '@/lib/api/@tanstack/react-query.gen';
+import { getCrmStoresInfiniteOptions } from '@/lib/api/@tanstack/react-query.gen';
+import type { GetCrmNotificationsFormConfigResponse } from '@/lib/api/types.gen';
 import { cn } from '@/lib/utils';
 
 import {
   MANUAL_NOTIFICATION_BRAND_LABELS,
   MANUAL_NOTIFICATION_BRAND_OPTIONS,
+  MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS,
+  MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS,
   MANUAL_NOTIFICATION_DYNAMIC_ATTRIBUTE_OPTIONS,
   MANUAL_NOTIFICATION_MEMBERSHIP_DURATION_CONDITION_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
@@ -54,26 +54,23 @@ const TARGET_OPTIONS: Array<{ value: TargetType; description: string }> = [
   { value: 'members', description: '特定の会員を直接選択' },
 ];
 
-function getTargetPreviewCount(target: Target): number {
+function getTargetPreviewCount(
+  target: Target,
+  targetPreviewCounts: GetCrmNotificationsFormConfigResponse['targetPreviewCounts'],
+): number {
   switch (target.type) {
     case 'all_members':
-      return 42_580;
+      return targetPreviewCounts.allMembers;
     case 'brands':
-      return 8_420;
+      return targetPreviewCounts.brands;
     case 'stores':
-      return 1_240;
+      return targetPreviewCounts.stores;
     case 'contract_type':
-      return 5_640;
+      return targetPreviewCounts.contractType;
     case 'membership_duration':
-      return 3_180;
+      return targetPreviewCounts.membershipDuration;
     case 'dynamic_attribute':
-      return {
-        unpaid: 128,
-        dormant: 1_840,
-        withdrawal_pending: 32,
-        birthday_month: 3_420,
-        trial: 260,
-      }[target.attribute];
+      return targetPreviewCounts.dynamicAttributes[target.attribute];
     case 'members':
       return target.members.length;
   }
@@ -88,7 +85,7 @@ function createTarget(type: TargetType): Target {
     case 'stores':
       return { type, stores: [] };
     case 'contract_type':
-      return { type, contractTypeId: '', contractTypeName: '' };
+      return { type, contractType: 'regular' };
     case 'membership_duration':
       return { type, condition: 'within', months: 3 };
     case 'dynamic_attribute':
@@ -254,36 +251,16 @@ function TargetOption({
 
 interface ManualNotificationTargetSectionProps {
   readonly approvalRequired: boolean;
+  readonly formConfig: GetCrmNotificationsFormConfigResponse;
 }
 
 export function ManualNotificationTargetSection({
   approvalRequired,
+  formConfig,
 }: ManualNotificationTargetSectionProps) {
   const form = useFormContext<ManualNotificationFormValues>();
   const target = useWatch({ control: form.control, name: 'target' });
-  const contractsQuery = useQuery({
-    ...getCrmMainContractsOptions({ query: { page: 1, limit: 200, status: 'active' } }),
-    enabled: target.type === 'contract_type',
-  });
-  const targetPreviewCount = getTargetPreviewCount(target);
-
-  useEffect(() => {
-    if (target.type !== 'contract_type' || target.contractTypeId) return;
-    const defaultContract = contractsQuery.data?.main_contracts.find(
-      (contract) => contract.name === 'レギュラー会員',
-    );
-    if (!defaultContract) return;
-
-    form.setValue(
-      'target',
-      {
-        type: 'contract_type',
-        contractTypeId: defaultContract.id,
-        contractTypeName: defaultContract.name,
-      },
-      { shouldDirty: true, shouldValidate: true },
-    );
-  }, [contractsQuery.data?.main_contracts, form, target]);
+  const targetPreviewCount = getTargetPreviewCount(target, formConfig.targetPreviewCounts);
 
   const setTarget = (value: Target) =>
     form.setValue('target', value, { shouldDirty: true, shouldValidate: true });
@@ -344,45 +321,25 @@ export function ManualNotificationTargetSection({
         return (
           <FormField
             control={form.control}
-            name="target.contractTypeId"
+            name="target.contractType"
             render={({ field }) => (
               <FormItem className="max-w-[240px]">
-                <Select
-                  value={field.value}
-                  disabled={contractsQuery.isLoading || contractsQuery.isError}
-                  onValueChange={(value) => {
-                    const contract = contractsQuery.data?.main_contracts.find(
-                      (item) => item.id === value,
-                    );
-                    field.onChange(value ?? '');
-                    form.setValue('target.contractTypeName', contract?.name ?? '', {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    });
-                  }}
-                >
+                <Select value={field.value} onValueChange={field.onChange}>
                   <FormControl>
                     <SelectTrigger className="bg-background w-full">
-                      <SelectValue
-                        placeholder={
-                          contractsQuery.isLoading ? '契約種別を読み込み中...' : '契約種別を選択'
-                        }
-                      >
-                        {target.contractTypeName || undefined}
+                      <SelectValue placeholder="契約種別を選択">
+                        {MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[field.value]}
                       </SelectValue>
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {(contractsQuery.data?.main_contracts ?? []).map((contract) => (
-                      <SelectItem key={contract.id} value={contract.id}>
-                        {contract.name}
+                    {MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS.map((contractType) => (
+                      <SelectItem key={contractType} value={contractType}>
+                        {MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[contractType]}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {contractsQuery.isError ? (
-                  <p className="text-destructive text-xs">契約種別の取得に失敗しました</p>
-                ) : null}
                 <FormMessage />
               </FormItem>
             )}
