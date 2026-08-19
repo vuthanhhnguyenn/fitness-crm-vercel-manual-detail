@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAuthUserFromRequest } from '@/app/api/_lib/auth';
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { MANUAL_NOTIFICATION_FORM_CONFIG_SEED } from '@/app/api/_mock-db/seeds/manual-notification.seed';
 import {
   GetManualNotificationFormConfigResponseSchema,
@@ -50,6 +50,10 @@ export async function GET(request: NextRequest) {
   const canEdit = hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsEdit]);
   if (!canCreate && !canEdit) {
     return errorResponse(403, 'Manual notification form access capability is required');
+  }
+  const allowedStoreIds = getAllowedStoreIds(auth.user);
+  if (allowedStoreIds !== null && allowedStoreIds.length === 0) {
+    return errorResponse(403, 'A store scope is required to access the notification form');
   }
 
   return NextResponse.json(MANUAL_NOTIFICATION_FORM_CONFIG_SEED);

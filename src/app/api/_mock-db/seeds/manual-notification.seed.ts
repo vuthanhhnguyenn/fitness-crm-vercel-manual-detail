@@ -63,7 +63,7 @@ export function getManualNotificationTargetPreviewCount(
     case 'brands':
       return targetPreviewCounts.brands;
     case 'stores':
-      return targetPreviewCounts.stores;
+      return targetPreviewCounts.stores * new Set(target.storeIds).size;
     case 'contract_type':
       return targetPreviewCounts.contractType;
     case 'membership_duration':
@@ -71,7 +71,7 @@ export function getManualNotificationTargetPreviewCount(
     case 'dynamic_attribute':
       return targetPreviewCounts.dynamicAttributes[target.attribute];
     case 'members':
-      return target.memberIds.length;
+      return new Set(target.memberIds).size;
   }
 }
 

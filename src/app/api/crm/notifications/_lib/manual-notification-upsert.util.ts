@@ -6,28 +6,72 @@ import type {
   ManualNotificationUpsertBody,
 } from '@/app/api/_schemas/manual-notification.schema';
 
-function getTargetStoreIds(target: ManualNotificationTargetInput): string[] {
-  return target.type === 'stores' ? target.storeIds : [];
+export function getManualNotificationTargetStoreIds(
+  target: ManualNotificationTargetInput,
+): string[] {
+  if (target.type === 'stores') return [...new Set(target.storeIds)];
+  if (target.type === 'members') {
+    return [
+      ...new Set(
+        target.memberIds.flatMap((memberId) => {
+          const storeId = db.members.get(memberId)?.profile.store_id;
+          return storeId ? [storeId] : [];
+        }),
+      ),
+    ];
+  }
+  const stores = db.stores.getList();
+  if (target.type === 'brands' && !target.brands.includes('joyfit_all')) {
+    return stores.filter((store) => target.brands.includes(store.brand)).map((store) => store.id);
+  }
+  return stores.map((store) => store.id);
 }
 
-function manualNotificationRequiresApproval(
+export function manualNotificationRequiresApproval(
   target: ManualNotificationTarget | ManualNotificationTargetInput,
 ): boolean {
-  return (
-    target.type === 'all_members' ||
-    (target.type === 'brands' && target.brands.includes('joyfit_all'))
-  );
+  return target.type !== 'stores' && target.type !== 'members';
 }
 
-export function isManualNotificationTargetOutOfScope(
+export type ManualNotificationTargetValidationError = 'not_found' | 'out_of_scope';
+
+export function validateManualNotificationTarget(
   target: ManualNotificationTargetInput,
   allowedStoreIds: string[] | null,
-): boolean {
-  return (
-    allowedStoreIds !== null &&
-    target.type === 'stores' &&
-    target.storeIds.some((storeId) => !allowedStoreIds.includes(storeId))
-  );
+): ManualNotificationTargetValidationError | undefined {
+  if (allowedStoreIds !== null && allowedStoreIds.length === 0) return 'out_of_scope';
+
+  if (target.type === 'stores') {
+    if (target.storeIds.some((storeId) => !db.stores.getById(storeId))) return 'not_found';
+    if (
+      allowedStoreIds !== null &&
+      target.storeIds.some((storeId) => !allowedStoreIds.includes(storeId))
+    ) {
+      return 'out_of_scope';
+    }
+  }
+
+  if (target.type === 'members') {
+    for (const memberId of target.memberIds) {
+      const storeId = db.members.get(memberId)?.profile.store_id;
+      if (!storeId) return 'not_found';
+      if (allowedStoreIds !== null && !allowedStoreIds.includes(storeId)) return 'out_of_scope';
+    }
+  }
+
+  return undefined;
+}
+
+export function manualNotificationTargetToInput(
+  target: ManualNotificationTarget,
+): ManualNotificationTargetInput {
+  if (target.type === 'stores') {
+    return { type: 'stores', storeIds: target.stores.map((store) => store.id) };
+  }
+  if (target.type === 'members') {
+    return { type: 'members', memberIds: target.members.map((member) => member.id) };
+  }
+  return target;
 }
 
 function resolveManualNotificationTarget(
@@ -61,6 +105,9 @@ function resolveManualNotificationStatus(
   existing?: ManualNotificationRow,
 ): ManualNotificationRow['status'] {
   if (body.intent === 'save') {
+    if (existing?.status === 'returned' && !manualNotificationRequiresApproval(body.target)) {
+      return 'draft';
+    }
     return existing?.status === 'pending_approval' ? 'draft' : (existing?.status ?? 'draft');
   }
   if (manualNotificationRequiresApproval(body.target)) return 'pending_approval';
@@ -87,7 +134,7 @@ export function buildManualNotificationRow(input: {
     createdByUserId: existing?.createdByUserId ?? input.createdByUserId,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    targetStoreIds: getTargetStoreIds(body.target),
+    targetStoreIds: getManualNotificationTargetStoreIds(body.target),
     deletedAt: null,
     ...(existing?.approvedBy ? { approvedBy: existing.approvedBy } : {}),
     ...(existing?.approvedAt ? { approvedAt: existing.approvedAt } : {}),

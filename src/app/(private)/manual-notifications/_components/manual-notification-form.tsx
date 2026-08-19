@@ -1,23 +1,12 @@
 'use client';
 
-import type { BaseSyntheticEvent } from 'react';
-import { useFormContext, useWatch } from 'react-hook-form';
+import { type FormEvent, useState } from 'react';
+import { type FieldErrors, useFormContext, useWatch } from 'react-hook-form';
 
 import { Bell, Mail, MessageSquare, Smartphone } from 'lucide-react';
 
 import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
-import { useUnsavedChanges } from '@/hooks/use-unsaved-changes.hook';
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -137,113 +126,109 @@ export function ManualNotificationForm({
   onSubmit,
 }: ManualNotificationFormProps) {
   const form = useFormContext<ManualNotificationFormValues>();
+  const [activeChannel, setActiveChannel] = useState<ManualNotificationChannel>('push');
   const scrollToFirstError = useScrollToFirstError();
   const target = useWatch({ control: form.control, name: 'target' });
   const approvalRequired = manualNotificationRequiresApproval(target);
   const hasSubmitErrors =
     form.formState.submitCount > 0 && Object.keys(form.formState.errors).length > 0;
-  const { confirmDiscard, discardDialogOpen, handleDiscardCancel, handleDiscardConfirm } =
-    useUnsavedChanges(form.formState.isDirty);
+  const handleSubmit = (values: ManualNotificationFormValues) => {
+    onSubmit(values, values.intent);
+  };
 
-  const handleSubmit = (values: ManualNotificationFormValues, event?: BaseSyntheticEvent) => {
-    const submitter = (event?.nativeEvent as SubmitEvent | undefined)?.submitter;
+  const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
     const intent =
       submitter instanceof HTMLButtonElement && submitter.value === 'submit' ? 'submit' : 'save';
-    onSubmit(values, intent);
+    form.setValue('intent', intent);
+    void form.handleSubmit(handleSubmit, (errors: FieldErrors<ManualNotificationFormValues>) => {
+      const enabledChannels = form.getValues('channels');
+      const firstErrorChannel = CHANNELS.find(
+        (channel) =>
+          enabledChannels.includes(channel.value) && Boolean(errors.contents?.[channel.value]),
+      )?.value;
+      if (firstErrorChannel) setActiveChannel(firstErrorChannel);
+      requestAnimationFrame(scrollToFirstError);
+    })(event);
   };
 
   return (
-    <>
-      <form
-        className="flex flex-col gap-6"
-        onSubmit={form.handleSubmit(handleSubmit, scrollToFirstError)}
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">基本情報</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    タイトル（管理用） <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      placeholder="例: 夏キャンペーン告知"
-                      className="max-w-[480px]"
-                      autoFocus
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {isEdit ? (
-              <FormItem className="mt-3 max-w-md">
-                <FormLabel>通知ID</FormLabel>
-                <Input value={notificationId ?? ''} readOnly className="bg-muted" />
+    <form className="flex flex-col gap-6" onSubmit={handleFormSubmit}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">基本情報</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FormField
+            control={form.control}
+            name="title"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  タイトル（管理用） <span className="text-destructive">*</span>
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    placeholder="例: 夏キャンペーン告知"
+                    className="max-w-[480px]"
+                    autoFocus
+                  />
+                </FormControl>
+                <FormMessage />
               </FormItem>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <ManualNotificationTargetSection
-          approvalRequired={approvalRequired}
-          formConfig={formConfig}
-        />
-
-        <ManualNotificationChannelsSection />
-        <ManualNotificationMessageSection templates={formConfig.templates} />
-        <ManualNotificationTimingSection />
-
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t p-4">
-          {hasSubmitErrors ? (
-            <p className="text-destructive mr-auto text-xs">未入力の項目があります</p>
+            )}
+          />
+          {isEdit ? (
+            <FormItem className="mt-3 max-w-md">
+              <FormLabel>通知ID</FormLabel>
+              <Input value={notificationId ?? ''} readOnly className="bg-muted" />
+            </FormItem>
           ) : null}
-          <Button
-            type="button"
-            size="lg"
-            variant="outline"
-            onClick={() => confirmDiscard(onCancel)}
-            disabled={isSubmitting}
-          >
-            キャンセル
-          </Button>
-          <Button
-            type="submit"
-            name="intent"
-            value="save"
-            size="lg"
-            variant="outline"
-            disabled={isSubmitting}
-          >
-            下書き保存
-          </Button>
-          <Button type="submit" name="intent" value="submit" size="lg" disabled={isSubmitting}>
-            {approvalRequired ? '承認依頼を送信' : isEdit ? '変更して配信' : '配信を開始'}
-          </Button>
-        </div>
-      </form>
+        </CardContent>
+      </Card>
 
-      <AlertDialog open={discardDialogOpen} onOpenChange={handleDiscardCancel}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>変更を破棄しますか？</AlertDialogTitle>
-            <AlertDialogDescription>
-              未保存の変更はすべて失われます。この操作は取り消せません。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDiscardCancel}>編集を続ける</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDiscardConfirm}>破棄する</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+      <ManualNotificationTargetSection
+        approvalRequired={approvalRequired}
+        formConfig={formConfig}
+      />
+
+      <ManualNotificationChannelsSection />
+      <ManualNotificationMessageSection
+        templates={formConfig.templates}
+        activeChannel={activeChannel}
+        onActiveChannelChange={setActiveChannel}
+      />
+      <ManualNotificationTimingSection />
+
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t p-4">
+        {hasSubmitErrors ? (
+          <p className="text-destructive mr-auto text-xs">未入力の項目があります</p>
+        ) : null}
+        <Button
+          type="button"
+          size="lg"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isSubmitting}
+        >
+          キャンセル
+        </Button>
+        <Button
+          type="submit"
+          name="intent"
+          value="save"
+          size="lg"
+          variant="outline"
+          disabled={isSubmitting}
+        >
+          下書き保存
+        </Button>
+        <Button type="submit" name="intent" value="submit" size="lg" disabled={isSubmitting}>
+          {approvalRequired ? '承認依頼を送信' : isEdit ? '変更して配信' : '配信を開始'}
+        </Button>
+      </div>
+    </form>
   );
 }

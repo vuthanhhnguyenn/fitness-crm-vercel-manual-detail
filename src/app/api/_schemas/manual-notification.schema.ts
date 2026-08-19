@@ -1,6 +1,8 @@
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
+import { isSafeManualNotificationLinkUrl } from '@/lib/manual-notifications/manual-notification-link.util';
+
 extendZodWithOpenApi(z);
 
 export const ManualNotificationStatusSchema = z
@@ -53,11 +55,11 @@ export const ManualNotificationTargetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('all_members') }),
   z.object({
     type: z.literal('brands'),
-    brands: z.array(ManualNotificationBrandSchema).min(1),
+    brands: z.array(ManualNotificationBrandSchema),
   }),
   z.object({
     type: z.literal('stores'),
-    stores: z.array(ManualNotificationStoreSchema).min(1),
+    stores: z.array(ManualNotificationStoreSchema),
   }),
   z.object({
     type: z.literal('contract_type'),
@@ -74,16 +76,14 @@ export const ManualNotificationTargetSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('members'),
-    members: z
-      .array(
-        z.object({
-          id: z.string().min(1),
-          name: z.string().min(1),
-          memberNumber: z.string().min(1).optional(),
-          storeName: z.string().min(1).optional(),
-        }),
-      )
-      .min(1),
+    members: z.array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        memberNumber: z.string().min(1).optional(),
+        storeName: z.string().min(1).optional(),
+      }),
+    ),
   }),
 ]);
 
@@ -91,9 +91,9 @@ export const ManualNotificationTargetInputSchema = z.discriminatedUnion('type', 
   z.object({ type: z.literal('all_members') }),
   z.object({
     type: z.literal('brands'),
-    brands: z.array(ManualNotificationBrandSchema).min(1),
+    brands: z.array(ManualNotificationBrandSchema),
   }),
-  z.object({ type: z.literal('stores'), storeIds: z.array(z.string().min(1)).min(1) }),
+  z.object({ type: z.literal('stores'), storeIds: z.array(z.string().min(1)) }),
   z.object({
     type: z.literal('contract_type'),
     contractType: ManualNotificationContractTypeSchema,
@@ -107,7 +107,7 @@ export const ManualNotificationTargetInputSchema = z.discriminatedUnion('type', 
     type: z.literal('dynamic_attribute'),
     attribute: z.enum(['unpaid', 'dormant', 'withdrawal_pending', 'birthday_month', 'trial']),
   }),
-  z.object({ type: z.literal('members'), memberIds: z.array(z.string().min(1)).min(1) }),
+  z.object({ type: z.literal('members'), memberIds: z.array(z.string().min(1)) }),
 ]);
 
 const ManualNotificationTargetPreviewCountsSchema = z.object({
@@ -136,36 +136,40 @@ export const GetManualNotificationFormConfigResponseSchema = z.object({
   targetPreviewCounts: ManualNotificationTargetPreviewCountsSchema,
 });
 
-const ManualNotificationRecurringTimingSchema = z
-  .object({
-    type: z.literal('recurring'),
-    frequency: z.enum(['daily', 'weekly', 'monthly', 'custom']),
-    startAt: z.string().datetime({ offset: true }),
-    intervalValue: z.number().int().positive().max(365).optional(),
-    intervalUnit: z.enum(['day', 'week', 'month']).optional(),
-    endAt: z.string().datetime({ offset: true }).optional(),
-    maxOccurrences: z.number().int().positive().optional(),
-  })
-  .superRefine((value, context) => {
-    if (
-      value.frequency !== 'custom' &&
-      (value.intervalValue !== undefined || value.intervalUnit !== undefined)
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'intervalValue and intervalUnit are only valid for custom frequency',
-        path: ['intervalValue'],
-      });
-    }
+const ManualNotificationRecurringTimingSchema = z.object({
+  type: z.literal('recurring'),
+  frequency: z.enum(['daily', 'weekly', 'monthly', 'custom']),
+  startAt: z.string().datetime({ offset: true }),
+  intervalValue: z.number().int().positive().max(365).optional(),
+  intervalUnit: z.enum(['day', 'week', 'month']).optional(),
+  endAt: z.string().datetime({ offset: true }).optional(),
+  maxOccurrences: z.number().int().positive().optional(),
+});
 
-    if (value.endAt !== undefined && new Date(value.endAt) <= new Date(value.startAt)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'endAt must be after startAt',
-        path: ['endAt'],
-      });
-    }
-  });
+function validateRecurringTiming(
+  value: z.infer<typeof ManualNotificationRecurringTimingSchema>,
+  context: z.RefinementCtx,
+  pathPrefix: PropertyKey[] = [],
+) {
+  if (
+    value.frequency !== 'custom' &&
+    (value.intervalValue !== undefined || value.intervalUnit !== undefined)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'intervalValue and intervalUnit are only valid for custom frequency',
+      path: [...pathPrefix, 'intervalValue'],
+    });
+  }
+
+  if (value.endAt !== undefined && new Date(value.endAt) <= new Date(value.startAt)) {
+    context.addIssue({
+      code: 'custom',
+      message: 'endAt must be after startAt',
+      path: [...pathPrefix, 'endAt'],
+    });
+  }
+}
 
 const ManualNotificationTimingSchema = z.union([
   z.object({ type: z.literal('immediate') }),
@@ -179,9 +183,9 @@ const ManualNotificationTimingSchema = z.union([
 export const ManualNotificationListItemSchema = z
   .object({
     id: z.string().min(1),
-    title: z.string().min(1),
+    title: z.string().max(255),
     target: ManualNotificationTargetSchema,
-    channels: z.array(ManualNotificationChannelSchema).min(1),
+    channels: z.array(ManualNotificationChannelSchema),
     timing: ManualNotificationTimingSchema,
     targetCount: z.number().int().nonnegative(),
     status: ManualNotificationStatusSchema,
@@ -196,13 +200,13 @@ export const ManualNotificationListItemSchema = z
 export const ManualNotificationContentsSchema = z
   .object({
     sms: z.object({ body: z.string() }).optional(),
-    push: z.object({ title: z.string().trim().max(255), body: z.string() }).optional(),
-    email: z.object({ subject: z.string().trim().max(255), body: z.string() }).optional(),
+    push: z.object({ title: z.string().trim(), body: z.string() }).optional(),
+    email: z.object({ subject: z.string().trim(), body: z.string() }).optional(),
     in_app: z
       .object({
-        title: z.string().trim().max(255),
+        title: z.string().trim(),
         body: z.string(),
-        linkUrl: z.string().trim().url().or(z.literal('')).optional(),
+        linkUrl: z.string().trim().optional(),
       })
       .optional(),
   })
@@ -248,49 +252,139 @@ export const ManualNotificationUpsertIntentSchema = z.enum(['save', 'submit']);
 
 export const ManualNotificationUpsertBodySchema = z
   .object({
-    title: z.string().trim().min(1).max(255),
+    title: z.string().trim().max(255),
     target: ManualNotificationTargetInputSchema,
-    channels: z.array(ManualNotificationChannelSchema).min(1),
+    channels: z.array(ManualNotificationChannelSchema),
     contents: ManualNotificationContentsSchema,
     timing: ManualNotificationTimingSchema,
     intent: ManualNotificationUpsertIntentSchema.default('save'),
   })
   .superRefine((value, context) => {
-    if (
-      value.timing.type === 'recurring' &&
-      value.timing.frequency === 'custom' &&
-      (value.timing.intervalValue === undefined || value.timing.intervalUnit === undefined)
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Custom recurring timing requires intervalValue and intervalUnit',
-        path: ['timing', 'intervalValue'],
-      });
-    }
     for (const channel of value.channels) {
-      const content = value.contents[channel];
-      const body = content?.body.replace(/<[^>]*>/g, '').trim();
       const heading =
         channel === 'push'
-          ? value.contents.push?.title.trim()
+          ? value.contents.push?.title
           : channel === 'in_app'
-            ? value.contents.in_app?.title.trim()
+            ? value.contents.in_app?.title
             : channel === 'email'
-              ? value.contents.email?.subject.trim()
-              : true;
-      if (!body) {
+              ? value.contents.email?.subject
+              : undefined;
+      if (heading && heading.length > 255) {
         context.addIssue({
           code: 'custom',
-          message: `Content is required for ${channel}`,
-          path: ['contents', channel, 'body'],
-        });
-      }
-      if (!heading) {
-        context.addIssue({
-          code: 'custom',
-          message: `Title is required for ${channel}`,
+          message: `Title must not exceed 255 characters for ${channel}`,
           path: ['contents', channel, channel === 'email' ? 'subject' : 'title'],
         });
+      }
+    }
+
+    if (value.intent === 'submit') {
+      if (!value.title) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Title is required',
+          path: ['title'],
+        });
+      }
+      if (value.channels.length === 0) {
+        context.addIssue({
+          code: 'custom',
+          message: 'At least one channel is required',
+          path: ['channels'],
+        });
+      }
+      const targetIds =
+        value.target.type === 'brands'
+          ? value.target.brands
+          : value.target.type === 'stores'
+            ? value.target.storeIds
+            : value.target.type === 'members'
+              ? value.target.memberIds
+              : undefined;
+      if (targetIds && targetIds.length === 0) {
+        context.addIssue({
+          code: 'custom',
+          message: 'At least one notification target is required',
+          path: [
+            'target',
+            value.target.type === 'brands'
+              ? 'brands'
+              : value.target.type === 'stores'
+                ? 'storeIds'
+                : 'memberIds',
+          ],
+        });
+      }
+      if (targetIds && new Set(targetIds).size !== targetIds.length) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Notification targets must be unique',
+          path: ['target'],
+        });
+      }
+      if (
+        value.timing.type === 'recurring' &&
+        value.timing.frequency === 'custom' &&
+        (value.timing.intervalValue === undefined || value.timing.intervalUnit === undefined)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Custom recurring timing requires intervalValue and intervalUnit',
+          path: ['timing', 'intervalValue'],
+        });
+      }
+      if (value.timing.type === 'recurring') {
+        validateRecurringTiming(value.timing, context, ['timing']);
+        if (value.timing.endAt !== undefined && value.timing.maxOccurrences !== undefined) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Recurring timing must use either endAt or maxOccurrences, not both',
+            path: ['timing', 'endAt'],
+          });
+          context.addIssue({
+            code: 'custom',
+            message: 'Recurring timing must use either endAt or maxOccurrences, not both',
+            path: ['timing', 'maxOccurrences'],
+          });
+        }
+      }
+      const linkUrl = value.contents.in_app?.linkUrl;
+      if (
+        value.channels.includes('in_app') &&
+        linkUrl &&
+        !isSafeManualNotificationLinkUrl(linkUrl)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Invalid in-app notification URL',
+          path: ['contents', 'in_app', 'linkUrl'],
+        });
+      }
+      for (const channel of value.channels) {
+        const content = value.contents[channel];
+        const body = content?.body.replace(/<[^>]*>/g, '').trim();
+        const heading =
+          channel === 'push'
+            ? value.contents.push?.title.trim()
+            : channel === 'in_app'
+              ? value.contents.in_app?.title.trim()
+              : channel === 'email'
+                ? value.contents.email?.subject.trim()
+                : true;
+        if (!body) {
+          context.addIssue({
+            code: 'custom',
+            message: `Content is required for ${channel}`,
+            path: ['contents', channel, 'body'],
+          });
+        }
+        if (!heading) {
+          context.addIssue({
+            code: 'custom',
+            message: `Title is required for ${channel}`,
+            path: ['contents', channel, channel === 'email' ? 'subject' : 'title'],
+          });
+        }
       }
     }
   })

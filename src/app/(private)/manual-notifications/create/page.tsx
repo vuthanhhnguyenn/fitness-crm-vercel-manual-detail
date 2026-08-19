@@ -8,7 +8,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { BackLink } from '@/components/common/back-link';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes.hook';
+
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
 import { PageHeader } from '@/components/common/page-header';
 import { Form } from '@/components/ui/form';
@@ -18,14 +19,14 @@ import {
   getCrmNotificationsQueryKey,
   postCrmNotificationsMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type {
-  GetCrmNotificationsFormConfigResponse,
-  PostCrmNotificationsError,
-} from '@/lib/api/types.gen';
+import type { GetCrmNotificationsFormConfigResponse } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
+import { ManualNotificationBackLink } from '../_components/manual-notification-back-link';
+import { ManualNotificationDiscardDialog } from '../_components/manual-notification-discard-dialog';
 import { ManualNotificationForm } from '../_components/manual-notification-form';
 import { MANUAL_NOTIFICATION_SAVE_SUCCESS_MESSAGES } from '../_constants/manual-notification.constants';
+import { withManualNotificationError } from '../_lib/manual-notification-mutation.util';
 import {
   type ManualNotificationFormValues,
   emptyManualNotificationFormValues,
@@ -42,8 +43,13 @@ export default function ManualNotificationCreatePage() {
     mode: 'onChange',
     defaultValues: emptyManualNotificationFormValues,
   });
+  const { confirmDiscard, discardDialogOpen, handleDiscardConfirm, handleDiscardCancel } =
+    useUnsavedChanges(form.formState.isDirty);
+  const navigateBack = () => router.push(navigate('/manual-notifications'));
+  const mutationOptions = postCrmNotificationsMutation();
   const mutation = useMutation({
-    ...postCrmNotificationsMutation(),
+    ...mutationOptions,
+    mutationFn: withManualNotificationError(mutationOptions.mutationFn!),
     onSuccess: (response) => {
       toast.success(MANUAL_NOTIFICATION_SAVE_SUCCESS_MESSAGES[response.item.status]);
       void queryClient.invalidateQueries({
@@ -52,7 +58,6 @@ export default function ManualNotificationCreatePage() {
       });
       router.push(navigate('/manual-notifications/[id]', response.item.id));
     },
-    onError: (error: PostCrmNotificationsError) => toast.error(error.userMessage),
   });
 
   const handleSubmit = (values: ManualNotificationFormValues, intent: 'save' | 'submit') => {
@@ -65,7 +70,15 @@ export default function ManualNotificationCreatePage() {
     <>
       <PageHeader
         breadcrumb={
-          <BackLink label="手動配信通知に戻る" href={navigate('/manual-notifications')} />
+          <ManualNotificationBackLink
+            label="手動配信通知に戻る"
+            href={navigate('/manual-notifications')}
+            onClick={(event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+              event.preventDefault();
+              confirmDiscard(navigateBack);
+            }}
+          />
         }
         title="手動配信通知 新規作成"
       />
@@ -80,11 +93,16 @@ export default function ManualNotificationCreatePage() {
             form={form}
             formConfig={formConfigQuery.data}
             isSubmitting={mutation.isPending}
-            onCancel={() => router.push(navigate('/manual-notifications'))}
+            onCancel={() => confirmDiscard(navigateBack)}
             onSubmit={handleSubmit}
           />
         ) : null}
       </DataStateBoundary>
+      <ManualNotificationDiscardDialog
+        open={discardDialogOpen}
+        onCancel={handleDiscardCancel}
+        onConfirm={handleDiscardConfirm}
+      />
     </>
   );
 }

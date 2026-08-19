@@ -50,11 +50,15 @@ export function createManualNotificationTable(): { manualNotifications: ManualNo
       estimateTargetCount(target) {
         return getManualNotificationTargetPreviewCount(target);
       },
-      updateStatus(id, status) {
+      updateStatus(id, status, targetMetadata) {
         this._seed();
         const row = this._rows.find((item) => item.id === id && item.deletedAt === null);
         if (!row) return undefined;
         row.status = status;
+        if (targetMetadata) {
+          row.targetCount = targetMetadata.targetCount;
+          row.targetStoreIds = [...targetMetadata.targetStoreIds];
+        }
         row.updatedAt = new Date().toISOString();
         return row;
       },

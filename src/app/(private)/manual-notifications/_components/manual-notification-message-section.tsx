@@ -52,14 +52,19 @@ const RichTextEditor = dynamic(
 
 export function ManualNotificationMessageSection({
   templates,
+  activeChannel,
+  onActiveChannelChange,
 }: {
   readonly templates: GetCrmNotificationsFormConfigResponse['templates'];
+  readonly activeChannel: ManualNotificationChannel;
+  readonly onActiveChannelChange: (channel: ManualNotificationChannel) => void;
 }) {
   const form = useFormContext<ManualNotificationFormValues>();
   const channels = useWatch({ control: form.control, name: 'channels' });
-  const [activeChannel, setActiveChannel] = useState<ManualNotificationChannel>('push');
+  const contentErrors = form.formState.errors.contents;
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>();
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
+  const channelHasError = (channel: ManualNotificationChannel) => Boolean(contentErrors?.[channel]);
 
   const applyTemplate = (id: string | null) => {
     const template = templates.find((item) => item.id === id);
@@ -106,7 +111,7 @@ export function ManualNotificationMessageSection({
               className="px-0 text-xs"
               requiredPermission={Permission.ManualNotificationsEdit}
               disabled
-              tooltip="Update later"
+              tooltip="後日対応予定"
             >
               管理 →
             </RoleGatedButton>
@@ -116,12 +121,15 @@ export function ManualNotificationMessageSection({
       <CardContent className="space-y-4 px-4">
         <Tabs
           value={activeChannel}
-          onValueChange={(value) => setActiveChannel(value as ManualNotificationChannel)}
+          onValueChange={(value) => onActiveChannelChange(value as ManualNotificationChannel)}
         >
           <TabsList>
             {MANUAL_NOTIFICATION_CHANNEL_OPTIONS.map((channel) => (
-              <TabsTrigger key={channel} value={channel} className="text-xs">
+              <TabsTrigger key={channel} value={channel} className="gap-1 text-xs">
                 {MANUAL_NOTIFICATION_CHANNEL_LABELS[channel]}
+                {channelHasError(channel) ? (
+                  <span className="bg-destructive size-1.5 rounded-full" aria-label="入力エラー" />
+                ) : null}
               </TabsTrigger>
             ))}
           </TabsList>

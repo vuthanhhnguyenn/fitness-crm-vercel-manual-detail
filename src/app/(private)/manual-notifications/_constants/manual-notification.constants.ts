@@ -190,10 +190,7 @@ export function manualNotificationRequiresApproval(target: {
   type: ManualNotificationTargetType;
   brands?: readonly ManualNotificationBrand[];
 }) {
-  return (
-    target.type === 'all_members' ||
-    (target.type === 'brands' && target.brands?.includes('joyfit_all') === true)
-  );
+  return target.type !== 'stores' && target.type !== 'members';
 }
 
 interface ManualNotificationActionPolicy {
@@ -212,9 +209,9 @@ export function getManualNotificationActionPolicy(
   return {
     canRequestApproval: row.status === 'draft' && row.requiresApproval,
     canSend: row.status === 'draft' && !row.requiresApproval,
-    canApprove: row.status === 'pending_approval',
-    canReturn: row.status === 'pending_approval',
-    canResubmit: row.status === 'returned',
+    canApprove: row.status === 'pending_approval' && row.requiresApproval,
+    canReturn: row.status === 'pending_approval' && row.requiresApproval,
+    canResubmit: row.status === 'returned' && row.requiresApproval,
     canEdit: ['draft', 'returned', 'pending_approval'].includes(row.status),
     canDelete: ['draft', 'returned'].includes(row.status),
   };

@@ -19,9 +19,10 @@ import { hasPermissions } from '@/utils/permission.util';
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
 
+import { canReadManualNotification } from './_lib/manual-notification-access.util';
 import {
   buildManualNotificationRow,
-  isManualNotificationTargetOutOfScope,
+  validateManualNotificationTarget,
   validateManualNotificationTiming,
 } from './_lib/manual-notification-upsert.util';
 
@@ -160,21 +161,7 @@ export async function GET(request: NextRequest) {
     parsedQuery.data;
   let baseline = db.manualNotifications.getList().filter((item) => item.deletedAt === null);
 
-  const allowedStoreIds = getAllowedStoreIds(auth.user);
-  const canMutate = hasPermissions(auth.user.role as UserRole, [
-    Permission.ManualNotificationsCreate,
-  ]);
-  if (allowedStoreIds !== null) {
-    if (allowedStoreIds.length === 0 && canMutate) {
-      baseline = baseline.filter((item) => item.createdByUserId === auth.user.id);
-    } else if (allowedStoreIds.length > 0 && canMutate) {
-      baseline = baseline.filter(
-        (item) =>
-          item.createdByUserId === auth.user.id ||
-          item.targetStoreIds.some((storeId) => allowedStoreIds.includes(storeId)),
-      );
-    }
-  }
+  baseline = baseline.filter((item) => canReadManualNotification(auth.user, item));
 
   const totalAllItems = baseline.length;
   let filtered = baseline;
@@ -250,7 +237,16 @@ export async function POST(request: NextRequest) {
 
   const body = parsed.data;
   const allowedStoreIds = getAllowedStoreIds(auth.user);
-  if (isManualNotificationTargetOutOfScope(body.target, allowedStoreIds)) {
+  const targetValidationError = validateManualNotificationTarget(body.target, allowedStoreIds);
+  if (targetValidationError === 'not_found') {
+    return errorResponse(
+      400,
+      'E-VAL-001',
+      'One or more notification targets do not exist',
+      '配信対象が存在しません',
+    );
+  }
+  if (targetValidationError === 'out_of_scope') {
     return errorResponse(
       403,
       'E-AUTH-006',

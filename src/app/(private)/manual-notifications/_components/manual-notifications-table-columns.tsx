@@ -28,9 +28,12 @@ function targetDetail(row: ManualNotificationRow): string {
     case 'all_members':
       return '全会員対象';
     case 'brands':
-      return row.target.brands.map((brand) => MANUAL_NOTIFICATION_BRAND_LABELS[brand]).join(' · ');
+      return (
+        row.target.brands.map((brand) => MANUAL_NOTIFICATION_BRAND_LABELS[brand]).join(' · ') ||
+        '配信対象未設定'
+      );
     case 'stores':
-      return row.target.stores.map((store) => store.name).join(' · ');
+      return row.target.stores.map((store) => store.name).join(' · ') || '配信対象未設定';
     case 'contract_type':
       return MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[row.target.contractType];
     case 'membership_duration':
@@ -40,7 +43,9 @@ function targetDetail(row: ManualNotificationRow): string {
     case 'dynamic_attribute':
       return getManualNotificationDynamicAttributeLabel(row.target.attribute);
     case 'members':
-      return `${row.target.members.length}名を指定`;
+      return row.target.members.length > 0
+        ? `${row.target.members.length}名を指定`
+        : '配信対象未設定';
   }
 }
 
@@ -69,7 +74,9 @@ export function getManualNotificationsTableColumns(): ColumnDef<ManualNotificati
           className="[&_svg]:size-3"
         />
       ),
-      cell: ({ row }) => <span className="text-sm font-medium">{row.original.title}</span>,
+      cell: ({ row }) => (
+        <span className="text-sm font-medium">{row.original.title || '無題の下書き'}</span>
+      ),
       meta: { className: 'min-w-[180px]' },
     },
     {
@@ -95,19 +102,23 @@ export function getManualNotificationsTableColumns(): ColumnDef<ManualNotificati
       header: 'チャネル',
       cell: ({ row }) => (
         <div className="flex min-w-[280px] flex-nowrap gap-1 whitespace-nowrap">
-          {row.original.channels.map((channel) => {
-            const Icon = CHANNEL_ICONS[channel];
-            return (
-              <Badge
-                key={channel}
-                variant="outline"
-                className="shrink-0 gap-1 text-[9px] font-normal whitespace-nowrap"
-              >
-                <Icon className="size-2.5" />
-                {MANUAL_NOTIFICATION_CHANNEL_LABELS[channel]}
-              </Badge>
-            );
-          })}
+          {row.original.channels.length > 0 ? (
+            row.original.channels.map((channel) => {
+              const Icon = CHANNEL_ICONS[channel];
+              return (
+                <Badge
+                  key={channel}
+                  variant="outline"
+                  className="shrink-0 gap-1 text-[9px] font-normal whitespace-nowrap"
+                >
+                  <Icon className="size-2.5" />
+                  {MANUAL_NOTIFICATION_CHANNEL_LABELS[channel]}
+                </Badge>
+              );
+            })
+          ) : (
+            <span className="text-muted-foreground text-xs">未設定</span>
+          )}
         </div>
       ),
       meta: { className: 'w-[280px] min-w-[280px]' },

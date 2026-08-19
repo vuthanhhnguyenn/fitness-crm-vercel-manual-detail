@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -10,6 +11,8 @@ import {
   patchCrmNotificationsByIdActionMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
 import type { PatchCrmNotificationsByIdActionData } from '@/lib/api/types.gen';
+
+import { withManualNotificationError } from '../_lib/manual-notification-mutation.util';
 
 export type ManualNotificationAction = NonNullable<
   PatchCrmNotificationsByIdActionData['body']
@@ -23,9 +26,11 @@ export const manualNotificationReturnReasonSchema = z
 
 export function useManualNotificationAction() {
   const queryClient = useQueryClient();
+  const mutationOptions = patchCrmNotificationsByIdActionMutation();
 
   return useMutation({
-    ...patchCrmNotificationsByIdActionMutation(),
+    ...mutationOptions,
+    mutationFn: withManualNotificationError(mutationOptions.mutationFn!),
     onSuccess: (data, variables) => {
       const action = variables.body?.action;
       if (!action) return;
@@ -47,7 +52,7 @@ export function useManualNotificationAction() {
           description:
             data.item.timing.type === 'immediate'
               ? '配信を実行します。'
-              : `指定タイミング（${data.item.timing.type === 'scheduled' ? data.item.timing.scheduledAt : '繰り返し'}）での配信予約が確定しました。`,
+              : `指定タイミング（${data.item.timing.type === 'scheduled' ? formatDateYYYYMMDD_HHMM(data.item.timing.scheduledAt, '—') : '繰り返し'}）での配信予約が確定しました。`,
         },
         return: {
           title: '通知を差し戻しました',

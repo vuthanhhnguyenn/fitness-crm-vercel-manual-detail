@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
   CreateMemberRequestSchema,
@@ -12,6 +13,9 @@ import {
   GetMembersResponseSchema,
 } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { hasPermissions } from '@/utils/permission.util';
+
+import { Permission, type UserRole } from '@/types/permission.type';
 
 // Register OpenAPI documentation for this route
 registerRoute({
@@ -32,6 +36,8 @@ registerRoute({
       schema: ErrorResponseSchema,
       description: 'Bad request - invalid query parameters',
     },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthorized' },
+    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
     {
       status: 500,
       schema: ErrorResponseSchema,
@@ -61,6 +67,8 @@ registerRoute({
       schema: ErrorResponseSchema,
       description: 'Bad request - invalid request body',
     },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthorized' },
+    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
     {
       status: 500,
       schema: ErrorResponseSchema,
@@ -71,6 +79,12 @@ registerRoute({
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = getAuthUserFromRequest(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if (!hasPermissions(auth.user.role as UserRole, [Permission.MembersView])) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
 
     // Build query object from searchParams
@@ -103,9 +117,15 @@ export async function GET(request: NextRequest) {
 
     // Get data from shared mock DB
     const allMembers = db.members.getList();
+    const allowedStoreIds = getAllowedStoreIds(auth.user);
 
     // Apply filters
-    let filtered = allMembers;
+    let filtered =
+      allowedStoreIds === null
+        ? allMembers
+        : allMembers.filter(
+            (member) => member.store_id && allowedStoreIds.includes(member.store_id),
+          );
 
     if (search) {
       const searchLower = search.toLowerCase().trim();
@@ -209,6 +229,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = getAuthUserFromRequest(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if (!hasPermissions(auth.user.role as UserRole, [Permission.MembersCreate])) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+
     const body = await request.json();
     const validationResult = CreateMemberRequestSchema.safeParse(body);
     if (!validationResult.success) {

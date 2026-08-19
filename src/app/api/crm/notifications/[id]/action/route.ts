@@ -7,12 +7,21 @@ import {
   ManualNotificationActionSchema,
   ManualNotificationErrorResponseSchema,
   ManualNotificationListItemSchema,
+  ManualNotificationUpsertBodySchema,
 } from '@/app/api/_schemas/manual-notification.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
 import { hasPermissions } from '@/utils/permission.util';
 
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
+
+import { canReadManualNotification } from '../../_lib/manual-notification-access.util';
+import {
+  getManualNotificationTargetStoreIds,
+  manualNotificationTargetToInput,
+  validateManualNotificationTarget,
+  validateManualNotificationTiming,
+} from '../../_lib/manual-notification-upsert.util';
 
 registerRoute({
   method: 'patch',
@@ -56,17 +65,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       { status: 404 },
     );
   }
-  const allowedStoreIds = getAllowedStoreIds(auth.user);
-  const canMutate = hasPermissions(auth.user.role as UserRole, [
-    Permission.ManualNotificationsCreate,
-  ]);
-  if (
-    canMutate &&
-    allowedStoreIds !== null &&
-    (allowedStoreIds.length === 0 ||
-      (row.createdByUserId !== auth.user.id &&
-        !row.targetStoreIds.some((storeId) => allowedStoreIds.includes(storeId))))
-  ) {
+  if (!canReadManualNotification(auth.user, row)) {
     return NextResponse.json(
       {
         code: 'E-AUTH-006',
@@ -122,7 +121,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
   }
   if (action === 'approve' || action === 'return') {
-    if (row.status !== 'pending_approval') {
+    if (!row.requiresApproval || row.status !== 'pending_approval') {
       return NextResponse.json(
         {
           code: 'E-VAL-001',
@@ -156,6 +155,92 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       },
       { status: 400 },
     );
+  }
+
+  if (action === 'resubmit' && (!row.requiresApproval || row.status !== 'returned')) {
+    return NextResponse.json(
+      {
+        code: 'E-VAL-001',
+        message: 'Approval is not required or status is invalid',
+        userMessage: '承認が必要でないか、ステータスが不正です',
+        traceId: crypto.randomUUID(),
+      },
+      { status: 400 },
+    );
+  }
+
+  let targetMetadata: { targetCount: number; targetStoreIds: string[] } | undefined;
+  if (['request_approval', 'send', 'approve', 'resubmit'].includes(action)) {
+    const target = manualNotificationTargetToInput(row.target);
+    const parsedSubmission = ManualNotificationUpsertBodySchema.safeParse({
+      title: row.title,
+      target,
+      channels: row.channels,
+      contents: row.contents,
+      timing: row.timing,
+      intent: 'submit',
+    });
+    if (!parsedSubmission.success) {
+      return NextResponse.json(
+        {
+          code: 'E-VAL-001',
+          message: 'Notification is not ready for delivery',
+          userMessage: '通知内容に未入力または不正な項目があります',
+          traceId: crypto.randomUUID(),
+        },
+        { status: 400 },
+      );
+    }
+
+    const allowedStoreIds = getAllowedStoreIds(auth.user);
+    const targetValidationError = validateManualNotificationTarget(target, allowedStoreIds);
+    if (targetValidationError) {
+      return NextResponse.json(
+        {
+          code: targetValidationError === 'out_of_scope' ? 'E-AUTH-006' : 'E-VAL-001',
+          message:
+            targetValidationError === 'out_of_scope'
+              ? 'Target is outside the caller store scope'
+              : 'One or more notification targets do not exist',
+          userMessage:
+            targetValidationError === 'out_of_scope'
+              ? '所属店舗以外の会員には配信できません'
+              : '配信対象が存在しません',
+          traceId: crypto.randomUUID(),
+        },
+        { status: targetValidationError === 'out_of_scope' ? 403 : 400 },
+      );
+    }
+
+    const timingError = validateManualNotificationTiming(parsedSubmission.data.timing);
+    if (timingError) {
+      return NextResponse.json(
+        {
+          code: 'E-VAL-001',
+          message: timingError,
+          userMessage: timingError,
+          traceId: crypto.randomUUID(),
+        },
+        { status: 400 },
+      );
+    }
+
+    const targetCount = db.manualNotifications.estimateTargetCount(target);
+    if (targetCount === 0) {
+      return NextResponse.json(
+        {
+          code: 'E-VAL-001',
+          message: 'No eligible recipients',
+          userMessage: '配信対象の会員が存在しません',
+          traceId: crypto.randomUUID(),
+        },
+        { status: 400 },
+      );
+    }
+    targetMetadata = {
+      targetCount,
+      targetStoreIds: getManualNotificationTargetStoreIds(target),
+    };
   }
 
   const nextStatus =
@@ -210,18 +295,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       { status: 400 },
     );
   }
-  if (action === 'resubmit' && row.status !== 'returned') {
-    return NextResponse.json(
-      {
-        code: 'E-VAL-001',
-        message: 'Invalid notification status',
-        userMessage: '現在のステータスでは操作できません',
-        traceId: crypto.randomUUID(),
-      },
-      { status: 400 },
-    );
-  }
-  const updated = db.manualNotifications.updateStatus(id, nextStatus);
+  const updated = db.manualNotifications.updateStatus(id, nextStatus, targetMetadata);
   if (!updated) {
     return NextResponse.json(
       {

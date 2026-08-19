@@ -186,6 +186,7 @@ export function ManualNotificationTimingSection() {
                         <Input
                           type="number"
                           min={1}
+                          max={365}
                           {...field}
                           value={field.value ?? ''}
                           onChange={(event) =>

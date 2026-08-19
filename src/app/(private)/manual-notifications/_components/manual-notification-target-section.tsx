@@ -7,6 +7,7 @@ import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { Bell, ChevronsUpDown, Users } from 'lucide-react';
 
 import { useDebounce } from '@/hooks/use-debounce.hook';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll.hook';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -64,7 +65,7 @@ function getTargetPreviewCount(
     case 'brands':
       return targetPreviewCounts.brands;
     case 'stores':
-      return targetPreviewCounts.stores;
+      return targetPreviewCounts.stores * target.stores.length;
     case 'contract_type':
       return targetPreviewCounts.contractType;
     case 'membership_duration':
@@ -134,6 +135,11 @@ function ManualNotificationStoreSelect({
   });
   const stores = query.data?.pages.flatMap((page) => page.stores) ?? [];
   const total = query.data?.pages[0]?.pagination.total ?? stores.length;
+  const handleStoreListScroll = useInfiniteScroll({
+    hasNextPage: Boolean(query.hasNextPage),
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: query.fetchNextPage,
+  });
 
   return (
     <Popover
@@ -172,17 +178,7 @@ function ManualNotificationStoreSelect({
         <p className="text-muted-foreground border-y px-3 py-2 text-xs">
           {value.length}件選択中 / 全{total}件
         </p>
-        <div
-          className="max-h-64 overflow-y-auto p-1"
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            const reachedBottom =
-              element.scrollTop + element.clientHeight >= element.scrollHeight - 5;
-            if (reachedBottom && query.hasNextPage && !query.isFetchingNextPage) {
-              void query.fetchNextPage();
-            }
-          }}
-        >
+        <div className="max-h-64 overflow-y-auto p-1" onScroll={handleStoreListScroll}>
           {query.isLoading ? (
             <p className="text-muted-foreground p-3 text-center text-xs">店舗を読み込み中...</p>
           ) : null}
@@ -501,7 +497,7 @@ export function ManualNotificationTargetSection({
             <Bell className="text-warning size-4" />
             <AlertDescription className="text-muted-foreground text-xs">
               <span className="text-warning font-medium">本部承認が必要です。</span>{' '}
-              全会員・全ブランド向け通知は本部（HQ）の承認後に配信されます。送信すると、CRMシステム内の通知として本部担当者に承認依頼が届きます。店舗限定通知は承認なしで即時配信できます。
+              店舗指定・会員個別指定以外の通知は本部（HQ）の承認後に配信されます。送信すると、CRMシステム内の通知として本部担当者に承認依頼が届きます。
             </AlertDescription>
           </Alert>
         ) : null}

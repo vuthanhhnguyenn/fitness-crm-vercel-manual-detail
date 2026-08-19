@@ -40,6 +40,7 @@ export type ManualNotificationsType = {
   updateStatus(
     id: string,
     status: ManualNotificationRow['status'],
+    targetMetadata?: Pick<ManualNotificationRow, 'targetCount' | 'targetStoreIds'>,
   ): ManualNotificationRow | undefined;
   updateAudit(
     id: string,

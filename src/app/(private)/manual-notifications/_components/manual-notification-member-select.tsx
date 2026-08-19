@@ -6,6 +6,7 @@ import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { Search, X } from 'lucide-react';
 
 import { useDebounce } from '@/hooks/use-debounce.hook';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll.hook';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,7 +37,6 @@ import {
 } from '../_constants/manual-notification.constants';
 import type { ManualNotificationFormValues } from '../_schemas/manual-notification-form.schema';
 
-const CONTRACT_OPTIONS = ['レギュラー会員', 'プレミアム会員', 'ビジター会員', '法人会員'] as const;
 const MEMBER_BRAND_OPTIONS = [
   'joyfit',
   'joyfit24',
@@ -47,7 +47,6 @@ const MEMBER_BRAND_OPTIONS = [
 
 type Member = GetCrmMembersResponse['members'][number];
 type MemberBrand = (typeof MEMBER_BRAND_OPTIONS)[number];
-type ContractName = (typeof CONTRACT_OPTIONS)[number];
 type SelectedMember = Extract<
   ManualNotificationFormValues['target'],
   { type: 'members' }
@@ -75,7 +74,6 @@ export function ManualNotificationMemberSelect({
   const [pending, setPending] = useState(value);
   const [search, setSearch] = useState('');
   const [brand, setBrand] = useState<MemberBrand | 'all'>('all');
-  const [contractType, setContractType] = useState<ContractName | 'all'>('all');
   const debouncedSearch = useDebounce(search, 300);
   const query = useInfiniteQuery({
     ...getCrmMembersInfiniteOptions({
@@ -96,10 +94,12 @@ export function ManualNotificationMemberSelect({
     placeholderData: keepPreviousData,
   });
   const loadedMembers = query.data?.pages.flatMap((page) => page.members) ?? [];
-  const members =
-    contractType !== 'all'
-      ? loadedMembers.filter((member) => member.contract_name === contractType)
-      : loadedMembers;
+  const total = query.data?.pages[0]?.pagination.total ?? loadedMembers.length;
+  const handleMemberListScroll = useInfiniteScroll({
+    hasNextPage: Boolean(query.hasNextPage),
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: query.fetchNextPage,
+  });
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -154,8 +154,8 @@ export function ManualNotificationMemberSelect({
             <DialogTitle>対象会員を選択</DialogTitle>
             <DialogDescription className="sr-only">配信対象の会員を選択します。</DialogDescription>
           </DialogHeader>
-          <div className="grid min-h-0 flex-1 grid-cols-[2fr_1fr] border-t">
-            <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border-r">
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,2fr)_minmax(0,1fr)] border-t sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] sm:grid-rows-1">
+            <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border-b sm:border-r sm:border-b-0">
               <div className="space-y-2 border-b p-3">
                 <div className="relative">
                   <Search className="text-muted-foreground absolute top-2.5 left-2 size-4" />
@@ -192,41 +192,11 @@ export function ManualNotificationMemberSelect({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select
-                    value={contractType}
-                    onValueChange={(nextValue) => {
-                      const value = ['all', ...CONTRACT_OPTIONS].find(
-                        (option) => option === nextValue,
-                      ) as ContractName | 'all' | undefined;
-                      if (value) setContractType(value);
-                    }}
-                  >
-                    <SelectTrigger className="bg-background h-8 w-[125px] text-xs">
-                      <SelectValue>
-                        {contractType === 'all' ? '全契約種別' : contractType}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全契約種別</SelectItem>
-                      {CONTRACT_OPTIONS.map((contract) => (
-                        <SelectItem key={contract} value={contract}>
-                          {contract}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
               <div
                 className="h-full min-h-0 space-y-1 overflow-y-auto p-2"
-                onScroll={(event) => {
-                  const element = event.currentTarget;
-                  const reachedBottom =
-                    element.scrollTop + element.clientHeight >= element.scrollHeight - 5;
-                  if (reachedBottom && query.hasNextPage && !query.isFetchingNextPage) {
-                    void query.fetchNextPage();
-                  }
-                }}
+                onScroll={handleMemberListScroll}
               >
                 {query.isLoading ? (
                   <p className="text-muted-foreground p-4 text-center text-xs">
@@ -238,12 +208,12 @@ export function ManualNotificationMemberSelect({
                     会員の取得に失敗しました
                   </p>
                 ) : null}
-                {!query.isLoading && !query.isError && members.length === 0 ? (
+                {!query.isLoading && !query.isError && loadedMembers.length === 0 ? (
                   <p className="text-muted-foreground p-4 text-center text-xs">
                     会員が見つかりません
                   </p>
                 ) : null}
-                {members.map((member) => (
+                {loadedMembers.map((member) => (
                   <label
                     key={member.id}
                     className="hover:bg-muted flex cursor-pointer items-center gap-3 rounded-md p-2"
@@ -262,7 +232,7 @@ export function ManualNotificationMemberSelect({
                 ))}
               </div>
               <p className="text-muted-foreground border-t px-3 py-2 text-xs">
-                {members.length}件表示中
+                全{total}件中{loadedMembers.length}件表示
               </p>
             </div>
             <div className="flex min-w-0 flex-col">

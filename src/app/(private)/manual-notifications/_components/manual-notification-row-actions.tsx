@@ -46,6 +46,7 @@ interface ManualNotificationRowActionsProps {
 
 export function ManualNotificationRowActions({ row }: ManualNotificationRowActionsProps) {
   const router = useRouter();
+  const displayTitle = row.title || '無題の下書き';
   const [dialog, setDialog] = useState<
     'request-approval' | 'approve' | 'return' | 'resubmit' | 'delete' | null
   >(null);
@@ -98,7 +99,9 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>承認を依頼しますか？</AlertDialogTitle>
-            <AlertDialogDescription>「{row.title}」をHQへ承認依頼します。</AlertDialogDescription>
+            <AlertDialogDescription>
+              「{displayTitle}」をHQへ承認依頼します。
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
@@ -117,7 +120,7 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
           <AlertDialogHeader>
             <AlertDialogTitle>通知を承認しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              「{row.title}」を承認します。承認後、指定タイミングで配信が実行されます。
+              「{displayTitle}」を承認します。承認後、指定タイミングで配信が実行されます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -137,7 +140,7 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
           <AlertDialogHeader>
             <AlertDialogTitle>承認を再申請しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              「{row.title}」を修正済みの内容で再申請します。
+              「{displayTitle}」を修正済みの内容で再申請します。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -157,7 +160,7 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
           <AlertDialogHeader>
             <AlertDialogTitle>通知を差し戻しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              「{row.title}」を差し戻します。差し戻し理由は通知作成者に送信されます。
+              「{displayTitle}」を差し戻します。差し戻し理由は通知作成者に送信されます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">
@@ -204,7 +207,7 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
           <AlertDialogHeader>
             <AlertDialogTitle>通知を削除しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              「{row.title}」を削除します。この操作は元に戻せません。
+              「{displayTitle}」を削除します。この操作は元に戻せません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

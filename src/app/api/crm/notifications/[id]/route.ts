@@ -15,9 +15,10 @@ import { hasPermissions } from '@/utils/permission.util';
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
 
+import { canReadManualNotification } from '../_lib/manual-notification-access.util';
 import {
   buildManualNotificationRow,
-  isManualNotificationTargetOutOfScope,
+  validateManualNotificationTarget,
   validateManualNotificationTiming,
 } from '../_lib/manual-notification-upsert.util';
 
@@ -81,20 +82,6 @@ registerRoute({
   ],
 });
 
-function canReadNotification(
-  user: Parameters<typeof getAllowedStoreIds>[0],
-  row: { createdByUserId: string; targetStoreIds: string[] },
-) {
-  if (!hasPermissions(user.role as UserRole, [Permission.ManualNotificationsView])) return false;
-  const allowedStoreIds = getAllowedStoreIds(user);
-  const canMutate = hasPermissions(user.role as UserRole, [Permission.ManualNotificationsCreate]);
-  if (!canMutate || allowedStoreIds === null) return true;
-  if (allowedStoreIds.length === 0) return row.createdByUserId === user.id;
-  return (
-    row.createdByUserId === user.id || row.targetStoreIds.some((id) => allowedStoreIds.includes(id))
-  );
-}
-
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = getAuthUserFromRequest(request);
   if (!auth.ok) {
@@ -122,7 +109,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       { status: 404 },
     );
   }
-  if (!canReadNotification(auth.user, row)) {
+  if (!canReadManualNotification(auth.user, row)) {
     return NextResponse.json(
       {
         code: 'E-AUTH-006',
@@ -161,7 +148,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!['draft', 'returned', 'pending_approval'].includes(existing.status)) {
     return errorResponse(400, 'このステータスの通知は編集できません');
   }
-  if (!canReadNotification(auth.user, existing)) {
+  if (!canReadManualNotification(auth.user, existing)) {
     return errorResponse(403, 'この通知を編集する権限がありません');
   }
 
@@ -173,7 +160,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
   const body = parsed.data;
   const allowedStoreIds = getAllowedStoreIds(auth.user);
-  if (isManualNotificationTargetOutOfScope(body.target, allowedStoreIds)) {
+  const targetValidationError = validateManualNotificationTarget(body.target, allowedStoreIds);
+  if (targetValidationError === 'not_found') {
+    return errorResponse(400, '配信対象が存在しません');
+  }
+  if (targetValidationError === 'out_of_scope') {
     return errorResponse(403, '所属店舗以外の会員には配信できません');
   }
   const timingError =

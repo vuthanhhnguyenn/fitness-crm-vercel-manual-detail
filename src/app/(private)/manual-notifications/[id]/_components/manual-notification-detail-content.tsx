@@ -34,6 +34,28 @@ type Channel = Detail['channels'][number];
 
 const CHANNEL_ICONS = { sms: MessageSquare, push: Bell, email: Mail, in_app: Smartphone } as const;
 
+function emailHtmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li(?:\s[^>]*)?>/gi, '・')
+    .replace(/<\/(?:p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function channelBody(item: Detail, channel: Channel): string {
+  const body = item.contents[channel]?.body ?? '';
+  const displayBody = channel === 'email' ? emailHtmlToPlainText(body) : body;
+  return displayBody || '本文未設定';
+}
+
 export function timingName(timing: Detail['timing']) {
   if (timing.type === 'immediate') return '即時';
   if (timing.type === 'scheduled') return '予約';
@@ -45,9 +67,12 @@ function formatTarget(target: Detail['target']) {
     case 'all_members':
       return '全会員対象';
     case 'brands':
-      return target.brands.map((brand) => MANUAL_NOTIFICATION_BRAND_LABELS[brand]).join(' · ');
+      return (
+        target.brands.map((brand) => MANUAL_NOTIFICATION_BRAND_LABELS[brand]).join(' · ') ||
+        '配信対象未設定'
+      );
     case 'stores':
-      return target.stores.map((store) => store.name).join(' · ');
+      return target.stores.map((store) => store.name).join(' · ') || '配信対象未設定';
     case 'contract_type':
       return MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[target.contractType];
     case 'membership_duration':
@@ -57,7 +82,7 @@ function formatTarget(target: Detail['target']) {
     case 'dynamic_attribute':
       return getManualNotificationDynamicAttributeLabel(target.attribute);
     case 'members':
-      return `${target.members.length}名を指定`;
+      return target.members.length > 0 ? `${target.members.length}名を指定` : '配信対象未設定';
   }
 }
 
@@ -107,31 +132,37 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
             </CardHeader>
             <CardContent className="px-4">
               <p className="text-muted-foreground mb-2 text-xs">管理タイトル</p>
-              <p className="text-sm font-medium">{item.title}</p>
+              <p className="text-sm font-medium">{item.title || '無題の下書き'}</p>
               <Separator className="my-4" />
               <p className="text-muted-foreground mb-2 text-xs">
                 本文（メッセージ）<span className="ml-1">— チャネルごとに文言を確認できます</span>
               </p>
-              <Tabs defaultValue={item.channels[0]}>
-                <TabsList className="h-auto max-w-full flex-wrap justify-start">
-                  {item.channels.map((channel) => {
-                    const Icon = CHANNEL_ICONS[channel];
-                    return (
-                      <TabsTrigger key={channel} value={channel} className="gap-1 text-xs">
-                        <Icon className="size-3" />
-                        {MANUAL_NOTIFICATION_CHANNEL_LABELS[channel]}
-                      </TabsTrigger>
-                    );
-                  })}
-                </TabsList>
-                {item.channels.map((channel) => (
-                  <TabsContent key={channel} value={channel}>
-                    <div className="bg-muted/50 rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line">
-                      {item.contents[channel]?.body ?? '本文未設定'}
-                    </div>
-                  </TabsContent>
-                ))}
-              </Tabs>
+              {item.channels.length > 0 ? (
+                <Tabs defaultValue={item.channels[0]}>
+                  <TabsList className="h-auto max-w-full flex-wrap justify-start">
+                    {item.channels.map((channel) => {
+                      const Icon = CHANNEL_ICONS[channel];
+                      return (
+                        <TabsTrigger key={channel} value={channel} className="gap-1 text-xs">
+                          <Icon className="size-3" />
+                          {MANUAL_NOTIFICATION_CHANNEL_LABELS[channel]}
+                        </TabsTrigger>
+                      );
+                    })}
+                  </TabsList>
+                  {item.channels.map((channel) => (
+                    <TabsContent key={channel} value={channel}>
+                      <div className="bg-muted/50 rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line">
+                        {channelBody(item, channel)}
+                      </div>
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              ) : (
+                <p className="text-muted-foreground bg-muted/50 rounded-lg p-4 text-sm">
+                  配信チャネル未設定
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -198,7 +229,9 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                       <span className="font-medium">
                         {item.timing.maxOccurrences
                           ? `${item.timing.maxOccurrences}回で終了`
-                          : `${formatDateYYYYMMDD_HHMM(item.timing.endAt, '—')}まで`}
+                          : item.timing.endAt
+                            ? `${formatDateYYYYMMDD_HHMM(item.timing.endAt, '—')}まで`
+                            : '終了日なし'}
                       </span>
                     </div>
                   </div>

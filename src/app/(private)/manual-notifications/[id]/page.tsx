@@ -88,6 +88,7 @@ export default function ManualNotificationDetailPage() {
   }
 
   const item = query.data.item;
+  const displayTitle = item.title || '無題の下書き';
   const approvalTiming =
     item.timing.type === 'scheduled'
       ? `予約: ${formatDateYYYYMMDD_HHMM(item.timing.scheduledAt, '—')}`
@@ -120,7 +121,7 @@ export default function ManualNotificationDetailPage() {
         breadcrumb={
           <BackLink label="手動配信通知に戻る" href={navigate('/manual-notifications')} />
         }
-        title={item.title}
+        title={displayTitle}
         badge={
           <>
             <Badge
@@ -252,7 +253,7 @@ export default function ManualNotificationDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>通知を削除しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              「{item.title}」を削除します。この操作は元に戻せません。
+              「{displayTitle}」を削除します。この操作は元に戻せません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
