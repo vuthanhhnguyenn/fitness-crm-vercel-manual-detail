@@ -63,11 +63,20 @@ function getTargetPreviewCount(
     case 'all_members':
       return targetPreviewCounts.allMembers;
     case 'brands':
-      return targetPreviewCounts.brands;
+      return target.brands.reduce(
+        (sum, b) =>
+          sum +
+          (targetPreviewCounts.brands[b as keyof typeof targetPreviewCounts.brands] ?? 0),
+        0,
+      );
     case 'stores':
       return targetPreviewCounts.stores * target.stores.length;
     case 'contract_type':
-      return targetPreviewCounts.contractType;
+      return (
+        targetPreviewCounts.contractType[
+          target.contractType as keyof typeof targetPreviewCounts.contractType
+        ] ?? 0
+      );
     case 'membership_duration':
       return targetPreviewCounts.membershipDuration;
     case 'dynamic_attribute':
@@ -356,7 +365,12 @@ export function ManualNotificationTargetSection({
                       max={60}
                       className="bg-background w-24"
                       {...field}
-                      onChange={(event) => field.onChange(event.target.valueAsNumber)}
+                      value={field.value ?? ''}
+                      onChange={(event) =>
+                        field.onChange(
+                          event.target.value === '' ? undefined : event.target.valueAsNumber,
+                        )
+                      }
                     />
                   </FormControl>
                   <FormMessage />

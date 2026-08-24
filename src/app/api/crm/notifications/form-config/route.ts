@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
-import {
-  BRAND_MULTIPLIERS,
-  CONTRACT_TYPE_MULTIPLIERS,
-  MANUAL_NOTIFICATION_FORM_CONFIG_SEED,
-} from '@/app/api/_mock-db/seeds/manual-notification.seed';
+import { MANUAL_NOTIFICATION_FORM_CONFIG_SEED } from '@/app/api/_mock-db/seeds/manual-notification.seed';
 import {
   GetManualNotificationFormConfigResponseSchema,
   ManualNotificationErrorResponseSchema,
@@ -60,28 +56,8 @@ export async function GET(request: NextRequest) {
     return errorResponse(403, 'A store scope is required to access the notification form');
   }
 
-  const searchParams = request.nextUrl.searchParams;
-  const brandParam = searchParams.get('brand');
-  const contractTypeParam = searchParams.get('contractType');
-  const months = Number(searchParams.get('months')) || 3;
-  const condition = searchParams.get('condition') || 'within';
-
-  const base = MANUAL_NOTIFICATION_FORM_CONFIG_SEED.targetPreviewCounts;
-
-  const targetPreviewCounts = {
-    ...base,
-    brands: Math.round(base.brands * (BRAND_MULTIPLIERS[brandParam ?? ''] ?? 1)),
-    contractType: Math.round(
-      base.contractType * (CONTRACT_TYPE_MULTIPLIERS[contractTypeParam ?? ''] ?? 1),
-    ),
-    membershipDuration: Math.round(
-      base.membershipDuration *
-        (condition === 'within' ? Math.min(months / 12, 1) : Math.max(1 - months / 60, 0.1)),
-    ),
-  };
-
   return NextResponse.json({
     templates: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.templates,
-    targetPreviewCounts,
+    targetPreviewCounts: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.targetPreviewCounts,
   });
 }

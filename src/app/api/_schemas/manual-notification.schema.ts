@@ -111,9 +111,21 @@ export const ManualNotificationTargetInputSchema = z.discriminatedUnion('type', 
 
 const ManualNotificationTargetPreviewCountsSchema = z.object({
   allMembers: z.number().int().nonnegative(),
-  brands: z.number().int().nonnegative(),
+  brands: z.object({
+    joyfit_all: z.number().int().nonnegative(),
+    joyfit: z.number().int().nonnegative(),
+    joyfit24: z.number().int().nonnegative(),
+    joyfit_yoga: z.number().int().nonnegative(),
+    joyfit_plus: z.number().int().nonnegative(),
+    fit365: z.number().int().nonnegative(),
+  }),
   stores: z.number().int().nonnegative(),
-  contractType: z.number().int().nonnegative(),
+  contractType: z.object({
+    regular: z.number().int().nonnegative(),
+    premium: z.number().int().nonnegative(),
+    visitor: z.number().int().nonnegative(),
+    corporate: z.number().int().nonnegative(),
+  }),
   membershipDuration: z.number().int().nonnegative(),
   dynamicAttributes: z.object({
     unpaid: z.number().int().nonnegative(),

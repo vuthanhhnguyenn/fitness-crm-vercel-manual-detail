@@ -38,9 +38,21 @@ export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
   ],
   targetPreviewCounts: {
     allMembers: 42_580,
-    brands: 8_420,
+    brands: {
+      joyfit_all: 8_420,
+      joyfit: 3_789,
+      joyfit24: 2_947,
+      joyfit_yoga: 674,
+      joyfit_plus: 421,
+      fit365: 3_368,
+    },
     stores: 1_240,
-    contractType: 5_640,
+    contractType: {
+      regular: 5_640,
+      premium: 1_692,
+      visitor: 564,
+      corporate: 846,
+    },
     membershipDuration: 3_180,
     dynamicAttributes: {
       unpaid: 128,
@@ -52,22 +64,6 @@ export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
   },
 } as const;
 
-export const BRAND_MULTIPLIERS: Record<string, number> = {
-  joyfit_all: 1,
-  joyfit: 0.45,
-  joyfit24: 0.35,
-  joyfit_yoga: 0.08,
-  joyfit_plus: 0.05,
-  fit365: 0.4,
-};
-
-export const CONTRACT_TYPE_MULTIPLIERS: Record<string, number> = {
-  regular: 1,
-  premium: 0.3,
-  visitor: 0.1,
-  corporate: 0.15,
-};
-
 export function getManualNotificationTargetPreviewCount(
   target: ManualNotificationTargetInput,
 ): number {
@@ -76,16 +72,12 @@ export function getManualNotificationTargetPreviewCount(
   switch (target.type) {
     case 'all_members':
       return targetPreviewCounts.allMembers;
-    case 'brands': {
-      const multiplier = target.brands.reduce((sum, b) => sum + (BRAND_MULTIPLIERS[b] ?? 0.3), 0);
-      return Math.round(targetPreviewCounts.brands * Math.min(multiplier, 1));
-    }
+    case 'brands':
+      return target.brands.reduce((sum, b) => sum + (targetPreviewCounts.brands[b] ?? 0), 0);
     case 'stores':
       return targetPreviewCounts.stores * new Set(target.storeIds).size;
     case 'contract_type':
-      return Math.round(
-        targetPreviewCounts.contractType * (CONTRACT_TYPE_MULTIPLIERS[target.contractType] ?? 1),
-      );
+      return targetPreviewCounts.contractType[target.contractType] ?? 0;
     case 'membership_duration': {
       const factor =
         target.condition === 'within'

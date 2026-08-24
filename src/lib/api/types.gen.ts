@@ -44219,9 +44219,21 @@ export type GetCrmNotificationsFormConfigResponses = {
         }>;
         targetPreviewCounts: {
             allMembers: number;
-            brands: number;
+            brands: {
+                joyfit_all: number;
+                joyfit: number;
+                joyfit24: number;
+                joyfit_yoga: number;
+                joyfit_plus: number;
+                fit365: number;
+            };
             stores: number;
-            contractType: number;
+            contractType: {
+                regular: number;
+                premium: number;
+                visitor: number;
+                corporate: number;
+            };
             membershipDuration: number;
             dynamicAttributes: {
                 unpaid: number;
