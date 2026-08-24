@@ -15,7 +15,10 @@ import { hasPermissions } from '@/utils/permission.util';
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
 
-import { canReadManualNotification } from '../_lib/manual-notification-access.util';
+import {
+  canReadManualNotification,
+  canWriteManualNotification,
+} from '../_lib/manual-notification-access.util';
 import {
   buildManualNotificationRow,
   validateManualNotificationTarget,
@@ -145,13 +148,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!existing || existing.deletedAt !== null) {
     return errorResponse(404, '通知が見つかりません');
   }
+  if (!canWriteManualNotification(auth.user, existing)) {
+    return errorResponse(403, 'この通知を編集する権限がありません');
+  }
   if (!['draft', 'returned', 'pending_approval'].includes(existing.status)) {
     return errorResponse(400, 'このステータスの通知は編集できません');
   }
-  if (!canReadManualNotification(auth.user, existing)) {
-    return errorResponse(403, 'この通知を編集する権限がありません');
-  }
-
   const parsed = ManualNotificationUpsertBodySchema.safeParse(
     await request.json().catch(() => null),
   );

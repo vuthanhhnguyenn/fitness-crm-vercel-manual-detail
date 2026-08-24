@@ -242,6 +242,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: errors }, { status: 400 });
     }
 
+    // Check if the user is authorized to create members for the specified store
+    const allowedStoreIds = getAllowedStoreIds(auth.user);
+    const requestedStoreId = validationResult.data.profile_info?.join_store;
+
+    if (allowedStoreIds !== null && requestedStoreId) {
+      if (!allowedStoreIds.includes(requestedStoreId)) {
+        return NextResponse.json(
+          { error: 'Forbidden: Cannot create member for a store outside your scope' },
+          { status: 403 },
+        );
+      }
+    }
+
     const member = db.members.create(validationResult.data);
 
     const response: CreateMemberResponse = {

@@ -1,7 +1,6 @@
+import { isSafeManualNotificationLinkUrl } from '@/utils/url.util';
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
-
-import { isSafeManualNotificationLinkUrl } from '@/lib/manual-notifications/manual-notification-link.util';
 
 extendZodWithOpenApi(z);
 
@@ -260,6 +259,14 @@ export const ManualNotificationUpsertBodySchema = z
     intent: ManualNotificationUpsertIntentSchema.default('save'),
   })
   .superRefine((value, context) => {
+    if (new Set(value.channels).size !== value.channels.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Duplicate channels are not allowed',
+        path: ['channels'],
+      });
+    }
+
     for (const channel of value.channels) {
       const heading =
         channel === 'push'
@@ -269,7 +276,7 @@ export const ManualNotificationUpsertBodySchema = z
             : channel === 'email'
               ? value.contents.email?.subject
               : undefined;
-      if (heading && heading.length > 255) {
+      if (heading && heading.trim().length > 255) {
         context.addIssue({
           code: 'custom',
           message: `Title must not exceed 255 characters for ${channel}`,
@@ -345,6 +352,14 @@ export const ManualNotificationUpsertBodySchema = z
             code: 'custom',
             message: 'Recurring timing must use either endAt or maxOccurrences, not both',
             path: ['timing', 'maxOccurrences'],
+          });
+        }
+        //One of the two values ​​is required.
+        if (value.timing.endAt === undefined && value.timing.maxOccurrences === undefined) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Recurring timing must specify either endAt or maxOccurrences',
+            path: ['timing'],
           });
         }
       }
@@ -454,7 +469,14 @@ export const ManualNotificationActionSchema = z.object({
 export const ManualNotificationActionResponseSchema = z.object({
   item: ManualNotificationListItemSchema,
 });
-
+export const PreviewTargetCountResponseSchema = z
+  .object({
+    count: z.number().int().nonnegative(),
+  })
+  .openapi({
+    title: 'PreviewTargetCountResponse',
+    description: 'Estimated target count based on target conditions',
+  });
 export type ManualNotificationChannel = z.infer<typeof ManualNotificationChannelSchema>;
 export type ManualNotificationTarget = z.infer<typeof ManualNotificationTargetSchema>;
 export type ManualNotificationTargetInput = z.infer<typeof ManualNotificationTargetInputSchema>;

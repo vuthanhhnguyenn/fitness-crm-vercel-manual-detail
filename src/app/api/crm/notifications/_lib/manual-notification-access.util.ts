@@ -23,3 +23,12 @@ export function canReadManualNotification(
     notification.targetStoreIds.some((storeId) => allowedStoreIds.includes(storeId))
   );
 }
+
+export function canWriteManualNotification(
+  user: AuthenticatedUser,
+  notification: ManualNotificationReadScope,
+): boolean {
+  if (!canReadManualNotification(user, notification)) return false;
+  if (user.role === 'Headquarter' || user.role === 'System') return true;
+  return notification.createdByUserId === user.id;
+}

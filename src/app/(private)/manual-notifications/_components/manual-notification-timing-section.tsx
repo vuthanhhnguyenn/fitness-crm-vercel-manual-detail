@@ -50,7 +50,7 @@ function createTiming(type: TimingType): ManualNotificationFormValues['timing'] 
     startAt,
     endDate: undefined,
     maxOccurrences: undefined,
-    endMode: 'none',
+    endMode: 'count',
   };
 }
 
@@ -247,10 +247,6 @@ export function ManualNotificationTimingSection() {
                       onValueChange={field.onChange}
                       className="flex flex-wrap gap-4"
                     >
-                      <label className="flex items-center gap-2 text-sm">
-                        <RadioGroupItem value="none" />
-                        終了日なし
-                      </label>
                       <label className="flex items-center gap-2 text-sm">
                         <RadioGroupItem value="date" />
                         指定日に終了

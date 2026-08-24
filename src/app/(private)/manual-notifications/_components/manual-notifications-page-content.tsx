@@ -55,7 +55,13 @@ export function ManualNotificationsPageContent() {
       return;
     }
 
-    if (nextSort.id !== 'id' && nextSort.id !== 'title' && nextSort.id !== 'status') return;
+    if (
+      nextSort.id !== 'id' &&
+      nextSort.id !== 'title' &&
+      nextSort.id !== 'status' &&
+      nextSort.id !== 'updatedAt'
+    )
+      return;
 
     void filtersHook.setFilters({
       sort: nextSort.id,

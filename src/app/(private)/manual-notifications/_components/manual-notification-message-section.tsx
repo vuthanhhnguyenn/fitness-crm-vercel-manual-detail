@@ -72,13 +72,20 @@ export function ManualNotificationMessageSection({
     setSelectedTemplateId(template.id);
     const { body } = template;
     const currentContents = form.getValues('contents');
+    const enabledChannels = form.getValues('channels');
     form.setValue(
       'contents',
       {
-        sms: { body },
-        push: { ...currentContents.push, body },
-        email: { ...currentContents.email, body },
-        in_app: { ...currentContents.in_app, body },
+        sms: enabledChannels.includes('sms') ? { body } : currentContents.sms,
+        push: enabledChannels.includes('push')
+          ? { ...currentContents.push, body }
+          : currentContents.push,
+        email: enabledChannels.includes('email')
+          ? { ...currentContents.email, body }
+          : currentContents.email,
+        in_app: enabledChannels.includes('in_app')
+          ? { ...currentContents.in_app, body }
+          : currentContents.in_app,
       },
       { shouldDirty: true, shouldValidate: true },
     );
@@ -221,8 +228,11 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
                 {bodyLabel} <span className="text-destructive">*</span>
               </FormLabel>
               {channel === 'sms' ? (
-                <Badge variant="outline" className="text-xs">
-                  {field.value.length}/70文字目安
+                <Badge
+                  variant={[...(field.value ?? '')].length > 70 ? 'destructive' : 'outline'}
+                  className="text-xs tabular-nums"
+                >
+                  {[...(field.value ?? '')].length}/70文字目安
                 </Badge>
               ) : null}
             </div>

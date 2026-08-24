@@ -15,7 +15,10 @@ import { hasPermissions } from '@/utils/permission.util';
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
 
-import { canReadManualNotification } from '../../_lib/manual-notification-access.util';
+import {
+  canReadManualNotification,
+  canWriteManualNotification,
+} from '../../_lib/manual-notification-access.util';
 import {
   getManualNotificationTargetStoreIds,
   manualNotificationTargetToInput,
@@ -104,6 +107,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         code: 'E-AUTH-006',
         message: 'Insufficient permissions',
         userMessage: 'この操作を実行する権限がありません',
+        traceId: crypto.randomUUID(),
+      },
+      { status: 403 },
+    );
+  }
+  const writeActions = ['request_approval', 'send', 'resubmit', 'delete'];
+  if (writeActions.includes(action) && !canWriteManualNotification(auth.user, row)) {
+    return NextResponse.json(
+      {
+        code: 'E-AUTH-006',
+        message: 'Only the creator or headquarters can perform this action',
+        userMessage: 'この通知を操作する権限がありません',
         traceId: crypto.randomUUID(),
       },
       { status: 403 },
@@ -279,17 +294,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         code: 'E-VAL-001',
         message: 'Invalid action',
         userMessage: '不正な操作です',
-        traceId: crypto.randomUUID(),
-      },
-      { status: 400 },
-    );
-  }
-  if (action === 'request_approval' && row.status !== 'draft') {
-    return NextResponse.json(
-      {
-        code: 'E-VAL-001',
-        message: 'Invalid notification status',
-        userMessage: '現在のステータスでは操作できません',
         traceId: crypto.randomUUID(),
       },
       { status: 400 },

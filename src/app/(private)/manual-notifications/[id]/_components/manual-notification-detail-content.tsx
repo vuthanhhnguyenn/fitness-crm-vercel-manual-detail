@@ -24,6 +24,7 @@ import {
   MANUAL_NOTIFICATION_CHANNEL_LABELS,
   MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS,
   MANUAL_NOTIFICATION_FREQUENCY_LABELS,
+  MANUAL_NOTIFICATION_INTERVAL_UNIT_LABELS,
   MANUAL_NOTIFICATION_STATUS_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
   getManualNotificationDynamicAttributeLabel,
@@ -150,13 +151,38 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                       );
                     })}
                   </TabsList>
-                  {item.channels.map((channel) => (
-                    <TabsContent key={channel} value={channel}>
-                      <div className="bg-muted/50 rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line">
-                        {channelBody(item, channel)}
-                      </div>
-                    </TabsContent>
-                  ))}
+                  {item.channels.map((channel) => {
+                    const heading =
+                      channel === 'push'
+                        ? item.contents.push?.title
+                        : channel === 'email'
+                          ? item.contents.email?.subject
+                          : channel === 'in_app'
+                            ? item.contents.in_app?.title
+                            : undefined;
+                    const linkUrl =
+                      channel === 'in_app' ? item.contents.in_app?.linkUrl : undefined;
+                    return (
+                      <TabsContent key={channel} value={channel}>
+                        {heading ? (
+                          <div className="mb-2">
+                            <p className="text-muted-foreground text-[10px]">
+                              {channel === 'email' ? '件名' : 'タイトル'}
+                            </p>
+                            <p className="text-sm font-medium">{heading}</p>
+                          </div>
+                        ) : null}
+                        <div className="bg-muted/50 rounded-lg p-4 text-sm leading-relaxed whitespace-pre-line">
+                          {channelBody(item, channel)}
+                        </div>
+                        {linkUrl ? (
+                          <p className="text-muted-foreground mt-2 truncate text-xs">
+                            リンク: {linkUrl}
+                          </p>
+                        ) : null}
+                      </TabsContent>
+                    );
+                  })}
                 </Tabs>
               ) : (
                 <p className="text-muted-foreground bg-muted/50 rounded-lg p-4 text-sm">
@@ -220,7 +246,11 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">配信間隔</span>
                       <span className="font-medium">
-                        {MANUAL_NOTIFICATION_FREQUENCY_LABELS[item.timing.frequency]}
+                        {item.timing.frequency === 'custom' &&
+                        item.timing.intervalValue &&
+                        item.timing.intervalUnit
+                          ? `カスタム（${item.timing.intervalValue}${MANUAL_NOTIFICATION_INTERVAL_UNIT_LABELS[item.timing.intervalUnit]}ごと）`
+                          : MANUAL_NOTIFICATION_FREQUENCY_LABELS[item.timing.frequency]}
                       </span>
                     </div>
                     <Separator />
@@ -234,6 +264,20 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                             : '終了日なし'}
                       </span>
                     </div>
+                    {'completedOccurrences' in item.timing &&
+                      typeof item.timing.completedOccurrences === 'number' &&
+                      item.timing.maxOccurrences && (
+                        <>
+                          <Separator />
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">配信状況</span>
+                            <span className="font-medium tabular-nums">
+                              {item.timing.completedOccurrences} / {item.timing.maxOccurrences}{' '}
+                              回配信済み
+                            </span>
+                          </div>
+                        </>
+                      )}
                   </div>
                 )}
               </div>
@@ -325,38 +369,82 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                   <CardTitle className="text-base">配信実績</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 px-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      ['配信数', item.deliveryResult.deliveredCount],
-                      ['到達数', item.deliveryResult.reachedCount],
-                      ['開封数', item.deliveryResult.openedCount],
-                    ].map(
-                      ([label, value]) =>
+                  <div className="grid grid-cols-2 gap-3 border-b pb-4">
+                    {(
+                      [
+                        ['配信数', item.deliveryResult.deliveredCount, '件'],
+                        ['到達数', item.deliveryResult.reachedCount, '件'],
+                        [
+                          '到達率',
+                          item.deliveryResult.reachedCount != null &&
+                          item.deliveryResult.deliveredCount > 0
+                            ? (
+                                (item.deliveryResult.reachedCount /
+                                  item.deliveryResult.deliveredCount) *
+                                100
+                              ).toFixed(1)
+                            : undefined,
+                          '%',
+                        ],
+                        ['開封数', item.deliveryResult.openedCount, '件'],
+                        [
+                          '開封率',
+                          item.deliveryResult.openedCount != null &&
+                          item.deliveryResult.deliveredCount > 0
+                            ? (
+                                (item.deliveryResult.openedCount /
+                                  item.deliveryResult.deliveredCount) *
+                                100
+                              ).toFixed(1)
+                            : undefined,
+                          '%',
+                        ],
+                      ] as const
+                    ).map(
+                      ([label, value, unit]) =>
                         value !== undefined && (
-                          <div key={label as string}>
+                          <div key={label}>
                             <p className="text-muted-foreground text-[10px]">{label}</p>
                             <p className="text-xl font-semibold tabular-nums">
-                              {(value as number).toLocaleString('ja-JP')}
+                              {typeof value === 'number' ? value.toLocaleString('ja-JP') : value}
                               <span className="text-muted-foreground ml-1 text-sm font-normal">
-                                件
+                                {unit}
                               </span>
                             </p>
                           </div>
                         ),
                     )}
                   </div>
-                  {item.deliveryResult.channelResults?.map((result) => (
-                    <div key={result.channel} className="border-t pt-3">
-                      <p className="mb-2 text-xs font-medium">
-                        {MANUAL_NOTIFICATION_CHANNEL_LABELS[result.channel]}
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <span>配信 {result.deliveredCount.toLocaleString('ja-JP')}</span>
-                        <span>到達 {result.reachedCount?.toLocaleString('ja-JP') ?? '—'}</span>
-                        <span>開封 {result.openedCount?.toLocaleString('ja-JP') ?? '—'}</span>
+                  {item.deliveryResult.channelResults?.map((result) => {
+                    const Icon = CHANNEL_ICONS[result.channel];
+                    return (
+                      <div key={result.channel} className="border-t pt-3">
+                        <div className="mb-2 flex items-center gap-2">
+                          <Icon className="text-muted-foreground size-4" />
+                          <span className="text-xs font-medium">
+                            {MANUAL_NOTIFICATION_CHANNEL_LABELS[result.channel]}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <span>配信 {result.deliveredCount.toLocaleString('ja-JP')}</span>
+                          <span>到達 {result.reachedCount?.toLocaleString('ja-JP') ?? '—'}</span>
+                          <span>
+                            到達率{' '}
+                            {result.reachedCount != null && result.deliveredCount > 0
+                              ? `${((result.reachedCount / result.deliveredCount) * 100).toFixed(1)}%`
+                              : '—'}
+                          </span>
+                          <span>開封 {result.openedCount?.toLocaleString('ja-JP') ?? '—'}</span>
+                          <span>
+                            開封率{' '}
+                            {result.openedCount != null && result.deliveredCount > 0
+                              ? `${((result.openedCount / result.deliveredCount) * 100).toFixed(1)}%`
+                              : '—'}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}

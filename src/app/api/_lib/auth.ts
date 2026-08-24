@@ -53,8 +53,8 @@ export function getAuthUserFromRequest(request: NextRequest): AuthResult {
  */
 export function getAllowedStoreIds(user: AuthenticatedUser): string[] | null {
   const role = user.role;
-
-  if (role === 'System' || role === 'Headquarter' || role === 'Manager') {
+  //Added role 'Observer' to the unrestricted scope based on SPEC FR-008
+  if (role === 'System' || role === 'Headquarter' || role === 'Manager' || role === 'Observer') {
     return null; // unrestricted
   }
 

@@ -52,6 +52,22 @@ export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
   },
 } as const;
 
+export const BRAND_MULTIPLIERS: Record<string, number> = {
+  joyfit_all: 1,
+  joyfit: 0.45,
+  joyfit24: 0.35,
+  joyfit_yoga: 0.08,
+  joyfit_plus: 0.05,
+  fit365: 0.4,
+};
+
+export const CONTRACT_TYPE_MULTIPLIERS: Record<string, number> = {
+  regular: 1,
+  premium: 0.3,
+  visitor: 0.1,
+  corporate: 0.15,
+};
+
 export function getManualNotificationTargetPreviewCount(
   target: ManualNotificationTargetInput,
 ): number {
@@ -60,14 +76,23 @@ export function getManualNotificationTargetPreviewCount(
   switch (target.type) {
     case 'all_members':
       return targetPreviewCounts.allMembers;
-    case 'brands':
-      return targetPreviewCounts.brands;
+    case 'brands': {
+      const multiplier = target.brands.reduce((sum, b) => sum + (BRAND_MULTIPLIERS[b] ?? 0.3), 0);
+      return Math.round(targetPreviewCounts.brands * Math.min(multiplier, 1));
+    }
     case 'stores':
       return targetPreviewCounts.stores * new Set(target.storeIds).size;
     case 'contract_type':
-      return targetPreviewCounts.contractType;
-    case 'membership_duration':
-      return targetPreviewCounts.membershipDuration;
+      return Math.round(
+        targetPreviewCounts.contractType * (CONTRACT_TYPE_MULTIPLIERS[target.contractType] ?? 1),
+      );
+    case 'membership_duration': {
+      const factor =
+        target.condition === 'within'
+          ? Math.min(target.months / 12, 1)
+          : Math.max(1 - target.months / 60, 0.1);
+      return Math.round(targetPreviewCounts.membershipDuration * factor);
+    }
     case 'dynamic_attribute':
       return targetPreviewCounts.dynamicAttributes[target.attribute];
     case 'members':
@@ -158,7 +183,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     title: 'メンテナンス通知（JOYFIT24）',
     target: { type: 'brands', brands: ['joyfit24'] },
     channels: ['push', 'in_app'],
-    timing: { type: 'scheduled', scheduledAt: '2026-05-20T08:00:00+09:00' },
+    timing: { type: 'scheduled', scheduledAt: '2026-09-20T08:00:00+09:00' },
     targetCount: 8420,
     status: 'scheduled',
     requiresApproval: true,
@@ -174,7 +199,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     title: '新店舗オープンのお知らせ',
     target: {
       type: 'stores',
-      stores: [{ id: 'store-joyfit-shinjuku', name: 'JOYFIT新宿店' }],
+      stores: [{ id: 'store-004', name: 'JOYFIT池袋店' }],
     },
     channels: ['push', 'in_app'],
     timing: { type: 'immediate' },
@@ -187,9 +212,10 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
       reachedCount: 940,
       channelResults: [
         { channel: 'push', deliveredCount: 960, reachedCount: 940, openedCount: 620 },
+        { channel: 'in_app', deliveredCount: 960, reachedCount: 920, openedCount: 580 },
       ],
     },
-    targetStoreIds: ['store-joyfit-shinjuku'],
+    targetStoreIds: ['store-004'],
     createdAt: '2026-06-05T09:00:00+09:00',
     updatedAt: '2026-07-31T09:00:00+09:00',
     deletedAt: null,
@@ -225,7 +251,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
       contractType: 'premium',
     },
     channels: ['email', 'in_app'],
-    timing: { type: 'scheduled', scheduledAt: '2026-06-15T12:00:00+09:00' },
+    timing: { type: 'scheduled', scheduledAt: '2026-09-15T12:00:00+09:00' },
     targetCount: 5640,
     status: 'draft',
     requiresApproval: true,
@@ -240,7 +266,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     target: { type: 'brands', brands: ['joyfit', 'fit365'] },
     channels: ['sms', 'push', 'email', 'in_app'],
     timing: { type: 'scheduled', scheduledAt: '2026-12-01T09:00:00+09:00' },
-    targetCount: 28900,
+    targetCount: 7157,
     status: 'returned',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.manager,
@@ -262,5 +288,40 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     createdAt: '2026-06-30T09:00:00+09:00',
     updatedAt: '2026-07-27T09:00:00+09:00',
     deletedAt: null,
+  }),
+  notification({
+    id: 'N-009',
+    title: '未納者への督促通知',
+    target: { type: 'dynamic_attribute', attribute: 'unpaid' },
+    channels: ['sms'],
+    timing: { type: 'immediate' },
+    targetCount: 128,
+    status: 'sent',
+    requiresApproval: true,
+    createdByUserId: STAFF_IDS.headquarter,
+    approvedBy: 'Headquarter',
+    approvedAt: '2026-07-15T10:00:00+09:00',
+    deliveryResult: {
+      deliveredCount: 120,
+      reachedCount: 118,
+      channelResults: [{ channel: 'sms', deliveredCount: 120, reachedCount: 118 }],
+    },
+    createdAt: '2026-07-15T09:00:00+09:00',
+    updatedAt: '2026-07-15T10:30:00+09:00',
+    deletedAt: null,
+  }),
+  notification({
+    id: 'N-010',
+    title: '削除済みテスト通知',
+    target: { type: 'all_members' },
+    channels: ['push'],
+    timing: { type: 'immediate' },
+    targetCount: 0,
+    status: 'draft',
+    requiresApproval: true,
+    createdByUserId: STAFF_IDS.staff,
+    createdAt: '2026-06-01T09:00:00+09:00',
+    updatedAt: '2026-06-01T09:00:00+09:00',
+    deletedAt: '2026-06-02T10:00:00+09:00',
   }),
 ];

@@ -6,7 +6,7 @@ import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { Search, X } from 'lucide-react';
 
 import { useDebounce } from '@/hooks/use-debounce.hook';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll.hook';
+import { useInfiniteScroll } from '@/hooks/use-scroll-end.hook';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

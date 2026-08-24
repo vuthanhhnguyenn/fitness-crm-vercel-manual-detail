@@ -6,6 +6,13 @@ import type {
   ManualNotificationUpsertBody,
 } from '@/app/api/_schemas/manual-notification.schema';
 
+export function manualNotificationRequiresApproval(target: {
+  type: string;
+  brands?: readonly string[];
+}): boolean {
+  return target.type !== 'stores' && target.type !== 'members';
+}
+
 export function getManualNotificationTargetStoreIds(
   target: ManualNotificationTargetInput,
 ): string[] {
@@ -21,16 +28,14 @@ export function getManualNotificationTargetStoreIds(
     ];
   }
   const stores = db.stores.getList();
-  if (target.type === 'brands' && !target.brands.includes('joyfit_all')) {
-    return stores.filter((store) => target.brands.includes(store.brand)).map((store) => store.id);
+  if (target.type === 'brands') {
+    const JOYFIT_SUB_BRANDS = ['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus'];
+    const brandSet = new Set(
+      target.brands.flatMap((b) => (b === 'joyfit_all' ? JOYFIT_SUB_BRANDS : [b])),
+    );
+    return stores.filter((store) => brandSet.has(store.brand)).map((store) => store.id);
   }
   return stores.map((store) => store.id);
-}
-
-export function manualNotificationRequiresApproval(
-  target: ManualNotificationTarget | ManualNotificationTargetInput,
-): boolean {
-  return target.type !== 'stores' && target.type !== 'members';
 }
 
 export type ManualNotificationTargetValidationError = 'not_found' | 'out_of_scope';
@@ -138,7 +143,11 @@ export function buildManualNotificationRow(input: {
     deletedAt: null,
     ...(existing?.approvedBy ? { approvedBy: existing.approvedBy } : {}),
     ...(existing?.approvedAt ? { approvedAt: existing.approvedAt } : {}),
-    ...(existing?.returnReason ? { returnReason: existing.returnReason } : {}),
+    ...(body.intent === 'submit'
+      ? {}
+      : existing?.returnReason
+        ? { returnReason: existing.returnReason }
+        : {}),
     ...(existing?.deliveryResult ? { deliveryResult: existing.deliveryResult } : {}),
   };
 }
@@ -150,6 +159,11 @@ export function validateManualNotificationTiming(
   const startAt = timing.type === 'scheduled' ? timing.scheduledAt : timing.startAt;
   if (new Date(startAt).getTime() <= Date.now()) {
     return '配信日時は現在時刻より後を指定してください';
+  }
+  if (timing.type === 'recurring' && timing.endAt) {
+    if (new Date(timing.endAt).getTime() <= Date.now()) {
+      return '終了日は現在時刻より後を指定してください';
+    }
   }
   return undefined;
 }

@@ -89,7 +89,7 @@ export type ManualNotificationDetail = {
         in_app?: {
             title: string;
             body: string;
-            linkUrl?: string | '';
+            linkUrl?: string;
         };
     };
     createdAt: string;
@@ -202,7 +202,7 @@ export type GetManualNotificationDetailResponse = {
             in_app?: {
                 title: string;
                 body: string;
-                linkUrl?: string | '';
+                linkUrl?: string;
             };
         };
         createdAt: string;
@@ -283,7 +283,7 @@ export type ManualNotificationUpsertBody = {
         in_app?: {
             title: string;
             body: string;
-            linkUrl?: string | '';
+            linkUrl?: string;
         };
     };
     timing: {
@@ -389,7 +389,7 @@ export type ManualNotificationUpsertResponse = {
             in_app?: {
                 title: string;
                 body: string;
-                linkUrl?: string | '';
+                linkUrl?: string;
             };
         };
         createdAt: string;
@@ -41991,6 +41991,28 @@ export type GetCrmMembersErrors = {
      *
      * Error response
      */
+    401: {
+        /**
+         * Error message
+         */
+        error: string;
+    };
+    /**
+     * ErrorResponse
+     *
+     * Error response
+     */
+    403: {
+        /**
+         * Error message
+         */
+        error: string;
+    };
+    /**
+     * ErrorResponse
+     *
+     * Error response
+     */
     500: {
         /**
          * Error message
@@ -42228,6 +42250,28 @@ export type PostCrmMembersErrors = {
      * Error response
      */
     400: {
+        /**
+         * Error message
+         */
+        error: string;
+    };
+    /**
+     * ErrorResponse
+     *
+     * Error response
+     */
+    401: {
+        /**
+         * Error message
+         */
+        error: string;
+    };
+    /**
+     * ErrorResponse
+     *
+     * Error response
+     */
+    403: {
         /**
          * Error message
          */
@@ -43842,7 +43886,7 @@ export type GetCrmNotificationsByIdResponses = {
                 in_app?: {
                     title: string;
                     body: string;
-                    linkUrl?: string | '';
+                    linkUrl?: string;
                 };
             };
             createdAt: string;
@@ -43927,7 +43971,7 @@ export type PatchCrmNotificationsByIdData = {
             in_app?: {
                 title: string;
                 body: string;
-                linkUrl?: string | '';
+                linkUrl?: string;
             };
         };
         timing: {
@@ -44096,7 +44140,7 @@ export type PatchCrmNotificationsByIdResponses = {
                 in_app?: {
                     title: string;
                     body: string;
-                    linkUrl?: string | '';
+                    linkUrl?: string;
                 };
             };
             createdAt: string;
@@ -44384,7 +44428,7 @@ export type PostCrmNotificationsData = {
             in_app?: {
                 title: string;
                 body: string;
-                linkUrl?: string | '';
+                linkUrl?: string;
             };
         };
         timing: {
@@ -44539,7 +44583,7 @@ export type PostCrmNotificationsResponses = {
                 in_app?: {
                     title: string;
                     body: string;
-                    linkUrl?: string | '';
+                    linkUrl?: string;
                 };
             };
             createdAt: string;

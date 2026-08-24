@@ -22,7 +22,7 @@
           },
           "title": {
             "type": "string",
-            "minLength": 1
+            "maxLength": 255
           },
           "target": {
             "oneOf": [
@@ -57,8 +57,7 @@
                       ],
                       "title": "ManualNotificationBrand",
                       "description": "Brand or JOYFIT sub-brand defined by I-03"
-                    },
-                    "minItems": 1
+                    }
                   }
                 },
                 "required": ["type", "brands"]
@@ -85,8 +84,7 @@
                         }
                       },
                       "required": ["id", "name"]
-                    },
-                    "minItems": 1
+                    }
                   }
                 },
                 "required": ["type", "stores"]
@@ -170,8 +168,7 @@
                         }
                       },
                       "required": ["id", "name"]
-                    },
-                    "minItems": 1
+                    }
                   }
                 },
                 "required": ["type", "members"]
@@ -185,8 +182,7 @@
               "enum": ["sms", "push", "email", "in_app"],
               "title": "ManualNotificationChannel",
               "description": "Manual notification delivery channel"
-            },
-            "minItems": 1
+            }
           },
           "timing": {
             "anyOf": [
@@ -286,8 +282,7 @@
                 "type": "object",
                 "properties": {
                   "title": {
-                    "type": "string",
-                    "maxLength": 255
+                    "type": "string"
                   },
                   "body": {
                     "type": "string"
@@ -299,8 +294,7 @@
                 "type": "object",
                 "properties": {
                   "subject": {
-                    "type": "string",
-                    "maxLength": 255
+                    "type": "string"
                   },
                   "body": {
                     "type": "string"
@@ -312,23 +306,13 @@
                 "type": "object",
                 "properties": {
                   "title": {
-                    "type": "string",
-                    "maxLength": 255
+                    "type": "string"
                   },
                   "body": {
                     "type": "string"
                   },
                   "linkUrl": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "format": "uri"
-                      },
-                      {
-                        "type": "string",
-                        "enum": [""]
-                      }
-                    ]
+                    "type": "string"
                   }
                 },
                 "required": ["title", "body"]
@@ -435,7 +419,7 @@
               },
               "title": {
                 "type": "string",
-                "minLength": 1
+                "maxLength": 255
               },
               "target": {
                 "oneOf": [
@@ -470,8 +454,7 @@
                           ],
                           "title": "ManualNotificationBrand",
                           "description": "Brand or JOYFIT sub-brand defined by I-03"
-                        },
-                        "minItems": 1
+                        }
                       }
                     },
                     "required": ["type", "brands"]
@@ -498,8 +481,7 @@
                             }
                           },
                           "required": ["id", "name"]
-                        },
-                        "minItems": 1
+                        }
                       }
                     },
                     "required": ["type", "stores"]
@@ -589,8 +571,7 @@
                             }
                           },
                           "required": ["id", "name"]
-                        },
-                        "minItems": 1
+                        }
                       }
                     },
                     "required": ["type", "members"]
@@ -604,8 +585,7 @@
                   "enum": ["sms", "push", "email", "in_app"],
                   "title": "ManualNotificationChannel",
                   "description": "Manual notification delivery channel"
-                },
-                "minItems": 1
+                }
               },
               "timing": {
                 "anyOf": [
@@ -705,8 +685,7 @@
                     "type": "object",
                     "properties": {
                       "title": {
-                        "type": "string",
-                        "maxLength": 255
+                        "type": "string"
                       },
                       "body": {
                         "type": "string"
@@ -718,8 +697,7 @@
                     "type": "object",
                     "properties": {
                       "subject": {
-                        "type": "string",
-                        "maxLength": 255
+                        "type": "string"
                       },
                       "body": {
                         "type": "string"
@@ -731,23 +709,13 @@
                     "type": "object",
                     "properties": {
                       "title": {
-                        "type": "string",
-                        "maxLength": 255
+                        "type": "string"
                       },
                       "body": {
                         "type": "string"
                       },
                       "linkUrl": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "format": "uri"
-                          },
-                          {
-                            "type": "string",
-                            "enum": [""]
-                          }
-                        ]
+                        "type": "string"
                       }
                     },
                     "required": ["title", "body"]
@@ -850,7 +818,6 @@
         "properties": {
           "title": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 255
           },
           "target": {
@@ -886,8 +853,7 @@
                       ],
                       "title": "ManualNotificationBrand",
                       "description": "Brand or JOYFIT sub-brand defined by I-03"
-                    },
-                    "minItems": 1
+                    }
                   }
                 },
                 "required": ["type", "brands"]
@@ -904,8 +870,7 @@
                     "items": {
                       "type": "string",
                       "minLength": 1
-                    },
-                    "minItems": 1
+                    }
                   }
                 },
                 "required": ["type", "storeIds"]
@@ -971,8 +936,7 @@
                     "items": {
                       "type": "string",
                       "minLength": 1
-                    },
-                    "minItems": 1
+                    }
                   }
                 },
                 "required": ["type", "memberIds"]
@@ -986,8 +950,7 @@
               "enum": ["sms", "push", "email", "in_app"],
               "title": "ManualNotificationChannel",
               "description": "Manual notification delivery channel"
-            },
-            "minItems": 1
+            }
           },
           "contents": {
             "type": "object",
@@ -1005,8 +968,7 @@
                 "type": "object",
                 "properties": {
                   "title": {
-                    "type": "string",
-                    "maxLength": 255
+                    "type": "string"
                   },
                   "body": {
                     "type": "string"
@@ -1018,8 +980,7 @@
                 "type": "object",
                 "properties": {
                   "subject": {
-                    "type": "string",
-                    "maxLength": 255
+                    "type": "string"
                   },
                   "body": {
                     "type": "string"
@@ -1031,23 +992,13 @@
                 "type": "object",
                 "properties": {
                   "title": {
-                    "type": "string",
-                    "maxLength": 255
+                    "type": "string"
                   },
                   "body": {
                     "type": "string"
                   },
                   "linkUrl": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "format": "uri"
-                      },
-                      {
-                        "type": "string",
-                        "enum": [""]
-                      }
-                    ]
+                    "type": "string"
                   }
                 },
                 "required": ["title", "body"]
@@ -1142,7 +1093,7 @@
               },
               "title": {
                 "type": "string",
-                "minLength": 1
+                "maxLength": 255
               },
               "target": {
                 "oneOf": [
@@ -1177,8 +1128,7 @@
                           ],
                           "title": "ManualNotificationBrand",
                           "description": "Brand or JOYFIT sub-brand defined by I-03"
-                        },
-                        "minItems": 1
+                        }
                       }
                     },
                     "required": ["type", "brands"]
@@ -1205,8 +1155,7 @@
                             }
                           },
                           "required": ["id", "name"]
-                        },
-                        "minItems": 1
+                        }
                       }
                     },
                     "required": ["type", "stores"]
@@ -1296,8 +1245,7 @@
                             }
                           },
                           "required": ["id", "name"]
-                        },
-                        "minItems": 1
+                        }
                       }
                     },
                     "required": ["type", "members"]
@@ -1311,8 +1259,7 @@
                   "enum": ["sms", "push", "email", "in_app"],
                   "title": "ManualNotificationChannel",
                   "description": "Manual notification delivery channel"
-                },
-                "minItems": 1
+                }
               },
               "timing": {
                 "anyOf": [
@@ -1412,8 +1359,7 @@
                     "type": "object",
                     "properties": {
                       "title": {
-                        "type": "string",
-                        "maxLength": 255
+                        "type": "string"
                       },
                       "body": {
                         "type": "string"
@@ -1425,8 +1371,7 @@
                     "type": "object",
                     "properties": {
                       "subject": {
-                        "type": "string",
-                        "maxLength": 255
+                        "type": "string"
                       },
                       "body": {
                         "type": "string"
@@ -1438,23 +1383,13 @@
                     "type": "object",
                     "properties": {
                       "title": {
-                        "type": "string",
-                        "maxLength": 255
+                        "type": "string"
                       },
                       "body": {
                         "type": "string"
                       },
                       "linkUrl": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "format": "uri"
-                          },
-                          {
-                            "type": "string",
-                            "enum": [""]
-                          }
-                        ]
+                        "type": "string"
                       }
                     },
                     "required": ["title", "body"]
@@ -69111,6 +69046,46 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Failed to process request",
+                      "description": "Error message"
+                    }
+                  },
+                  "required": ["error"],
+                  "title": "ErrorResponse",
+                  "description": "Error response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Failed to process request",
+                      "description": "Error message"
+                    }
+                  },
+                  "required": ["error"],
+                  "title": "ErrorResponse",
+                  "description": "Error response"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal server error",
             "content": {
@@ -69429,6 +69404,46 @@
           },
           "400": {
             "description": "Bad request - invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Failed to process request",
+                      "description": "Error message"
+                    }
+                  },
+                  "required": ["error"],
+                  "title": "ErrorResponse",
+                  "description": "Error response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "Failed to process request",
+                      "description": "Error message"
+                    }
+                  },
+                  "required": ["error"],
+                  "title": "ErrorResponse",
+                  "description": "Error response"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -71573,7 +71588,7 @@
                         },
                         "title": {
                           "type": "string",
-                          "minLength": 1
+                          "maxLength": 255
                         },
                         "target": {
                           "oneOf": [
@@ -71608,8 +71623,7 @@
                                     ],
                                     "title": "ManualNotificationBrand",
                                     "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "brands"]
@@ -71636,8 +71650,7 @@
                                       }
                                     },
                                     "required": ["id", "name"]
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "stores"]
@@ -71727,8 +71740,7 @@
                                       }
                                     },
                                     "required": ["id", "name"]
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "members"]
@@ -71742,8 +71754,7 @@
                             "enum": ["sms", "push", "email", "in_app"],
                             "title": "ManualNotificationChannel",
                             "description": "Manual notification delivery channel"
-                          },
-                          "minItems": 1
+                          }
                         },
                         "timing": {
                           "anyOf": [
@@ -72013,7 +72024,7 @@
                         },
                         "title": {
                           "type": "string",
-                          "minLength": 1
+                          "maxLength": 255
                         },
                         "target": {
                           "oneOf": [
@@ -72048,8 +72059,7 @@
                                     ],
                                     "title": "ManualNotificationBrand",
                                     "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "brands"]
@@ -72076,8 +72086,7 @@
                                       }
                                     },
                                     "required": ["id", "name"]
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "stores"]
@@ -72167,8 +72176,7 @@
                                       }
                                     },
                                     "required": ["id", "name"]
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "members"]
@@ -72182,8 +72190,7 @@
                             "enum": ["sms", "push", "email", "in_app"],
                             "title": "ManualNotificationChannel",
                             "description": "Manual notification delivery channel"
-                          },
-                          "minItems": 1
+                          }
                         },
                         "timing": {
                           "anyOf": [
@@ -72290,8 +72297,7 @@
                               "type": "object",
                               "properties": {
                                 "title": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
@@ -72303,8 +72309,7 @@
                               "type": "object",
                               "properties": {
                                 "subject": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
@@ -72316,23 +72321,13 @@
                               "type": "object",
                               "properties": {
                                 "title": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
                                 },
                                 "linkUrl": {
-                                  "anyOf": [
-                                    {
-                                      "type": "string",
-                                      "format": "uri"
-                                    },
-                                    {
-                                      "type": "string",
-                                      "enum": [""]
-                                    }
-                                  ]
+                                  "type": "string"
                                 }
                               },
                               "required": ["title", "body"]
@@ -72549,7 +72544,6 @@
                 "properties": {
                   "title": {
                     "type": "string",
-                    "minLength": 1,
                     "maxLength": 255
                   },
                   "target": {
@@ -72585,8 +72579,7 @@
                               ],
                               "title": "ManualNotificationBrand",
                               "description": "Brand or JOYFIT sub-brand defined by I-03"
-                            },
-                            "minItems": 1
+                            }
                           }
                         },
                         "required": ["type", "brands"]
@@ -72603,8 +72596,7 @@
                             "items": {
                               "type": "string",
                               "minLength": 1
-                            },
-                            "minItems": 1
+                            }
                           }
                         },
                         "required": ["type", "storeIds"]
@@ -72676,8 +72668,7 @@
                             "items": {
                               "type": "string",
                               "minLength": 1
-                            },
-                            "minItems": 1
+                            }
                           }
                         },
                         "required": ["type", "memberIds"]
@@ -72691,8 +72682,7 @@
                       "enum": ["sms", "push", "email", "in_app"],
                       "title": "ManualNotificationChannel",
                       "description": "Manual notification delivery channel"
-                    },
-                    "minItems": 1
+                    }
                   },
                   "contents": {
                     "type": "object",
@@ -72710,8 +72700,7 @@
                         "type": "object",
                         "properties": {
                           "title": {
-                            "type": "string",
-                            "maxLength": 255
+                            "type": "string"
                           },
                           "body": {
                             "type": "string"
@@ -72723,8 +72712,7 @@
                         "type": "object",
                         "properties": {
                           "subject": {
-                            "type": "string",
-                            "maxLength": 255
+                            "type": "string"
                           },
                           "body": {
                             "type": "string"
@@ -72736,23 +72724,13 @@
                         "type": "object",
                         "properties": {
                           "title": {
-                            "type": "string",
-                            "maxLength": 255
+                            "type": "string"
                           },
                           "body": {
                             "type": "string"
                           },
                           "linkUrl": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "uri"
-                              },
-                              {
-                                "type": "string",
-                                "enum": [""]
-                              }
-                            ]
+                            "type": "string"
                           }
                         },
                         "required": ["title", "body"]
@@ -72855,7 +72833,7 @@
                         },
                         "title": {
                           "type": "string",
-                          "minLength": 1
+                          "maxLength": 255
                         },
                         "target": {
                           "oneOf": [
@@ -72890,8 +72868,7 @@
                                     ],
                                     "title": "ManualNotificationBrand",
                                     "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "brands"]
@@ -72918,8 +72895,7 @@
                                       }
                                     },
                                     "required": ["id", "name"]
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "stores"]
@@ -73009,8 +72985,7 @@
                                       }
                                     },
                                     "required": ["id", "name"]
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "members"]
@@ -73024,8 +72999,7 @@
                             "enum": ["sms", "push", "email", "in_app"],
                             "title": "ManualNotificationChannel",
                             "description": "Manual notification delivery channel"
-                          },
-                          "minItems": 1
+                          }
                         },
                         "timing": {
                           "anyOf": [
@@ -73132,8 +73106,7 @@
                               "type": "object",
                               "properties": {
                                 "title": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
@@ -73145,8 +73118,7 @@
                               "type": "object",
                               "properties": {
                                 "subject": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
@@ -73158,23 +73130,13 @@
                               "type": "object",
                               "properties": {
                                 "title": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
                                 },
                                 "linkUrl": {
-                                  "anyOf": [
-                                    {
-                                      "type": "string",
-                                      "format": "uri"
-                                    },
-                                    {
-                                      "type": "string",
-                                      "enum": [""]
-                                    }
-                                  ]
+                                  "type": "string"
                                 }
                               },
                               "required": ["title", "body"]
@@ -73709,7 +73671,7 @@
                           },
                           "title": {
                             "type": "string",
-                            "minLength": 1
+                            "maxLength": 255
                           },
                           "target": {
                             "oneOf": [
@@ -73744,8 +73706,7 @@
                                       ],
                                       "title": "ManualNotificationBrand",
                                       "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                    },
-                                    "minItems": 1
+                                    }
                                   }
                                 },
                                 "required": ["type", "brands"]
@@ -73772,8 +73733,7 @@
                                         }
                                       },
                                       "required": ["id", "name"]
-                                    },
-                                    "minItems": 1
+                                    }
                                   }
                                 },
                                 "required": ["type", "stores"]
@@ -73863,8 +73823,7 @@
                                         }
                                       },
                                       "required": ["id", "name"]
-                                    },
-                                    "minItems": 1
+                                    }
                                   }
                                 },
                                 "required": ["type", "members"]
@@ -73878,8 +73837,7 @@
                               "enum": ["sms", "push", "email", "in_app"],
                               "title": "ManualNotificationChannel",
                               "description": "Manual notification delivery channel"
-                            },
-                            "minItems": 1
+                            }
                           },
                           "timing": {
                             "anyOf": [
@@ -74125,7 +74083,6 @@
                 "properties": {
                   "title": {
                     "type": "string",
-                    "minLength": 1,
                     "maxLength": 255
                   },
                   "target": {
@@ -74161,8 +74118,7 @@
                               ],
                               "title": "ManualNotificationBrand",
                               "description": "Brand or JOYFIT sub-brand defined by I-03"
-                            },
-                            "minItems": 1
+                            }
                           }
                         },
                         "required": ["type", "brands"]
@@ -74179,8 +74135,7 @@
                             "items": {
                               "type": "string",
                               "minLength": 1
-                            },
-                            "minItems": 1
+                            }
                           }
                         },
                         "required": ["type", "storeIds"]
@@ -74252,8 +74207,7 @@
                             "items": {
                               "type": "string",
                               "minLength": 1
-                            },
-                            "minItems": 1
+                            }
                           }
                         },
                         "required": ["type", "memberIds"]
@@ -74267,8 +74221,7 @@
                       "enum": ["sms", "push", "email", "in_app"],
                       "title": "ManualNotificationChannel",
                       "description": "Manual notification delivery channel"
-                    },
-                    "minItems": 1
+                    }
                   },
                   "contents": {
                     "type": "object",
@@ -74286,8 +74239,7 @@
                         "type": "object",
                         "properties": {
                           "title": {
-                            "type": "string",
-                            "maxLength": 255
+                            "type": "string"
                           },
                           "body": {
                             "type": "string"
@@ -74299,8 +74251,7 @@
                         "type": "object",
                         "properties": {
                           "subject": {
-                            "type": "string",
-                            "maxLength": 255
+                            "type": "string"
                           },
                           "body": {
                             "type": "string"
@@ -74312,23 +74263,13 @@
                         "type": "object",
                         "properties": {
                           "title": {
-                            "type": "string",
-                            "maxLength": 255
+                            "type": "string"
                           },
                           "body": {
                             "type": "string"
                           },
                           "linkUrl": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "uri"
-                              },
-                              {
-                                "type": "string",
-                                "enum": [""]
-                              }
-                            ]
+                            "type": "string"
                           }
                         },
                         "required": ["title", "body"]
@@ -74431,7 +74372,7 @@
                         },
                         "title": {
                           "type": "string",
-                          "minLength": 1
+                          "maxLength": 255
                         },
                         "target": {
                           "oneOf": [
@@ -74466,8 +74407,7 @@
                                     ],
                                     "title": "ManualNotificationBrand",
                                     "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "brands"]
@@ -74494,8 +74434,7 @@
                                       }
                                     },
                                     "required": ["id", "name"]
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "stores"]
@@ -74585,8 +74524,7 @@
                                       }
                                     },
                                     "required": ["id", "name"]
-                                  },
-                                  "minItems": 1
+                                  }
                                 }
                               },
                               "required": ["type", "members"]
@@ -74600,8 +74538,7 @@
                             "enum": ["sms", "push", "email", "in_app"],
                             "title": "ManualNotificationChannel",
                             "description": "Manual notification delivery channel"
-                          },
-                          "minItems": 1
+                          }
                         },
                         "timing": {
                           "anyOf": [
@@ -74708,8 +74645,7 @@
                               "type": "object",
                               "properties": {
                                 "title": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
@@ -74721,8 +74657,7 @@
                               "type": "object",
                               "properties": {
                                 "subject": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
@@ -74734,23 +74669,13 @@
                               "type": "object",
                               "properties": {
                                 "title": {
-                                  "type": "string",
-                                  "maxLength": 255
+                                  "type": "string"
                                 },
                                 "body": {
                                   "type": "string"
                                 },
                                 "linkUrl": {
-                                  "anyOf": [
-                                    {
-                                      "type": "string",
-                                      "format": "uri"
-                                    },
-                                    {
-                                      "type": "string",
-                                      "enum": [""]
-                                    }
-                                  ]
+                                  "type": "string"
                                 }
                               },
                               "required": ["title", "body"]

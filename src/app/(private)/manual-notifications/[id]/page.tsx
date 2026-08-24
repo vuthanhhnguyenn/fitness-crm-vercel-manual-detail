@@ -57,7 +57,9 @@ function isNotificationNotFoundError(error: unknown): boolean {
 export default function ManualNotificationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [dialog, setDialog] = useState<'approve' | 'return' | 'delete' | null>(null);
+  const [dialog, setDialog] = useState<
+    'approve' | 'return' | 'delete' | 'send' | 'request_approval' | null
+  >(null);
   const [returnReason, setReturnReason] = useState('');
   const [returnError, setReturnError] = useState<string | null>(null);
   const returnReasonRef = useRef<HTMLTextAreaElement>(null);
@@ -169,7 +171,7 @@ export default function ManualNotificationDetailPage() {
                 size="sm"
                 className="gap-1"
                 disabled={actionMutation.isPending}
-                onClick={() => runAction('request_approval')}
+                onClick={() => setDialog('request_approval')}
               >
                 <Check className="size-4" />
                 承認依頼
@@ -182,7 +184,7 @@ export default function ManualNotificationDetailPage() {
                 size="sm"
                 className="gap-1"
                 disabled={actionMutation.isPending}
-                onClick={() => runAction('send')}
+                onClick={() => setDialog('send')}
               >
                 <Check className="size-4" />
                 配信する
@@ -201,28 +203,29 @@ export default function ManualNotificationDetailPage() {
                 再申請
               </RoleGatedButton>
             )}
-            {canApprove && canReturn && (
-              <>
-                <RoleGatedButton
-                  requiredPermission={Permission.ManualNotificationsApprove}
-                  variant="outline"
-                  size="sm"
-                  className="text-destructive gap-1"
-                  onClick={() => setDialog('return')}
-                >
-                  <Undo2 className="size-4" />
-                  差し戻し
-                </RoleGatedButton>
-                <RoleGatedButton
-                  requiredPermission={Permission.ManualNotificationsApprove}
-                  size="sm"
-                  className="gap-1"
-                  onClick={() => setDialog('approve')}
-                >
-                  <Check className="size-4" />
-                  承認
-                </RoleGatedButton>
-              </>
+            {/*Decoupled canReturn and canApprove to support potential future permission splits*/}
+            {canReturn && (
+              <RoleGatedButton
+                requiredPermission={Permission.ManualNotificationsApprove}
+                variant="outline"
+                size="sm"
+                className="text-destructive gap-1"
+                onClick={() => setDialog('return')}
+              >
+                <Undo2 className="size-4" />
+                差し戻し
+              </RoleGatedButton>
+            )}
+            {canApprove && (
+              <RoleGatedButton
+                requiredPermission={Permission.ManualNotificationsApprove}
+                size="sm"
+                className="gap-1"
+                onClick={() => setDialog('approve')}
+              >
+                <Check className="size-4" />
+                承認
+              </RoleGatedButton>
             )}
           </div>
         }
@@ -264,6 +267,48 @@ export default function ManualNotificationDetailPage() {
               disabled={actionMutation.isPending}
             >
               削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={dialog === 'request_approval'}
+        onOpenChange={(open) => !open && setDialog(null)}
+      >
+        <AlertDialogContent className="gap-4 sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>承認依頼を送信しますか？</AlertDialogTitle>
+            <AlertDialogDescription className="leading-5">
+              通知内容を確定し、承認者に確認を依頼します。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => runAction('request_approval')}
+              disabled={actionMutation.isPending}
+            >
+              依頼する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={dialog === 'send'} onOpenChange={(open) => !open && setDialog(null)}>
+        <AlertDialogContent className="gap-4 sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>この通知を配信しますか？</AlertDialogTitle>
+            <AlertDialogDescription className="leading-5">
+              {`指定タイミング（${approvalTiming}）で配信が実行されます。対象: ${approvalTarget}`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => runAction('send')}
+              disabled={actionMutation.isPending}
+            >
+              配信する
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

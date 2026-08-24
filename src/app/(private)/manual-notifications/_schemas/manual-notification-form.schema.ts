@@ -1,7 +1,8 @@
+import { TEXTAREA_MAX_LENGTH } from '@/constants/app.constants';
+import { isSafeManualNotificationLinkUrl } from '@/utils/url.util';
 import { z } from 'zod';
 
 import type { ManualNotificationDetail, ManualNotificationUpsertBody } from '@/lib/api/types.gen';
-import { isSafeManualNotificationLinkUrl } from '@/lib/manual-notifications/manual-notification-link.util';
 
 import {
   MANUAL_NOTIFICATION_BRAND_OPTIONS,
@@ -71,7 +72,7 @@ const timingSchema = z.discriminatedUnion('type', [
     intervalUnit: z.enum(['day', 'week', 'month']).optional(),
     endDate: z.date().optional(),
     maxOccurrences: optionalNumber('1以上の配信回数を入力してください'),
-    endMode: z.enum(['none', 'date', 'count']).default('none'),
+    endMode: z.enum(['date', 'count']).default('count'),
   }),
 ]);
 
@@ -82,12 +83,26 @@ export const manualNotificationFormSchema = z
     target: targetSchema,
     channels: z.array(z.enum(MANUAL_NOTIFICATION_CHANNEL_OPTIONS)),
     contents: z.object({
-      sms: z.object({ body: z.string().default('') }),
-      push: z.object({ title: z.string().default(''), body: z.string().default('') }),
-      email: z.object({ subject: z.string().default(''), body: z.string().default('') }),
+      sms: z.object({
+        body: z.string().max(670, 'SMS本文は670文字以内で入力してください').default(''),
+      }),
+      push: z.object({
+        title: z.string().default(''),
+        body: z
+          .string()
+          .max(TEXTAREA_MAX_LENGTH, `通知本文は${TEXTAREA_MAX_LENGTH}文字以内で入力してください`)
+          .default(''),
+      }),
+      email: z.object({
+        subject: z.string().default(''),
+        body: z.string().max(10000, 'メール本文は10000文字以内で入力してください').default(''),
+      }),
       in_app: z.object({
         title: z.string().default(''),
-        body: z.string().default(''),
+        body: z
+          .string()
+          .max(TEXTAREA_MAX_LENGTH, `通知本文は${TEXTAREA_MAX_LENGTH}文字以内で入力してください`)
+          .default(''),
         linkUrl: z.string().trim().default(''),
       }),
     }),
@@ -333,7 +348,7 @@ export function manualNotificationDetailToFormValues(detail: {
             intervalUnit: detail.timing.intervalUnit,
             endDate: detail.timing.endAt ? new Date(detail.timing.endAt) : undefined,
             maxOccurrences: detail.timing.maxOccurrences,
-            endMode: detail.timing.endAt ? 'date' : detail.timing.maxOccurrences ? 'count' : 'none',
+            endMode: detail.timing.endAt ? 'date' : 'count',
           };
 
   return {

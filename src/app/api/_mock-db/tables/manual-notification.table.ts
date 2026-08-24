@@ -72,7 +72,11 @@ export function createManualNotificationTable(): { manualNotifications: ManualNo
       },
       create(input) {
         this._seed();
-        const nextId = `N-${String(this._rows.length + 1).padStart(3, '0')}`;
+        const maxIdNum = this._rows.reduce((max, row) => {
+          const num = parseInt(row.id.replace('N-', ''), 10);
+          return Number.isNaN(num) ? max : Math.max(max, num);
+        }, 0);
+        const nextId = `N-${String(maxIdNum + 1).padStart(3, '0')}`;
         const now = new Date().toISOString();
         const row: ManualNotificationRow = {
           ...input,
