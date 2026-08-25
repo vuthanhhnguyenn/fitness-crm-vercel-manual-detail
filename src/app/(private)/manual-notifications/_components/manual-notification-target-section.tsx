@@ -63,26 +63,17 @@ function getTargetPreviewCount(
     case 'all_members':
       return targetPreviewCounts.allMembers;
     case 'brands':
-      return target.brands.reduce(
-        (sum, b) =>
-          sum +
-          (targetPreviewCounts.brands[b as keyof typeof targetPreviewCounts.brands] ?? 0),
-        0,
-      );
+      return target.brands.reduce((sum, b) => sum + (targetPreviewCounts.brands[b] ?? 0), 0);
     case 'stores':
-      return targetPreviewCounts.stores * target.stores.length;
+      return targetPreviewCounts.stores * new Set(target.stores.map((s) => s.id)).size;
     case 'contract_type':
-      return (
-        targetPreviewCounts.contractType[
-          target.contractType as keyof typeof targetPreviewCounts.contractType
-        ] ?? 0
-      );
+      return targetPreviewCounts.contractType[target.contractType] ?? 0;
     case 'membership_duration':
       return targetPreviewCounts.membershipDuration;
     case 'dynamic_attribute':
       return targetPreviewCounts.dynamicAttributes[target.attribute];
     case 'members':
-      return target.members.length;
+      return new Set(target.members.map((m) => m.id)).size;
   }
 }
 

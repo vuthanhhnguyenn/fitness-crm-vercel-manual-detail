@@ -1,5 +1,5 @@
 import { TEXTAREA_MAX_LENGTH } from '@/constants/app.constants';
-import { isSafeManualNotificationLinkUrl } from '@/utils/url.util';
+import { isSafeHttpsUrl } from '@/utils/url.util';
 import { z } from 'zod';
 
 import type { ManualNotificationDetail, ManualNotificationUpsertBody } from '@/lib/api/types.gen';
@@ -160,7 +160,7 @@ export const manualNotificationFormSchema = z
         });
       }
       if (value.channels.includes('in_app') && value.contents.in_app.linkUrl) {
-        if (!isSafeManualNotificationLinkUrl(value.contents.in_app.linkUrl)) {
+        if (!isSafeHttpsUrl(value.contents.in_app.linkUrl)) {
           context.addIssue({
             code: 'custom',
             path: ['contents', 'in_app', 'linkUrl'],

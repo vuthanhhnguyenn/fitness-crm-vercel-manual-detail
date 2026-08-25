@@ -48,7 +48,7 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
   const router = useRouter();
   const displayTitle = row.title || '無題の下書き';
   const [dialog, setDialog] = useState<
-    'request-approval' | 'approve' | 'return' | 'resubmit' | 'delete' | null
+    'request-approval' | 'approve' | 'return' | 'resubmit' | 'delete' | 'send' | null
   >(null);
   const [returnReason, setReturnReason] = useState('');
   const [returnError, setReturnError] = useState<string | null>(null);
@@ -223,6 +223,26 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={dialog === 'send'} onOpenChange={(open) => !open && setDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>通知を配信しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              「{displayTitle}」の配信を開始（または予約）します。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => executeAction('send')}
+              disabled={actionMutation.isPending}
+            >
+              配信する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label="通知の操作"
@@ -245,7 +265,7 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
           {canSend ? (
             <RoleGatedMenuItem
               requiredPermission={Permission.ManualNotificationsCreate}
-              onClick={() => executeAction('send')}
+              onClick={() => openActionDialog('send')}
             >
               <Send className="size-4" />
               配信する

@@ -113,6 +113,7 @@ interface ManualNotificationFormProps {
   readonly isEdit?: boolean;
   readonly notificationId?: string;
   readonly isSubmitting?: boolean;
+  readonly status?: string;
   readonly onCancel: () => void;
   readonly onSubmit: (values: ManualNotificationFormValues, intent: 'save' | 'submit') => void;
 }
@@ -122,6 +123,7 @@ export function ManualNotificationForm({
   isEdit = false,
   notificationId,
   isSubmitting = false,
+  status,
   onCancel,
   onSubmit,
 }: ManualNotificationFormProps) {
@@ -215,16 +217,18 @@ export function ManualNotificationForm({
         >
           キャンセル
         </Button>
-        <Button
-          type="submit"
-          name="intent"
-          value="save"
-          size="lg"
-          variant="outline"
-          disabled={isSubmitting}
-        >
-          下書き保存
-        </Button>
+        {status !== 'pending_approval' && (
+          <Button
+            type="submit"
+            name="intent"
+            value="save"
+            size="lg"
+            variant="outline"
+            disabled={isSubmitting}
+          >
+            下書き保存
+          </Button>
+        )}
         <Button type="submit" name="intent" value="submit" size="lg" disabled={isSubmitting}>
           {approvalRequired ? '承認依頼を送信' : isEdit ? '変更して配信' : '配信を開始'}
         </Button>

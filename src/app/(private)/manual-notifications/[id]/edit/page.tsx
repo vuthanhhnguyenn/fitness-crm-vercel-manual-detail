@@ -44,12 +44,14 @@ interface ManualNotificationEditFormProps {
   readonly id: string;
   readonly defaultValues: ManualNotificationFormValues;
   readonly formConfig: GetCrmNotificationsFormConfigResponse;
+  readonly status: string;
 }
 
 function ManualNotificationEditForm({
   id,
   defaultValues,
   formConfig,
+  status,
 }: ManualNotificationEditFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -109,6 +111,7 @@ function ManualNotificationEditForm({
               isEdit
               notificationId={id}
               isSubmitting={mutation.isPending}
+              status={status}
               onCancel={() => confirmDiscard(navigateBack)}
               onSubmit={handleSubmit}
             />
@@ -139,20 +142,24 @@ export default function ManualNotificationEditPage() {
     <DataStateBoundary
       isLoading={query.isLoading || formConfigQuery.isLoading}
       isError={query.isError || formConfigQuery.isError}
-      isEmpty={!defaultValues || !formConfigQuery.data}
-      emptyTitle={item ? 'この通知は編集できません' : '通知が見つかりません'}
+      isEmpty={!item || !formConfigQuery.data}
       onRetry={() => {
         void query.refetch();
         void formConfigQuery.refetch();
       }}
     >
-      {defaultValues && formConfigQuery.data ? (
+      {defaultValues && formConfigQuery.data && item ? (
         <ManualNotificationEditForm
           id={id}
           defaultValues={defaultValues}
           formConfig={formConfigQuery.data}
+          status={item.status}
         />
-      ) : null}
+      ) : (
+        <p className="text-destructive p-4 text-center text-sm">
+          編集権限がないか、編集できないステータスです
+        </p>
+      )}
     </DataStateBoundary>
   );
 }

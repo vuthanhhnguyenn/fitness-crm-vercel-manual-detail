@@ -186,10 +186,7 @@ export const MANUAL_NOTIFICATION_STATUS_OPTIONS = Object.keys(
   MANUAL_NOTIFICATION_STATUS_LABELS,
 ) as ManualNotificationStatus[];
 
-export function manualNotificationRequiresApproval(target: {
-  type: ManualNotificationTargetType;
-  brands?: readonly ManualNotificationBrand[];
-}) {
+export function manualNotificationRequiresApproval(target: { type: ManualNotificationTargetType }) {
   return target.type !== 'stores' && target.type !== 'members';
 }
 

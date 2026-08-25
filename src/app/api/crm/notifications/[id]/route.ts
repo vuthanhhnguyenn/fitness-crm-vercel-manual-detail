@@ -21,6 +21,7 @@ import {
 } from '../_lib/manual-notification-access.util';
 import {
   buildManualNotificationRow,
+  manualNotificationRequiresApproval,
   validateManualNotificationTarget,
   validateManualNotificationTiming,
 } from '../_lib/manual-notification-upsert.util';
@@ -148,7 +149,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!existing || existing.deletedAt !== null) {
     return errorResponse(404, '通知が見つかりません');
   }
-  if (!canWriteManualNotification(auth.user, existing)) {
+  const creator = db.users.getById(existing.createdByUserId);
+  const creatorStaff = creator?.staff_id
+    ? db.staffs.getList().find((s) => s.staff_id === creator.staff_id)
+    : undefined;
+  const creatorStoreId = creatorStaff?.linked_store_id ?? null;
+  if (!canWriteManualNotification(auth.user, existing, creatorStoreId)) {
     return errorResponse(403, 'この通知を編集する権限がありません');
   }
   if (!['draft', 'returned', 'pending_approval'].includes(existing.status)) {
@@ -157,6 +163,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const parsed = ManualNotificationUpsertBodySchema.safeParse(
     await request.json().catch(() => null),
   );
+  if (parsed.success && existing.status === 'pending_approval' && parsed.data.intent === 'save') {
+    return errorResponse(400, '承認待ちの通知は下書き保存できません');
+  }
+  if (parsed.success && existing.status === 'pending_approval' && parsed.data.intent === 'submit') {
+    const newRequiresApproval = manualNotificationRequiresApproval(parsed.data.target);
+    if (!newRequiresApproval) {
+      return errorResponse(400, '承認待ちの通知の配信対象（承認不要な対象へ）は変更できません');
+    }
+  }
   if (!parsed.success) {
     return errorResponse(400, '通知内容が不正です');
   }
@@ -189,11 +204,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!updated) {
     return errorResponse(404, '通知が見つかりません');
   }
-  const creator = db.users.getById(updated.createdByUserId);
-  return NextResponse.json({
-    item: {
-      ...updated,
-      createdBy: creator?.name ?? updated.createdByUserId,
-    },
-  });
+  return NextResponse.json(
+    ManualNotificationUpsertResponseSchema.parse({
+      item: {
+        ...updated,
+        createdBy: creator?.name ?? updated.createdByUserId,
+      },
+    }),
+  );
 }

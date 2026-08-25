@@ -1,4 +1,4 @@
-import { isSafeManualNotificationLinkUrl } from '@/utils/url.util';
+import { isSafeHttpsUrl } from '@/utils/url.util';
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
@@ -210,13 +210,15 @@ export const ManualNotificationListItemSchema = z
 
 export const ManualNotificationContentsSchema = z
   .object({
-    sms: z.object({ body: z.string() }).optional(),
-    push: z.object({ title: z.string().trim(), body: z.string() }).optional(),
-    email: z.object({ subject: z.string().trim(), body: z.string() }).optional(),
+    sms: z.object({ body: z.string().max(670) }).optional(),
+    push: z.object({ title: z.string().trim().max(255), body: z.string().max(1000) }).optional(),
+    email: z
+      .object({ subject: z.string().trim().max(255), body: z.string().max(10000) })
+      .optional(),
     in_app: z
       .object({
-        title: z.string().trim(),
-        body: z.string(),
+        title: z.string().trim().max(255),
+        body: z.string().max(1000),
         linkUrl: z.string().trim().optional(),
       })
       .optional(),
@@ -277,24 +279,6 @@ export const ManualNotificationUpsertBodySchema = z
         message: 'Duplicate channels are not allowed',
         path: ['channels'],
       });
-    }
-
-    for (const channel of value.channels) {
-      const heading =
-        channel === 'push'
-          ? value.contents.push?.title
-          : channel === 'in_app'
-            ? value.contents.in_app?.title
-            : channel === 'email'
-              ? value.contents.email?.subject
-              : undefined;
-      if (heading && heading.trim().length > 255) {
-        context.addIssue({
-          code: 'custom',
-          message: `Title must not exceed 255 characters for ${channel}`,
-          path: ['contents', channel, channel === 'email' ? 'subject' : 'title'],
-        });
-      }
     }
 
     if (value.intent === 'submit') {
@@ -376,11 +360,7 @@ export const ManualNotificationUpsertBodySchema = z
         }
       }
       const linkUrl = value.contents.in_app?.linkUrl;
-      if (
-        value.channels.includes('in_app') &&
-        linkUrl &&
-        !isSafeManualNotificationLinkUrl(linkUrl)
-      ) {
+      if (value.channels.includes('in_app') && linkUrl && !isSafeHttpsUrl(linkUrl)) {
         context.addIssue({
           code: 'custom',
           message: 'Invalid in-app notification URL',
@@ -481,14 +461,7 @@ export const ManualNotificationActionSchema = z.object({
 export const ManualNotificationActionResponseSchema = z.object({
   item: ManualNotificationListItemSchema,
 });
-export const PreviewTargetCountResponseSchema = z
-  .object({
-    count: z.number().int().nonnegative(),
-  })
-  .openapi({
-    title: 'PreviewTargetCountResponse',
-    description: 'Estimated target count based on target conditions',
-  });
+
 export type ManualNotificationChannel = z.infer<typeof ManualNotificationChannelSchema>;
 export type ManualNotificationTarget = z.infer<typeof ManualNotificationTargetSchema>;
 export type ManualNotificationTargetInput = z.infer<typeof ManualNotificationTargetInputSchema>;

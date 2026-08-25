@@ -109,7 +109,6 @@ export default function ManualNotificationDetailPage() {
           setReturnError(null);
           if (action === 'delete') {
             router.push(navigate('/manual-notifications'));
-            return;
           }
         },
       },

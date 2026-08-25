@@ -6,10 +6,7 @@ import type {
   ManualNotificationUpsertBody,
 } from '@/app/api/_schemas/manual-notification.schema';
 
-export function manualNotificationRequiresApproval(target: {
-  type: string;
-  brands?: readonly string[];
-}): boolean {
+export function manualNotificationRequiresApproval(target: { type: string }): boolean {
   return target.type !== 'stores' && target.type !== 'members';
 }
 

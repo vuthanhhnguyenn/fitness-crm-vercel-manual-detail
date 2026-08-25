@@ -56,8 +56,10 @@ export async function GET(request: NextRequest) {
     return errorResponse(403, 'A store scope is required to access the notification form');
   }
 
-  return NextResponse.json({
-    templates: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.templates,
-    targetPreviewCounts: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.targetPreviewCounts,
-  });
+  return NextResponse.json(
+    GetManualNotificationFormConfigResponseSchema.parse({
+      templates: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.templates,
+      targetPreviewCounts: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.targetPreviewCounts,
+    }),
+  );
 }

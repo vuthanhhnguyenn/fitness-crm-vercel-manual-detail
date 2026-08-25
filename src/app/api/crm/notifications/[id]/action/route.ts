@@ -113,16 +113,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
   }
   const writeActions = ['request_approval', 'send', 'resubmit', 'delete'];
-  if (writeActions.includes(action) && !canWriteManualNotification(auth.user, row)) {
-    return NextResponse.json(
-      {
-        code: 'E-AUTH-006',
-        message: 'Only the creator or headquarters can perform this action',
-        userMessage: 'この通知を操作する権限がありません',
-        traceId: crypto.randomUUID(),
-      },
-      { status: 403 },
-    );
+  if (writeActions.includes(action)) {
+    const creator = db.users.getById(row.createdByUserId);
+    const creatorStaff = creator?.staff_id
+      ? db.staffs.getList().find((s) => s.staff_id === creator.staff_id)
+      : undefined;
+    const creatorStoreId = creatorStaff?.linked_store_id ?? null;
+    if (!canWriteManualNotification(auth.user, row, creatorStoreId)) {
+      return NextResponse.json(
+        {
+          code: 'E-AUTH-006',
+          message: 'Only the creator or headquarters can perform this action',
+          userMessage: 'この通知を操作する権限がありません',
+          traceId: crypto.randomUUID(),
+        },
+        { status: 403 },
+      );
+    }
   }
   if (action === 'return' && !reason) {
     return NextResponse.json(
@@ -323,5 +330,5 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (action === 'resubmit') {
     db.manualNotifications.updateAudit(id, { returnReason: undefined });
   }
-  return NextResponse.json({ item: ManualNotificationListItemSchema.parse(updated) });
+  return NextResponse.json(ManualNotificationActionResponseSchema.parse({ item: updated }));
 }

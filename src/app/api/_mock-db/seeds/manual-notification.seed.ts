@@ -26,12 +26,12 @@ export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
       body: '{会員名}様、レッスンのご予約を承りました。{利用開始日}にお待ちしております。',
     },
     {
-      id: 'TPL-005',
+      id: 'TPL-003',
       label: 'キャンペーン告知（汎用）',
       body: '{会員名}様、{店舗名}からお得なキャンペーンのご案内です。詳細はアプリをご確認ください。',
     },
     {
-      id: 'TPL-006',
+      id: 'TPL-004',
       label: 'メンテナンスのお知らせ',
       body: '{会員名}様、{店舗名}にてメンテナンスを実施します。期間中はご不便をおかけします。',
     },
@@ -39,7 +39,7 @@ export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
   targetPreviewCounts: {
     allMembers: 42_580,
     brands: {
-      joyfit_all: 8_420,
+      joyfit_all: 7_831,
       joyfit: 3_789,
       joyfit24: 2_947,
       joyfit_yoga: 674,
@@ -78,13 +78,8 @@ export function getManualNotificationTargetPreviewCount(
       return targetPreviewCounts.stores * new Set(target.storeIds).size;
     case 'contract_type':
       return targetPreviewCounts.contractType[target.contractType] ?? 0;
-    case 'membership_duration': {
-      const factor =
-        target.condition === 'within'
-          ? Math.min(target.months / 12, 1)
-          : Math.max(1 - target.months / 60, 0.1);
-      return Math.round(targetPreviewCounts.membershipDuration * factor);
-    }
+    case 'membership_duration':
+      return targetPreviewCounts.membershipDuration;
     case 'dynamic_attribute':
       return targetPreviewCounts.dynamicAttributes[target.attribute];
     case 'members':
@@ -176,7 +171,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     target: { type: 'brands', brands: ['joyfit24'] },
     channels: ['push', 'in_app'],
     timing: { type: 'scheduled', scheduledAt: '2026-09-20T08:00:00+09:00' },
-    targetCount: 8420,
+    targetCount: 2947,
     status: 'scheduled',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.manager,
@@ -244,7 +239,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     },
     channels: ['email', 'in_app'],
     timing: { type: 'scheduled', scheduledAt: '2026-09-15T12:00:00+09:00' },
-    targetCount: 5640,
+    targetCount: 1692,
     status: 'draft',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.manager,

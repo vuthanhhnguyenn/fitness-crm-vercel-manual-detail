@@ -264,20 +264,6 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                             : '終了日なし'}
                       </span>
                     </div>
-                    {'completedOccurrences' in item.timing &&
-                      typeof item.timing.completedOccurrences === 'number' &&
-                      item.timing.maxOccurrences && (
-                        <>
-                          <Separator />
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">配信状況</span>
-                            <span className="font-medium tabular-nums">
-                              {item.timing.completedOccurrences} / {item.timing.maxOccurrences}{' '}
-                              回配信済み
-                            </span>
-                          </div>
-                        </>
-                      )}
                   </div>
                 )}
               </div>

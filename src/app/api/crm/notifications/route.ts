@@ -281,12 +281,12 @@ export async function POST(request: NextRequest) {
 
   const creator = db.users.getById(row.createdByUserId);
   return NextResponse.json(
-    {
+    ManualNotificationUpsertResponseSchema.parse({
       item: {
         ...row,
         createdBy: creator?.name ?? row.createdByUserId,
       },
-    },
+    }),
     { status: 201 },
   );
 }
