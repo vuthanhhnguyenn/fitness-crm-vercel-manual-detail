@@ -40,10 +40,47 @@ export function formatElapsedTime(value: DateInput): string {
   return `${diffDay}日前`;
 }
 
+/** Matches an ISO 8601 datetime with an explicit UTC offset or "Z" suffix. */
+const OFFSET_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** The app's canonical display timezone (JST, UTC+9). */
+const DISPLAY_TZ_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/**
+ * Wall-clock components of an offset-bearing ISO string, converted to the
+ * app's canonical JST display timezone via the actual instant (not the
+ * literal digits) — so "Z" and "+09:00" inputs that represent the same
+ * instant always render identically. Reading via a fixed offset + UTC
+ * getters (instead of `Date#getHours()` etc., which re-interprets the
+ * instant into the *viewer's* local timezone) also keeps display consistent
+ * regardless of the browser/server timezone the app happens to run in — see
+ * BUG-C01-02, where a JST timestamp near midnight rendered as the previous
+ * day for a non-JST viewer.
+ */
+function literalDateParts(raw: string) {
+  if (!OFFSET_DATETIME_RE.test(raw)) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  const jst = new Date(d.getTime() + DISPLAY_TZ_OFFSET_MS);
+  return {
+    yyyy: jst.getUTCFullYear(),
+    mm: pad2(jst.getUTCMonth() + 1),
+    dd: pad2(jst.getUTCDate()),
+    hh: pad2(jst.getUTCHours()),
+    mi: pad2(jst.getUTCMinutes()),
+    ss: pad2(jst.getUTCSeconds()),
+    weekday: jst.getUTCDay(),
+  };
+}
+
 /**
  * Helper: Get date parts already formatted
  */
-function getDateParts(d: Date) {
+function getDateParts(d: Date, raw?: DateInput) {
+  if (typeof raw === 'string') {
+    const literal = literalDateParts(raw);
+    if (literal) return literal;
+  }
   return {
     yyyy: d.getFullYear(),
     mm: pad2(d.getMonth() + 1),
@@ -51,6 +88,7 @@ function getDateParts(d: Date) {
     hh: pad2(d.getHours()),
     mi: pad2(d.getMinutes()),
     ss: pad2(d.getSeconds()),
+    weekday: d.getDay(),
   };
 }
 
@@ -61,7 +99,7 @@ function formatDate(value: DateInput, template: string, fallback: string = '—'
   const d = parseDate(value);
   if (!d) return fallback;
 
-  const parts = getDateParts(d);
+  const parts = getDateParts(d, value);
 
   return template
     .replace(/{yyyy}/g, parts.yyyy.toString())
@@ -105,12 +143,55 @@ export function formatDateYYYYMMDD(value: DateInput, fallback?: string): string 
 }
 
 /**
+ * Format: YYYY/MM/DD HH:mm:ss
+ * e.g. "2026/02/15 12:00:00"
+ */
+export function formatDateYYYYMMDD_HHMMSS(value: DateInput, fallback?: string): string {
+  return formatDate(value, '{yyyy}/{mm}/{dd} {hh}:{mi}:{ss}', fallback);
+}
+
+/**
  * Format: YYYY-MM-DD (local calendar date, not UTC)
  * e.g. "2026-02-15"
  */
 export function formatISODateLocal(value: DateInput, fallback: string = ''): string {
   const d = parseDate(value);
   if (!d) return fallback;
-  const parts = getDateParts(d);
+  const parts = getDateParts(d, value);
   return `${parts.yyyy}-${parts.mm}-${parts.dd}`;
+}
+
+/**
+ * Format: HH:mm
+ * e.g. "12:00"
+ */
+export function formatTime(value: DateInput, fallback: string = '—'): string {
+  return formatDate(value, '{hh}:{mi}', fallback);
+}
+
+/**
+ * Japanese short weekday names, indexed by Date.getDay() (0 = Sunday)
+ */
+const JP_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+/**
+ * Format: M/D（曜） (no leading zeros, Japanese weekday)
+ * e.g. "2/15（土）"
+ */
+export function formatDateMDWeekday(value: DateInput, fallback: string = '—'): string {
+  const d = parseDate(value);
+  if (!d) return fallback;
+  const parts = getDateParts(d, value);
+  return `${Number(parts.mm)}/${Number(parts.dd)}（${JP_WEEKDAYS[parts.weekday]}）`;
+}
+
+/**
+ * Format: M/D（曜）HH:mm (no leading zeros on date, Japanese weekday)
+ * e.g. "2/15（土）12:00"
+ */
+export function formatDateMDWeekdayTime(value: DateInput, fallback: string = '—'): string {
+  const d = parseDate(value);
+  if (!d) return fallback;
+  const parts = getDateParts(d, value);
+  return `${Number(parts.mm)}/${Number(parts.dd)}（${JP_WEEKDAYS[parts.weekday]}）${parts.hh}:${parts.mi}`;
 }

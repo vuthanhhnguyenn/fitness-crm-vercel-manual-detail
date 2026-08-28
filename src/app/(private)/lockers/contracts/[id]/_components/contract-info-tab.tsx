@@ -23,10 +23,10 @@ import type {
   GetCrmLockersContractsByIdResponse,
   PatchCrmLockersByIdSlotsBySlotIdData,
 } from '@/lib/api/types.gen';
-import { LockerContractStatus } from '@/lib/api/types.gen';
+import { LockerContractStatus, LockerLockType } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
-import { LOCKER_OPTION_TYPE_LABELS } from '../../../_constants/constants';
+import { LOCKER_LOCK_TYPE_LABELS, LOCKER_OPTION_TYPE_LABELS } from '../../../_constants/constants';
 import { LOCKER_CONTRACT_STATUS_CARD_MAP } from '../_constants/locker-contract-status.constants';
 
 type LockerContractDetail = NonNullable<GetCrmLockersContractsByIdResponse>['contract'];
@@ -70,6 +70,7 @@ export function ContractInfoTab({ contract }: ContractInfoTabProps) {
           <CardContent className="px-4">
             <div className="grid grid-cols-2 gap-x-8 gap-y-4">
               <Field label="契約ID" value={contract.contract_id} mono />
+              <Field label="店舗" value={contract.store_name} />
               <Field
                 label="オプション契約"
                 value={
@@ -122,6 +123,12 @@ export function ContractInfoTab({ contract }: ContractInfoTabProps) {
               <Field label="スロット番号" value={contract.locker_number} />
               <Field label="サイズ" value={contract.slot_size} />
               <Field label="エリア" value={contract.locker_area} />
+              <Field
+                label="施錠方法"
+                value={`${LOCKER_LOCK_TYPE_LABELS[contract.lock_type]}${
+                  contract.lock_type === LockerLockType.CYLINDER ? '（暗証番号なし）' : ''
+                }`}
+              />
             </div>
             <div className="mt-4 border-t pt-4">
               <Button
@@ -137,34 +144,37 @@ export function ContractInfoTab({ contract }: ContractInfoTabProps) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">パスワード情報</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4">
-            <LockerPasswordEditor
-              currentPassword={contract.password}
-              updatedAt={contract.password_updated_at}
-              isSaving={updatePasswordMutation.isPending}
-              onSave={(password) =>
-                new Promise<void>((resolve, reject) => {
-                  updatePasswordMutation.mutate(
-                    {
-                      path: { id: contract.locker_id, slotId },
-                      body: {
-                        password,
-                      } satisfies NonNullable<PatchCrmLockersByIdSlotsBySlotIdData['body']>,
-                    },
-                    {
-                      onSuccess: () => resolve(),
-                      onError: (error) => reject(error),
-                    },
-                  );
-                })
-              }
-            />
-          </CardContent>
-        </Card>
+        {contract.lock_type !== LockerLockType.CYLINDER ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">暗証番号情報</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4">
+              <LockerPasswordEditor
+                term="暗証番号"
+                currentPassword={contract.password}
+                updatedAt={contract.password_updated_at}
+                isSaving={updatePasswordMutation.isPending}
+                onSave={(password) =>
+                  new Promise<void>((resolve, reject) => {
+                    updatePasswordMutation.mutate(
+                      {
+                        path: { id: contract.locker_id, slotId },
+                        body: {
+                          password,
+                        } satisfies NonNullable<PatchCrmLockersByIdSlotsBySlotIdData['body']>,
+                      },
+                      {
+                        onSuccess: () => resolve(),
+                        onError: (error) => reject(error),
+                      },
+                    );
+                  })
+                }
+              />
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
 
       <div className="w-[40%]">

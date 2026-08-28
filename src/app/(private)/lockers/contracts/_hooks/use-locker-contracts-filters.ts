@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-
-import { PAGE_SIZE } from '@/constants/app.constants';
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import {
   type GetCrmLockersContractsData,
@@ -12,12 +11,15 @@ import {
   type PostCrmLockersContractsExportData,
 } from '@/lib/api/types.gen';
 
+import { LOCKER_LIST_DEFAULT_PAGE_SIZE } from '../../_constants/constants';
+
 type LockerContractsSortBy = NonNullable<GetCrmLockersContractsData['query']>['sort_by'];
 
 export function useLockerContractsFilters() {
   const [filters, setFilters] = useQueryStates(
     {
       locker_contracts_page: parseAsInteger.withDefault(1),
+      locker_contracts_limit: parseAsInteger.withDefault(LOCKER_LIST_DEFAULT_PAGE_SIZE),
       locker_contracts_search: parseAsString.withDefault(''),
       locker_contracts_type: parseAsStringEnum<LockerOptionTypeValue>(
         Object.values(LockerOptionType),
@@ -36,22 +38,16 @@ export function useLockerContractsFilters() {
     },
   );
 
-  const [searchInput, setSearchInput] = useState(() => filters.locker_contracts_search);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput !== filters.locker_contracts_search) {
-        setFilters({ locker_contracts_search: searchInput || null, locker_contracts_page: 1 });
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [filters.locker_contracts_search, searchInput, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(
+    filters.locker_contracts_search,
+    (value) => setFilters({ locker_contracts_search: value || null, locker_contracts_page: 1 }),
+  );
 
   const clearFilters = () => {
     setSearchInput('');
     setFilters({
       locker_contracts_page: 1,
+      locker_contracts_limit: LOCKER_LIST_DEFAULT_PAGE_SIZE,
       locker_contracts_search: null,
       locker_contracts_type: null,
       locker_contracts_status: null,
@@ -62,7 +58,7 @@ export function useLockerContractsFilters() {
 
   const queryParams: NonNullable<GetCrmLockersContractsData['query']> = {
     page: filters.locker_contracts_page,
-    limit: PAGE_SIZE,
+    limit: filters.locker_contracts_limit,
     search: filters.locker_contracts_search || undefined,
     contract_type: filters.locker_contracts_type || undefined,
     status: filters.locker_contracts_status || undefined,
@@ -88,7 +84,9 @@ export function useLockerContractsFilters() {
     clearFilters,
     currentPage: filters.locker_contracts_page,
     setCurrentPage: (page: number) => setFilters({ locker_contracts_page: page }),
-    pageSize: PAGE_SIZE,
+    pageSize: filters.locker_contracts_limit,
+    setPageSize: (limit: number) =>
+      setFilters({ locker_contracts_limit: limit, locker_contracts_page: 1 }),
     hasActiveFilters:
       filters.locker_contracts_type !== null ||
       filters.locker_contracts_status !== null ||

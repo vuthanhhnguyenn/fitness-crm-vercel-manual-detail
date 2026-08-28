@@ -16,33 +16,38 @@ import {
 
 import {
   deleteCrmTermsByIdMutation,
+  getCrmTermsByIdQueryKey,
   getCrmTermsQueryKey,
 } from '@/lib/api/@tanstack/react-query.gen';
 
+interface TermsDeleteDialogTarget {
+  id: string;
+  title: string;
+}
+
 interface TermsDeleteDialogProps {
-  readonly termId: string;
-  readonly termName: string;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly onDeleted?: () => void;
+  target: TermsDeleteDialogTarget | null;
+  onOpenChange: (open: boolean) => void;
+  onDeleted?: () => void;
 }
 
 export function TermsDeleteDialog({
-  termId,
-  termName,
-  open,
+  target,
   onOpenChange,
   onDeleted,
-}: TermsDeleteDialogProps) {
+}: Readonly<TermsDeleteDialogProps>) {
   const queryClient = useQueryClient();
 
   const deleteMutation = useMutation({
     ...deleteCrmTermsByIdMutation(),
-    onSuccess: (data) => {
-      toast.success(data.message || '規約を削除しました');
-      queryClient.invalidateQueries({
-        queryKey: getCrmTermsQueryKey(),
-      });
+    onSuccess: (response) => {
+      toast.success(response.message || '規約を削除しました');
+      queryClient.invalidateQueries({ queryKey: getCrmTermsQueryKey() });
+      if (target) {
+        queryClient.invalidateQueries({
+          queryKey: getCrmTermsByIdQueryKey({ path: { id: target.id } }),
+        });
+      }
       onOpenChange(false);
       onDeleted?.();
     },
@@ -51,14 +56,19 @@ export function TermsDeleteDialog({
     },
   });
 
+  const handleDelete = () => {
+    if (deleteMutation.isPending || !target) return;
+    deleteMutation.mutate({ path: { id: target.id } });
+  };
+
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={target !== null} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>規約を削除しますか？</AlertDialogTitle>
           <AlertDialogDescription>
-            「{termName}
-            」を論理削除します。実データは保持され、「削除済みも含めて表示」チェックで再表示できます。
+            「{target?.title}
+            」を論理削除します。実データは保持されますが、通常検索からは除外されます。「削除済みも含めて表示」チェックで再表示できます。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -66,16 +76,9 @@ export function TermsDeleteDialog({
           <AlertDialogAction
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             disabled={deleteMutation.isPending}
-            onClick={(event) => {
-              event.preventDefault();
-              deleteMutation.mutate({
-                path: {
-                  id: termId,
-                },
-              });
-            }}
+            onClick={handleDelete}
           >
-            削除する
+            {deleteMutation.isPending ? '削除中...' : '削除する'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

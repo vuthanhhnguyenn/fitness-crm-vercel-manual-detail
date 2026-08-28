@@ -9,6 +9,7 @@ import type { GetCrmFranchiseCompaniesByIdResponse } from '@/lib/api/types.gen';
 import { FranchiseCompanyStatus } from '@/lib/api/types.gen';
 
 import {
+  FRANCHISE_COMPANY_AUTH_METHOD_DISPLAY_LABELS,
   FRANCHISE_COMPANY_BASIC_INFO_LABELS,
   FRANCHISE_COMPANY_STATUS_DISPLAY_LABELS,
 } from '../_constants/detail.constants';
@@ -92,6 +93,10 @@ export function BasicInfoTab({ franchiseCompany, linkedStoreCount }: Readonly<Ba
                   value={formatValue(franchiseCompany.head_office_address)}
                 />
               </div>
+              <Field
+                label={FRANCHISE_COMPANY_BASIC_INFO_LABELS.auth_method}
+                value={FRANCHISE_COMPANY_AUTH_METHOD_DISPLAY_LABELS[franchiseCompany.auth_method]}
+              />
             </div>
           </CardContent>
         </Card>
@@ -134,10 +139,19 @@ export function BasicInfoTab({ franchiseCompany, linkedStoreCount }: Readonly<Ba
                   franchiseCompany.royalty_rate === null ||
                   franchiseCompany.royalty_rate === undefined
                     ? '—'
-                    : `${franchiseCompany.royalty_rate}%`
+                    : `${franchiseCompany.royalty_rate.toFixed(1)}%`
                 }
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/70">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">備考</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-sm whitespace-pre-wrap">{formatValue(franchiseCompany.note)}</p>
           </CardContent>
         </Card>
       </div>

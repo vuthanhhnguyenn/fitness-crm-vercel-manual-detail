@@ -1,4 +1,12 @@
-import { FranchiseCompanyStatus, FranchiseCompanyType } from '@/lib/api/types.gen';
+import {
+  FranchiseCompanyAuthMethod,
+  FranchiseCompanyStatus,
+  FranchiseCompanyType,
+} from '@/lib/api/types.gen';
+
+export const FRANCHISE_COMPANY_DEFAULT_PAGE_SIZE = 50;
+
+export const FRANCHISE_COMPANY_PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;
 
 export const FRANCHISE_COMPANY_TYPE_VALUES = Object.values(
   FranchiseCompanyType,
@@ -21,6 +29,11 @@ export const FRANCHISE_COMPANY_TYPE_FORM_LABELS: Record<FranchiseCompanyType, st
 export const FRANCHISE_COMPANY_STATUS_LABELS: Record<FranchiseCompanyStatus, string> = {
   [FranchiseCompanyStatus.ACTIVE]: '有効',
   [FranchiseCompanyStatus.INACTIVE]: '無効',
+};
+
+export const FRANCHISE_COMPANY_AUTH_METHOD_LABELS: Record<FranchiseCompanyAuthMethod, string> = {
+  [FranchiseCompanyAuthMethod.GOOGLE_SSO]: 'Google SSO',
+  [FranchiseCompanyAuthMethod.IDAAS]: 'IDaaS',
 };
 
 export const FRANCHISE_COMPANY_TYPE_OPTIONS = [

@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, DoorOpen, Loader2, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -59,9 +60,8 @@ function PermitDialog({
           <AlertDialogDescription>
             {isBLRisk &&
               `このお客様はブラックリストに一致しています（${record.bl_match_reason}）。`}
-            {record.customer_name}（{record.customer_name_kana}
-            ）に30分間の時間制限入館を発行します。B-01
-            入退館管理と連携し、顔認証でメインエントランスからの入館が有効になります。
+            {record.customer_name}
+            に30分間の時間制限入館を発行します。入退館管理と連携し、顔認証でメインエントランスからの入館が有効になります。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -127,7 +127,7 @@ export function PermitActions({ record }: PermitActionsProps) {
   if (record.status === 'application_received') {
     return (
       <div className="flex w-full flex-col gap-2">
-        <Alert className="border-success/50 bg-success/10 w-full py-2">
+        <Alert className="border-success/50 bg-success/15 w-full py-2">
           <CheckCircle2 className="text-success size-4" />
           <AlertDescription className="text-success text-xs">
             個人情報・顔写真・BL照合 すべてOK
@@ -135,6 +135,7 @@ export function PermitActions({ record }: PermitActionsProps) {
         </Alert>
         <RoleGatedButton
           allowedRoles={[UserRole.System, UserRole.Headquarter, UserRole.Manager, UserRole.Staff]}
+          denyTooltip="見学許可の権限がありません"
           variant="default"
           className="w-full gap-2"
           disabled={isPending}
@@ -148,7 +149,7 @@ export function PermitActions({ record }: PermitActionsProps) {
           見学を許可する（30分）
         </RoleGatedButton>
         <p className="text-muted-foreground text-center text-xs">
-          B-01 入退館管理に時間制限入館を発行します
+          入退館管理に時間制限入館を発行します
         </p>
         <PermitDialog
           open={dialogOpen}
@@ -165,7 +166,7 @@ export function PermitActions({ record }: PermitActionsProps) {
   if (record.status === 'info_missing') {
     return (
       <div className="flex w-full flex-col gap-2">
-        <Alert className="border-destructive/50 bg-destructive/10 w-full py-2">
+        <Alert className="border-destructive/50 bg-destructive/15 w-full py-2">
           <AlertTriangle className="text-destructive size-4" />
           <AlertDescription className="text-destructive text-xs">
             個人情報または顔写真が未登録のため見学不可
@@ -190,7 +191,7 @@ export function PermitActions({ record }: PermitActionsProps) {
       <div className="flex w-full flex-col gap-2">
         {record.bl_match && (
           <>
-            <Alert className="border-destructive/50 bg-destructive/10 w-full py-2">
+            <Alert className="border-destructive/50 bg-destructive/15 w-full py-2">
               <AlertTriangle className="text-destructive size-4" />
               <AlertDescription className="text-destructive text-xs">
                 ブラックリスト一致あり — 慎重に判断してください
@@ -203,6 +204,7 @@ export function PermitActions({ record }: PermitActionsProps) {
         )}
         <RoleGatedButton
           allowedRoles={[UserRole.System, UserRole.Headquarter, UserRole.Manager, UserRole.Staff]}
+          denyTooltip="見学許可の権限がありません"
           variant="outline"
           className={`w-full gap-2 ${record.bl_match ? 'text-destructive hover:text-destructive' : ''}`}
           disabled={isPending}
@@ -230,7 +232,7 @@ export function PermitActions({ record }: PermitActionsProps) {
   if (record.status === 'visiting') {
     return (
       <div className="flex w-full items-center justify-between text-xs">
-        <span className="text-muted-foreground">B-01 連携状況</span>
+        <span className="text-muted-foreground">入退館連携状況</span>
         <Badge variant="outline" className="border-info/20 bg-info/15 text-info text-[10px]">
           時間制限入館 有効
         </Badge>
@@ -243,19 +245,11 @@ export function PermitActions({ record }: PermitActionsProps) {
     return (
       <div className="flex w-full flex-col gap-2">
         <div className="text-muted-foreground w-full py-1 text-center text-xs">
-          見学終了済み（
-          {record.visit_end_actual_at
-            ? new Date(record.visit_end_actual_at).toLocaleString('ja-JP', {
-                month: 'numeric',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : '—'}
-          ）
+          見学終了済み（{formatDateYYYYMMDD_HHMM(record.visit_end_actual_at)}）
         </div>
         <RoleGatedButton
           allowedRoles={[UserRole.System, UserRole.Headquarter, UserRole.Manager, UserRole.Staff]}
+          denyTooltip="入会登録の権限がありません"
           variant="default"
           className="w-full gap-2"
           onClick={handleEnrollment}
@@ -266,6 +260,36 @@ export function PermitActions({ record }: PermitActionsProps) {
         <p className="text-muted-foreground text-center text-xs">
           入会申請フォームへ氏名等がプリセットされます
         </p>
+      </div>
+    );
+  }
+
+  // membership_applied: completion notice, no actionable buttons besides the read-only detail link (FR-018)
+  if (record.status === 'membership_applied') {
+    const applicationId = record.enrolled_application_id;
+    return (
+      <div className="flex w-full flex-col gap-1">
+        <div className="text-muted-foreground w-full py-1 text-center text-xs">
+          入会申請済み（{formatDateYYYYMMDD_HHMM(record.enrolled_at)}）
+        </div>
+        {applicationId && (
+          <Button
+            variant="link"
+            className="h-auto w-full p-0 text-xs"
+            onClick={() => router.push(navigate('/membership-applications/[id]', applicationId))}
+          >
+            入会申請の詳細を確認 →
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // cancelled: notice text, no buttons at all (FR-018)
+  if (record.status === 'cancelled') {
+    return (
+      <div className="text-muted-foreground w-full py-1 text-center text-xs">
+        キャンセル済み（{formatDateYYYYMMDD_HHMM(record.cancelled_at)}）
       </div>
     );
   }

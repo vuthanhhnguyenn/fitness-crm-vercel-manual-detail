@@ -1,19 +1,19 @@
 import type {
-  TrainingEquipmentExerciseLink,
-  TrainingEquipmentItem,
-  TrainingEquipmentStatusHistory,
-  TrainingEquipmentToolType,
+  InstallationStatus,
+  TrainingEquipmentLinkedExercise,
 } from '@/app/api/_schemas/training-equipment.schema';
 
 import type {
   TrainingEquipmentExerciseCatalogItem,
+  TrainingEquipmentExerciseLinkRow,
   TrainingEquipmentMockItem,
+  TrainingEquipmentStatusHistoryRow,
 } from '../seeds/training-equipment.seed';
 
 export type TrainingEquipmentType = {
   _rows: TrainingEquipmentMockItem[];
-  _historyRows: TrainingEquipmentStatusHistory[];
-  _linkRows: TrainingEquipmentExerciseLink[];
+  _historyRows: TrainingEquipmentStatusHistoryRow[];
+  _linkRows: TrainingEquipmentExerciseLinkRow[];
   _seeded: boolean;
   _seed(): void;
   getAll(): TrainingEquipmentMockItem[];
@@ -21,7 +21,7 @@ export type TrainingEquipmentType = {
   create(
     item: Omit<
       TrainingEquipmentMockItem,
-      'id' | 'linked_exercise_count' | 'last_updated_at' | 'is_deleted'
+      'id' | 'createdAt' | 'updatedAt' | 'statusChangedAt' | 'isDeleted'
     >,
   ): TrainingEquipmentMockItem;
   update(
@@ -29,32 +29,26 @@ export type TrainingEquipmentType = {
     patch: Partial<TrainingEquipmentMockItem>,
   ): TrainingEquipmentMockItem | undefined;
   softDelete(id: string): boolean;
-  getHistory(equipmentId: string): TrainingEquipmentStatusHistory[];
-  appendHistory(row: TrainingEquipmentStatusHistory): void;
-  getLinks(equipmentId: string): TrainingEquipmentExerciseLink[];
-  addLinks(rows: TrainingEquipmentExerciseLink[]): void;
+  changeStatus(
+    id: string,
+    newStatus: InstallationStatus,
+    changedByName: string,
+    changedReason: string,
+  ): TrainingEquipmentMockItem | undefined;
+  getHistory(equipmentId: string): TrainingEquipmentStatusHistoryRow[];
+  appendHistory(row: TrainingEquipmentStatusHistoryRow): void;
+  getLinks(equipmentId: string): TrainingEquipmentLinkedExercise[];
+  addLinks(equipmentId: string, exerciseIds: string[]): void;
   deleteLink(equipmentId: string, exerciseId: string): boolean;
-  hasLinks(equipmentId: string): boolean;
-  refreshLinkCount(equipmentId: string): void;
   deleteAllLinks(equipmentId: string): number;
-  getExerciseCatalogItem(exerciseId: string): TrainingEquipmentExerciseCatalogItem | undefined;
-  listExerciseCatalog(): Array<{
-    id: string;
-    name: string;
-    tool_type: TrainingEquipmentToolType;
-    tool_name: string;
-    difficulty: string;
-    body_part: string;
-  }>;
-  bulkUpdateStatus(
-    ids: string[],
-    nextStatus: TrainingEquipmentItem['status'],
-    changedBy: string,
-    reason: string,
-  ): Array<{
-    id: string;
-    success: boolean;
-    status?: TrainingEquipmentItem['status'];
-    error?: string;
-  }>;
+  hasLinks(equipmentId: string): boolean;
+  countLinks(equipmentId: string): number;
+  getExerciseCandidate(exerciseId: string): TrainingEquipmentExerciseCatalogItem | undefined;
+  listExerciseCandidates(): Array<TrainingEquipmentExerciseCatalogItem & { toolName: string }>;
+  bulkChangeStatus(
+    equipmentIds: string[],
+    newStatus: InstallationStatus,
+    changedByName: string,
+    changedReason: string,
+  ): { updated: number; skipped: number };
 };

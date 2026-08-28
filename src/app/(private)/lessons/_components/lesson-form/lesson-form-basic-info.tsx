@@ -174,7 +174,15 @@ export function LessonFormBasicInfo() {
                   料金種別
                   <RequiredMark />
                 </FormLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select
+                  value={field.value}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    if (value !== 'per_use') {
+                      form.setValue('perUseFee', null);
+                    }
+                  }}
+                >
                   <FormControl>
                     <SelectTrigger className="h-8">
                       <SelectValue placeholder="選択してください">

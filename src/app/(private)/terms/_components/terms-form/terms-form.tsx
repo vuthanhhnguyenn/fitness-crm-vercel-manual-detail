@@ -1,233 +1,148 @@
 'use client';
 
-import type { ChangeEvent } from 'react';
 import { useCallback, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
 import { useRouter } from 'next/navigation';
 
+import { useUnsavedChanges } from '@/app/(private)/lesson-schedules/create/_hooks/use-unsaved-changes.hook';
+import { TermsActiveVersionWarning } from '@/app/(private)/terms/_components/terms-form/sections/terms-active-version-warning';
+import { TermsApplicationSettingsSection } from '@/app/(private)/terms/_components/terms-form/sections/terms-application-settings-section';
+import { TermsBasicInfoSection } from '@/app/(private)/terms/_components/terms-form/sections/terms-basic-info-section';
+import {
+  type RelatedTermsRef,
+  TermsContentSection,
+} from '@/app/(private)/terms/_components/terms-form/sections/terms-content-section';
+import { TermsFormActions } from '@/app/(private)/terms/_components/terms-form/sections/terms-form-actions';
+import { TermsDiscardDialog } from '@/app/(private)/terms/_components/terms-form/terms-discard-dialog';
+import {
+  MOCK_SAMPLE_PDF,
+  type TermsFormMode,
+  TermsFormSchema,
+  type TermsFormValues,
+  emptyTermsFormValues,
+} from '@/app/(private)/terms/_schemas/terms-form.schema';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useFileUpload } from '@/hooks/use-file-upload.hook';
-import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
-import { useUnsavedChanges } from '@/hooks/use-unsaved-changes.hook';
 
+import { BackLink } from '@/components/common/back-link';
 import { PageHeader } from '@/components/common/page-header';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
 
 import {
   getCrmTermsByIdQueryKey,
   getCrmTermsQueryKey,
   patchCrmTermsByIdMutation,
-  postCrmTermsByIdVersionsMutation,
   postCrmTermsMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { PatchCrmTermsByIdData } from '@/lib/api/types.gen';
+import type { TermsStatus, UpdateTermsBody } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
-import { getTermsPdfS3Key } from '../../_schemas/terms-form.mapper';
-import {
-  type TermsFormMode,
-  TermsFormSchema,
-  type TermsFormValues,
-  emptyTermsFormValues,
-} from '../../_schemas/terms-form.schema';
-import { TermsFormBasics } from './terms-form-basics';
-import { TermsFormContent } from './terms-form-content';
-
+const MAX_PDF_SIZE_MB = 10;
 const PDF_ACCEPTED_TYPES = ['application/pdf'] as const;
+const PDF_INVALID_TYPE_MESSAGE = 'PDF形式のファイルのみアップロードできます';
+const PDF_TOO_LARGE_MESSAGE = `ファイルサイズが${MAX_PDF_SIZE_MB}MBを超えています。${MAX_PDF_SIZE_MB}MB以下のファイルを選択してください`;
+const PDF_UPLOAD_FAILED_MESSAGE = 'アップロードに失敗しました';
 
 interface TermsFormProps {
   mode: TermsFormMode;
-  defaultValues?: Partial<TermsFormValues>;
+  /** Edit mode: the id of the document being updated. */
   termsId?: string;
+  /** New-version mode: the source document's id (back-link target). */
   sourceId?: string;
-  showActiveVersionWarning?: boolean;
-  relatedTermsRef?: {
-    title: string;
-    version: string;
-  } | null;
-}
-
-interface TermsFormActionsProps {
-  hasSubmitErrors: boolean;
-  isSubmitting: boolean;
-  isUploading: boolean;
-  isEditMode: boolean;
-  isDirty: boolean;
-  onCancel: () => void;
-}
-
-function ActiveVersionWarning() {
-  return (
-    <Alert className="border-warning/50 bg-warning/15">
-      <AlertTriangle className="text-warning size-4" />
-      <AlertDescription className="text-xs">
-        適用中の規約を変更すると、同意済みの会員にも影響します。通常は新バージョンの作成を推奨します。
-      </AlertDescription>
-    </Alert>
-  );
-}
-
-function TermsFormActions({
-  hasSubmitErrors,
-  isSubmitting,
-  isUploading,
-  isEditMode,
-  isDirty,
-  onCancel,
-}: Readonly<TermsFormActionsProps>) {
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-2 border-t p-4">
-      {hasSubmitErrors ? (
-        <p className="text-destructive mr-auto text-xs">未入力の項目があります</p>
-      ) : null}
-      <Button type="button" size="lg" variant="outline" disabled={isSubmitting} onClick={onCancel}>
-        キャンセル
-      </Button>
-      <Button
-        type="submit"
-        size="lg"
-        disabled={isSubmitting || isUploading || (isEditMode && !isDirty)}
-      >
-        {isEditMode ? '保存する' : '登録する'}
-      </Button>
-    </div>
-  );
-}
-
-interface DiscardChangesDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCancel: () => void;
-  onConfirm: () => void;
-}
-
-function DiscardChangesDialog({
-  open,
-  onOpenChange,
-  onCancel,
-  onConfirm,
-}: Readonly<DiscardChangesDialogProps>) {
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>変更を破棄しますか？</AlertDialogTitle>
-          <AlertDialogDescription>
-            未保存の変更はすべて失われます。この操作は取り消せません。
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>編集を続ける</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>破棄する</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
+  /** Edit mode: gates the active-version warning banner. */
+  currentStatus?: TermsStatus;
+  defaultValues?: Partial<TermsFormValues>;
+  /** New-version mode: lineage pointers resolved by the page from the source document. */
+  parentTermsId?: string | null;
+  prevTermsId?: string | null;
+  relatedTermsRef?: RelatedTermsRef | null;
 }
 
 export function TermsForm({
   mode,
-  defaultValues = emptyTermsFormValues,
   termsId,
   sourceId,
-  showActiveVersionWarning = false,
+  currentStatus,
+  defaultValues,
+  parentTermsId,
+  prevTermsId,
   relatedTermsRef,
 }: Readonly<TermsFormProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const pdfInputRef = useRef<HTMLInputElement>(null);
-  const isEdit = mode === 'edit';
-  const isNewVersion = mode === 'new-version';
+
+  const isBrandTypeLocked = mode !== 'create';
+  const isCopiedFieldLocked = mode === 'new-version';
+  const isEditMode = mode === 'edit';
+
+  const pageTitle =
+    mode === 'edit' ? '規約編集' : mode === 'new-version' ? '新規バージョン作成' : '規約新規登録';
+
+  const backHref =
+    mode === 'edit' && termsId
+      ? navigate('/terms/[id]', termsId)
+      : mode === 'new-version' && sourceId
+        ? navigate('/terms/[id]', sourceId)
+        : navigate('/terms');
+
   const form = useForm<TermsFormValues>({
     resolver: zodResolver(TermsFormSchema),
     mode: 'onChange',
     defaultValues: { ...emptyTermsFormValues, ...defaultValues },
   });
-  const {
-    dirtyFields,
-    errors,
-    isDirty,
-    isSubmitting: isFormSubmitting,
-    submitCount,
-  } = form.formState;
-  const selectedPdfFileName = useWatch({
+
+  const { isDirty, dirtyFields, errors, isSubmitting } = form.formState;
+  const hasSubmitErrors = form.formState.submitCount > 0 && Object.keys(errors).length > 0;
+
+  const { confirmDiscard, discardDialogOpen, handleDiscardConfirm, handleDiscardCancel } =
+    useUnsavedChanges(isDirty);
+
+  const { uploadFile, isUploading } = useFileUpload({
+    category: 'document',
+    maxSizeMB: MAX_PDF_SIZE_MB,
+    acceptedTypes: PDF_ACCEPTED_TYPES,
+  });
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const [replacingPdf, setReplacingPdf] = useState(false);
+
+  const watchedPdfFileName = useWatch({
     control: form.control,
     name: 'pdfFileName',
   });
-  const scrollToFirstError = useScrollToFirstError();
-  const { confirmDiscard, discardDialogOpen, handleDiscardCancel, handleDiscardConfirm } =
-    useUnsavedChanges(isDirty);
-  const { uploadFile, isUploading } = useFileUpload({
-    category: 'document',
-    maxSizeMB: 10,
-    acceptedTypes: PDF_ACCEPTED_TYPES,
-  });
+  const hasExistingPdf = isEditMode && !!defaultValues?.pdfFileName;
+  const showExistingFileChip = hasExistingPdf && !replacingPdf;
+  const attachedPdfName = watchedPdfFileName;
+
   const createMutation = useMutation(postCrmTermsMutation());
   const updateMutation = useMutation(patchCrmTermsByIdMutation());
-  const createVersionMutation = useMutation(postCrmTermsByIdVersionsMutation());
 
-  const [isReplacingPdf, setIsReplacingPdf] = useState(false);
-  const existingPdfFileName = defaultValues?.pdfFileName;
-  const hasExistingPdf = isEdit && Boolean(existingPdfFileName);
-  const showExistingPdf = hasExistingPdf && !isReplacingPdf;
-  const hasSubmitErrors = submitCount > 0 && Object.keys(errors).length > 0;
-  const isSubmitting =
-    isFormSubmitting ||
-    createMutation.isPending ||
-    updateMutation.isPending ||
-    createVersionMutation.isPending;
-  const detailId = termsId ?? sourceId;
-  const backHref = detailId ? navigate('/terms/[id]', detailId) : navigate('/terms');
-
-  const invalidateTerms = useCallback(
-    (id?: string) => {
-      queryClient.invalidateQueries({ queryKey: getCrmTermsQueryKey() });
-      if (id) {
-        queryClient.invalidateQueries({ queryKey: getCrmTermsByIdQueryKey({ path: { id } }) });
-      }
-    },
-    [queryClient],
-  );
-
-  const handleReplacePdf = useCallback(() => {
-    setIsReplacingPdf(true);
-    form.setValue('pdfUrl', '', { shouldDirty: true, shouldValidate: true });
+  const handleReplaceClick = useCallback(() => {
+    setReplacingPdf(true);
+    form.setValue('pdfUrl', '', { shouldDirty: true });
     form.setValue('pdfFileName', '', { shouldDirty: true });
     form.setValue('pdfFileSize', 0, { shouldDirty: true });
   }, [form]);
 
-  const handleCancelReplacePdf = useCallback(() => {
-    setIsReplacingPdf(false);
-    form.resetField('pdfUrl', {
-      defaultValue: defaultValues?.pdfUrl ?? emptyTermsFormValues.pdfUrl,
+  const handleCancelReplace = useCallback(() => {
+    setReplacingPdf(false);
+    form.setValue('pdfUrl', defaultValues?.pdfUrl ?? '', {
+      shouldDirty: false,
     });
-    form.resetField('pdfFileName', {
-      defaultValue: defaultValues?.pdfFileName ?? emptyTermsFormValues.pdfFileName,
+    form.setValue('pdfFileName', defaultValues?.pdfFileName ?? '', {
+      shouldDirty: false,
     });
-    form.resetField('pdfFileSize', {
-      defaultValue: defaultValues?.pdfFileSize ?? emptyTermsFormValues.pdfFileSize,
+    form.setValue('pdfFileSize', defaultValues?.pdfFileSize ?? 0, {
+      shouldDirty: false,
     });
-  }, [defaultValues, form]);
+    if (errors.pdfUrl) form.clearErrors('pdfUrl');
+  }, [defaultValues, errors.pdfUrl, form]);
 
-  const handleFileSelect = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
+  const handlePdfSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       event.target.value = '';
       if (!file) return;
@@ -236,187 +151,157 @@ export function TermsForm({
       if (!outcome.ok) {
         const message =
           outcome.reason === 'invalid_type'
-            ? 'PDF形式のファイルのみアップロードできます。'
+            ? PDF_INVALID_TYPE_MESSAGE
             : outcome.reason === 'too_large'
-              ? 'ファイルサイズは10MB以下にしてください。'
-              : 'PDFのアップロードに失敗しました。';
-        form.setError('pdfUrl', { type: 'manual', message });
+              ? PDF_TOO_LARGE_MESSAGE
+              : PDF_UPLOAD_FAILED_MESSAGE;
         if (outcome.reason === 'upload_failed') toast.error(message);
+        form.setError('pdfUrl', { type: 'manual', message });
         return;
       }
 
       form.clearErrors('pdfUrl');
-      form.setValue('pdfUrl', outcome.url, { shouldDirty: true, shouldValidate: true });
-      form.setValue('pdfFileName', outcome.name, { shouldDirty: true, shouldValidate: true });
-      form.setValue('pdfFileSize', outcome.size, { shouldDirty: true, shouldValidate: true });
+      form.setValue('pdfUrl', outcome.url, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      form.setValue('pdfFileName', outcome.name, { shouldDirty: true });
+      form.setValue('pdfFileSize', outcome.size, { shouldDirty: true });
     },
     [form, uploadFile],
   );
 
-  const submit = useCallback(
-    async (values: TermsFormValues) => {
-      const pdfS3Key = getTermsPdfS3Key(values.pdfUrl);
-      if (!pdfS3Key) {
-        form.setError('pdfUrl', { type: 'manual', message: 'PDFファイルを選択してください。' });
-        scrollToFirstError();
-        return;
-      }
+  const handleSetMockPdf = useCallback(() => {
+    form.clearErrors('pdfUrl');
+    form.setValue('pdfUrl', MOCK_SAMPLE_PDF.url, { shouldDirty: true, shouldValidate: true });
+    form.setValue('pdfFileName', MOCK_SAMPLE_PDF.fileName, { shouldDirty: true });
+    form.setValue('pdfFileSize', MOCK_SAMPLE_PDF.size, { shouldDirty: true });
+  }, [form]);
 
-      const commonBody = {
-        title: values.title.trim(),
-        version: values.version.trim(),
-        effectiveFrom: values.effectiveFrom,
-        effectiveTo: values.effectiveTo,
-        displayOrder: values.displayOrder === null ? null : String(values.displayOrder),
-        requiresConsent: values.requiresConsent,
-        remarks: values.remarks?.trim() || null,
-        pdfS3Key,
-        pdfUrl: values.pdfUrl,
-        pdfFileName: values.pdfFileName,
-      };
+  const handleSubmit = form.handleSubmit(
+    async (values) => {
+      try {
+        if (mode === 'edit' && termsId) {
+          const body: UpdateTermsBody = {};
+          if (dirtyFields.title) body.title = values.title;
+          if (dirtyFields.version) body.version = values.version;
+          if (dirtyFields.effectiveFrom) body.effectiveFrom = values.effectiveFrom;
+          if (dirtyFields.effectiveTo) body.effectiveTo = values.effectiveTo || null;
+          if (dirtyFields.displayOrder) body.displayOrder = values.displayOrder ?? null;
+          if (dirtyFields.requiresConsent) body.requiresConsent = values.requiresConsent;
+          if (dirtyFields.remarks) body.remarks = values.remarks || null;
+          if (dirtyFields.pdfUrl) {
+            body.pdfUrl = values.pdfUrl;
+            body.pdfFileName = values.pdfFileName;
+            body.pdfFileSize = values.pdfFileSize;
+          }
 
-      const { termsType } = values;
-      if (values.brandEnum.length === 0 || !termsType) {
-        scrollToFirstError();
-        return;
-      }
+          await updateMutation.mutateAsync({ path: { id: termsId }, body });
+          toast.success('規約の変更を保存しました');
+          queryClient.invalidateQueries({ queryKey: getCrmTermsQueryKey() });
+          queryClient.invalidateQueries({
+            queryKey: getCrmTermsByIdQueryKey({ path: { id: termsId } }),
+          });
+          router.push(navigate('/terms/[id]', termsId));
+          return;
+        }
 
-      if (mode === 'create') {
-        try {
-          await Promise.all(
-            values.brandEnum.map((brandEnum) =>
-              createMutation.mutateAsync({
-                body: { ...commonBody, brandEnum, termsType },
-              }),
-            ),
-          );
-          invalidateTerms();
-          toast.success('規約を登録しました。');
+        const basePayload = {
+          termsType: values.termsType,
+          title: values.title,
+          version: values.version,
+          effectiveFrom: values.effectiveFrom,
+          effectiveTo: values.effectiveTo || null,
+          displayOrder: values.displayOrder ?? null,
+          requiresConsent: values.requiresConsent,
+          remarks: values.remarks || null,
+          pdfUrl: values.pdfUrl,
+          pdfFileName: values.pdfFileName,
+          pdfFileSize: values.pdfFileSize,
+          ...(mode === 'new-version' ? { parentTermsId, prevTermsId } : {}),
+        };
+
+        const results = await Promise.all(
+          values.brandEnum.map((brand) =>
+            createMutation.mutateAsync({
+              body: { ...basePayload, brandEnum: brand },
+            }),
+          ),
+        );
+
+        queryClient.invalidateQueries({ queryKey: getCrmTermsQueryKey() });
+        toast.success('規約を登録しました');
+
+        if (mode === 'new-version') {
+          router.push(navigate('/terms/[id]', results[0].id));
+        } else {
           router.push(navigate('/terms'));
-        } catch {
-          toast.error('規約の登録に失敗しました。');
         }
-        return;
-      }
-
-      if (mode === 'edit' && termsId) {
-        const body: NonNullable<PatchCrmTermsByIdData['body']> = {};
-        if (dirtyFields.title) body.title = commonBody.title;
-        if (dirtyFields.version) body.version = commonBody.version;
-        if (dirtyFields.effectiveFrom) body.effectiveFrom = commonBody.effectiveFrom;
-        if (dirtyFields.effectiveTo) body.effectiveTo = commonBody.effectiveTo;
-        if (dirtyFields.displayOrder) body.displayOrder = commonBody.displayOrder;
-        if (dirtyFields.requiresConsent) body.requiresConsent = commonBody.requiresConsent;
-        if (dirtyFields.remarks) body.remarks = commonBody.remarks;
-        if (dirtyFields.pdfUrl || dirtyFields.pdfFileName) {
-          body.pdfS3Key = commonBody.pdfS3Key;
-          body.pdfUrl = commonBody.pdfUrl;
-          body.pdfFileName = commonBody.pdfFileName;
-        }
-
-        updateMutation.mutate(
-          { path: { id: termsId }, body },
-          {
-            onSuccess: () => {
-              invalidateTerms(termsId);
-              toast.success('規約の変更を保存しました。');
-              router.push(navigate('/terms/[id]', termsId));
-            },
-            onError: () => toast.error('規約の保存に失敗しました。'),
-          },
-        );
-        return;
-      }
-
-      if (mode === 'new-version' && sourceId) {
-        createVersionMutation.mutate(
-          { path: { id: sourceId }, body: commonBody },
-          {
-            onSuccess: (response) => {
-              invalidateTerms(sourceId);
-              invalidateTerms(response.id);
-              toast.success('新しいバージョンを登録しました。');
-              router.push(navigate('/terms/[id]', response.id));
-            },
-            onError: () => toast.error('新しいバージョンの登録に失敗しました。'),
-          },
-        );
+      } catch {
+        toast.error(mode === 'edit' ? '規約の保存に失敗しました' : '規約の登録に失敗しました');
       }
     },
-    [
-      createMutation,
-      createVersionMutation,
-      dirtyFields,
-      form,
-      invalidateTerms,
-      mode,
-      router,
-      scrollToFirstError,
-      sourceId,
-      termsId,
-      updateMutation,
-    ],
+    () => {
+      setTimeout(() => {
+        const element = document.querySelector("[aria-invalid='true']");
+        if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    },
   );
 
+  const handleBack = () => confirmDiscard(() => router.push(backHref));
+
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <PageHeader
-        breadcrumb={
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
-            onClick={() => confirmDiscard(() => router.push(backHref))}
-          >
-            <ChevronLeft className="size-3" />
-            規約文書管理に戻る
-          </button>
-        }
-        title={isEdit ? '規約編集' : isNewVersion ? '新規バージョン作成' : '規約新規登録'}
-      />
-      <main className="flex-1 overflow-auto px-6 py-4">
-        <Form {...form}>
-          <form
-            noValidate
-            onSubmit={form.handleSubmit(submit, scrollToFirstError)}
-            className="mx-auto flex w-full max-w-240 flex-col gap-6"
-          >
-            {showActiveVersionWarning ? <ActiveVersionWarning /> : null}
-            <TermsFormBasics
-              lockBrandAndType={mode !== 'create'}
-              lockTitle={isNewVersion}
-              lockDisplayOrderAndConsent={isNewVersion}
+    <Form {...form}>
+      <form noValidate onSubmit={handleSubmit} className="flex flex-col">
+        <PageHeader
+          breadcrumb={<BackLink label="規約文書管理に戻る" onClick={handleBack} />}
+          title={pageTitle}
+        />
+
+        <main className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          {isEditMode && currentStatus === 'published' && <TermsActiveVersionWarning />}
+
+          <div className="mx-auto flex max-w-240 flex-col gap-6">
+            <TermsBasicInfoSection
+              isBrandTypeLocked={isBrandTypeLocked}
+              isCopiedFieldLocked={isCopiedFieldLocked}
             />
-            <TermsFormContent
+
+            <TermsApplicationSettingsSection isCopiedFieldLocked={isCopiedFieldLocked} />
+
+            <TermsContentSection
               pdfInputRef={pdfInputRef}
               isUploading={isUploading}
               hasExistingPdf={hasExistingPdf}
-              showExistingPdf={showExistingPdf}
-              existingPdfFileName={existingPdfFileName}
-              selectedPdfFileName={selectedPdfFileName}
-              onReplacePdf={handleReplacePdf}
-              onCancelReplacePdf={handleCancelReplacePdf}
-              onFileSelect={handleFileSelect}
+              showExistingFileChip={showExistingFileChip}
+              existingPdfFileName={defaultValues?.pdfFileName}
+              attachedPdfName={attachedPdfName}
+              onReplaceClick={handleReplaceClick}
+              onCancelReplace={handleCancelReplace}
+              onFileSelect={handlePdfSelect}
+              onSetMockPdf={process.env.NODE_ENV === 'development' ? handleSetMockPdf : undefined}
               relatedTermsRef={relatedTermsRef}
             />
+
             <TermsFormActions
               hasSubmitErrors={hasSubmitErrors}
               isSubmitting={isSubmitting}
               isUploading={isUploading}
-              isEditMode={isEdit}
+              isEditMode={isEditMode}
               isDirty={isDirty}
-              onCancel={() => confirmDiscard(() => router.push(backHref))}
+              onCancel={handleBack}
             />
-          </form>
-        </Form>
-      </main>
-      <DiscardChangesDialog
+          </div>
+        </main>
+      </form>
+
+      <TermsDiscardDialog
         open={discardDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) handleDiscardCancel();
-        }}
+        onOpenChange={handleDiscardCancel}
         onCancel={handleDiscardCancel}
         onConfirm={handleDiscardConfirm}
       />
-    </div>
+    </Form>
   );
 }

@@ -1,0 +1,41 @@
+'use client';
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+
+type CampaignDiscardDialogProps = {
+  open: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
+
+export function CampaignDiscardDialog({
+  open,
+  onCancel,
+  onConfirm,
+}: Readonly<CampaignDiscardDialogProps>) {
+  return (
+    <AlertDialog open={open} onOpenChange={onCancel}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>変更を破棄しますか？</AlertDialogTitle>
+          <AlertDialogDescription>
+            未保存の変更はすべて失われます。この操作は取り消せません。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>編集を続ける</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>破棄する</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}

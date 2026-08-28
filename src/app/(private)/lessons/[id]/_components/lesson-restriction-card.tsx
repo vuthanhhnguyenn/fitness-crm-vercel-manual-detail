@@ -33,7 +33,7 @@ function ContractRow({ label, contracts }: { label: string; contracts: string[] 
  * per-use fee row only when pricing is 有料（都次） (FR-003-P1-04).
  */
 export function LessonRestrictionCard({ detail }: LessonRestrictionCardProps) {
-  const isPaid = detail.pricing_type === 'paid';
+  const isPaid = detail.pricing_type === 'per_use';
   const perUseFee = detail.per_use_fee ?? detail.restriction.per_use_fee ?? null;
 
   return (

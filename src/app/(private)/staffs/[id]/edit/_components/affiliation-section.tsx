@@ -1,0 +1,161 @@
+'use client';
+
+import { useFormContext } from 'react-hook-form';
+
+import { toSelectItems } from '@/utils/app.util';
+import { useQuery } from '@tanstack/react-query';
+
+import { FormField } from '@/components/common/form-field';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+import {
+  getCrmFranchiseCompaniesOptions,
+  getCrmStoresOptions,
+} from '@/lib/api/@tanstack/react-query.gen';
+
+import type { StaffEditFormValues } from '../_schemas/staff-edit-form.schema';
+
+/**
+ * 所属設定 card — same パターン radio / 所属店舗 / 所属FC企業 / managed-stores preview
+ * as the create page, pre-filled from the existing record — src: staff-form.tsx L808-876
+ */
+export function AffiliationSection() {
+  const form = useFormContext<StaffEditFormValues>();
+  const affiliationType = form.watch('affiliation_type');
+  const storeId = form.watch('affiliation_store_id');
+  const fcCompanyId = form.watch('affiliation_fc_company_id');
+
+  const { data: storesRes } = useQuery({
+    ...getCrmStoresOptions({ query: { page: 1, limit: 100, sort_by: 'name', sort_order: 'asc' } }),
+    enabled: affiliationType === 'direct_store',
+  });
+  const stores = storesRes?.stores ?? [];
+
+  const { data: fcRes } = useQuery({
+    ...getCrmFranchiseCompaniesOptions({ query: { page: 1, limit: 100, company_type: 'fc' } }),
+    enabled: affiliationType === 'fc_company',
+  });
+  const fcCompanies = fcRes?.franchise_companies ?? [];
+  const selectedFc = fcCompanies.find((fc) => fc.id === fcCompanyId);
+  const selectedFcStores = stores.filter((s) => s.fc_company_id === fcCompanyId);
+
+  const handleAffiliationTypeChange = (value: 'direct_store' | 'fc_company') => {
+    form.setValue('affiliation_type', value, { shouldDirty: true });
+    form.setValue('affiliation_store_id', '', { shouldDirty: true });
+    form.setValue('affiliation_fc_company_id', '', { shouldDirty: true });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>所属設定</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-6 px-4">
+        <FormField
+          label="所属パターン"
+          required
+          description="パターンAとパターンBは排他です。どちらか一方のみ選択できます"
+        >
+          <RadioGroup
+            value={affiliationType}
+            onValueChange={(value) =>
+              handleAffiliationTypeChange(value as 'direct_store' | 'fc_company')
+            }
+            className="flex flex-col gap-3"
+          >
+            <div className="flex items-center gap-3">
+              <RadioGroupItem value="direct_store" id="edit-aff-store" />
+              <Label htmlFor="edit-aff-store" className="cursor-pointer text-sm">
+                パターンA: 店舗直接紐づき（1店舗）
+              </Label>
+            </div>
+            <div className="flex items-center gap-3">
+              <RadioGroupItem value="fc_company" id="edit-aff-fc" />
+              <Label htmlFor="edit-aff-fc" className="cursor-pointer text-sm">
+                パターンB: FC企業紐づき（1社 → 管轄全店舗）
+              </Label>
+            </div>
+          </RadioGroup>
+        </FormField>
+
+        {affiliationType === 'direct_store' && (
+          <FormField label="所属店舗" description="1店舗を選択してください">
+            <Select
+              value={storeId ?? ''}
+              onValueChange={(value) =>
+                form.setValue('affiliation_store_id', value ?? '', { shouldDirty: true })
+              }
+              items={toSelectItems(stores.map((s) => ({ value: s.id, label: s.name })))}
+            >
+              <SelectTrigger className="max-w-[320px]">
+                <SelectValue placeholder="店舗を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        )}
+
+        {affiliationType === 'fc_company' && (
+          <FormField
+            label="所属FC企業"
+            description="1社を選択してください。管轄全店舗へのアクセスが付与されます"
+          >
+            <Select
+              value={fcCompanyId ?? ''}
+              onValueChange={(value) =>
+                form.setValue('affiliation_fc_company_id', value ?? '', { shouldDirty: true })
+              }
+              items={toSelectItems(
+                fcCompanies.map((fc) => ({
+                  value: fc.id,
+                  label: `${fc.display_name}（管轄${fc.managed_store_count}店舗）`,
+                })),
+              )}
+            >
+              <SelectTrigger className="max-w-[320px]">
+                <SelectValue placeholder="FC企業を選択してください" />
+              </SelectTrigger>
+              <SelectContent>
+                {fcCompanies.map((fc) => (
+                  <SelectItem key={fc.id} value={fc.id}>
+                    {fc.display_name}（管轄{fc.managed_store_count}店舗）
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedFc && (
+              <div className="bg-muted/30 mt-3 rounded-md border p-3">
+                <p className="text-muted-foreground mb-2 text-xs">
+                  管轄店舗（このスタッフがアクセスできる店舗）:
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {selectedFcStores.map((s) => (
+                    <Badge key={s.id} variant="outline" className="text-[10px]">
+                      {s.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </FormField>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

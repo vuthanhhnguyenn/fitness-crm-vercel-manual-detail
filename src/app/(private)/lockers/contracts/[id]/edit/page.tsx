@@ -10,9 +10,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes.hook';
 
 import { BreadcrumbNav } from '@/components/common/breadcrumb-nav';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
+import { DiscardChangesDialog } from '@/components/common/discard-changes-dialog';
 import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
 
@@ -21,6 +23,7 @@ import {
   getCrmLockersContractsByIdOptions,
   getCrmLockersContractsByIdQueryKey,
   getCrmLockersContractsQueryKey,
+  getCrmMembersByIdContractsSummaryOptions,
   patchCrmLockersContractsByIdMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
 import { LockerContractStatus } from '@/lib/api/types.gen';
@@ -86,6 +89,31 @@ export default function LockerContractEditPage() {
     slotNumber !== contract?.locker_number &&
     Boolean(slotNumber);
 
+  /**
+   * FR-005 異常系 (#309): 未納金がある会員はスロット契約不可.
+   *
+   * Scoped to what the FR actually forbids — スロット契約（会員へのスロット割当）— so moving the
+   * member to another slot is blocked while an unpaid balance stands, but housekeeping edits on
+   * the existing contract (PIN, contract type) stay possible. Shares its query key with
+   * `LockerContractUnpaidAlert`, so React Query serves it from cache.
+   */
+  const { data: memberContractsSummary, isError: isUnpaidCheckError } = useQuery({
+    ...getCrmMembersByIdContractsSummaryOptions({ path: { id: contract?.member_id ?? '' } }),
+    enabled: Boolean(contract?.member_id),
+  });
+  const hasUnpaidBalance = (memberContractsSummary?.unpaidAmount ?? 0) > 0;
+  /**
+   * A failed (or not-yet-loaded) summary means the balance is unknown, not zero — treating it
+   * as zero would fail open and let staff reassign a slot for a member who may still owe money.
+   */
+  const isUnpaidStatusUnknown =
+    Boolean(contract?.member_id) && (isUnpaidCheckError || !memberContractsSummary);
+  const isSlotReassignment = Boolean(slotNumber) && slotNumber !== contract?.locker_number;
+  const isBlockedByUnpaid = (hasUnpaidBalance || isUnpaidStatusUnknown) && isSlotReassignment;
+
+  const { confirmDiscard, discardDialogOpen, handleDiscardConfirm, handleDiscardCancel } =
+    useUnsavedChanges(isDirty);
+
   const patchMutation = useMutation({
     ...patchCrmLockersContractsByIdMutation(),
     onSuccess: async (res) => {
@@ -121,7 +149,7 @@ export default function LockerContractEditPage() {
   };
 
   const handleSubmit = form.handleSubmit((values) => {
-    if (!isDirty) return;
+    if (!isDirty || isSlotOccupied || isBlockedByUnpaid) return;
     onSubmit(values);
   }, scrollToFirstError);
 
@@ -160,7 +188,7 @@ export default function LockerContractEditPage() {
 
         <Form {...form}>
           <form onSubmit={handleSubmit}>
-            <LockerContractForm mode="edit" contract={contract} locker={lockerDetailData?.locker} />
+            <LockerContractForm contract={contract} locker={lockerDetailData?.locker} />
           </form>
         </Form>
       </div>
@@ -171,20 +199,29 @@ export default function LockerContractEditPage() {
             type="button"
             variant="outline"
             size="lg"
-            onClick={() => router.push(navigate('/lockers/contracts/[id]', contract.id))}
+            onClick={() =>
+              confirmDiscard(() => router.push(navigate('/lockers/contracts/[id]', contract.id)))
+            }
           >
             キャンセル
           </Button>
           <Button
             type="button"
             size="lg"
-            disabled={!isDirty || patchMutation.isPending || isSlotOccupied}
+            disabled={!isDirty || patchMutation.isPending || isSlotOccupied || isBlockedByUnpaid}
             onClick={handleSubmit}
           >
             {patchMutation.isPending ? '保存中...' : '変更を保存する'}
           </Button>
         </div>
       </div>
+
+      <DiscardChangesDialog
+        open={discardDialogOpen}
+        onOpenChange={handleDiscardCancel}
+        onCancel={handleDiscardCancel}
+        onConfirm={handleDiscardConfirm}
+      />
     </div>
   );
 }

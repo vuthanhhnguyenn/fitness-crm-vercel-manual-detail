@@ -8,6 +8,14 @@ import type { Store, StoreBusinessHours } from '@/app/api/_schemas/store.schema'
 
 import type { DbType } from '../_db.types';
 
+/**
+ * A newly opened store seeded on purpose **without members**, so screens that scope by
+ * store have a genuinely empty scope to render. `members.table.ts` excludes it from the
+ * round-robin that assigns members to stores — appending it therefore leaves every other
+ * member's store untouched.
+ */
+export const MEMBERLESS_STORE_CODE = 'STR-10011';
+
 export function createStoreTables(getDb: () => DbType) {
   return {
     storeMainContracts: {
@@ -86,9 +94,14 @@ export function createStoreTables(getDb: () => DbType) {
         this._seeded = true;
         getDb().stores._seed();
         getDb().optionMasters._seed();
+        // Each store keeps a mix of prorated (OP001/OP002 = 日割りあり) and
+        // non-prorated options so the option-add sheet can be exercised both ways
         const seeds = [
           { store_id: 'store-001', ids: ['OP002', 'OP003', 'OP006'] },
           { store_id: 'store-002', ids: ['OP001', 'OP007'] },
+          { store_id: 'store-003', ids: ['OP001', 'OP003', 'OP007'] },
+          { store_id: 'store-004', ids: ['OP002', 'OP004'] },
+          { store_id: 'store-005', ids: ['OP001', 'OP005', 'OP006'] },
           { store_id: 'store-006', ids: ['OP021'] },
         ];
         for (const seed of seeds) {
@@ -120,6 +133,7 @@ export function createStoreTables(getDb: () => DbType) {
                     ? '自動付与'
                     : null,
               price_including_tax: master.price_including_tax,
+              prorated_enabled: master.prorated_enabled,
             };
           })
           .filter((item): item is StoreLinkedOption => Boolean(item));
@@ -179,6 +193,9 @@ export function createStoreTables(getDb: () => DbType) {
           { c: '2024-04-01T09:00:00Z', u: '2026-01-15T10:00:00Z', cb: 'STF-003', ub: 'STF-003' },
           { c: '2025-01-10T09:00:00Z', u: '2026-04-01T15:00:00Z', cb: 'STF-001', ub: 'STF-001' },
           { c: '2020-06-01T09:00:00Z', u: '2025-12-01T10:00:00Z', cb: 'STF-004', ub: 'STF-004' },
+          { c: '2026-07-01T09:00:00Z', u: '2026-07-01T09:00:00Z', cb: 'STF-001', ub: 'STF-001' },
+          { c: '2024-05-01T09:00:00Z', u: '2026-02-20T09:00:00Z', cb: 'STF-002', ub: 'STF-002' },
+          { c: '2024-06-01T09:00:00Z', u: '2026-03-15T09:00:00Z', cb: 'STF-003', ub: 'STF-003' },
         ];
 
         const STORE_SEED_SPECS: StoreSeedSpec[] = [
@@ -227,7 +244,7 @@ export function createStoreTables(getDb: () => DbType) {
             status: 'operating',
           },
           {
-            name: 'JOYFIT池袋店',
+            name: 'JOYFIT大宮店',
             brand: 'joyfit',
             code: 'STR-10005',
             pass: 950,
@@ -301,6 +318,44 @@ export function createStoreTables(getDb: () => DbType) {
             area: 'other',
             operating_company_name: '株式会社ジェイフィット',
             status: 'closed_perm',
+          },
+          {
+            // Deliberately member-free — see MEMBERLESS_STORE_CODE. A store that has just
+            // opened has no suspension or withdrawal applications on file yet, which is what
+            // gives store-scoped screens their genuinely-empty state.
+            name: 'JOYFIT24 天王寺店',
+            brand: 'joyfit24',
+            code: MEMBERLESS_STORE_CODE,
+            pass: 900,
+            mutualOn: true,
+            mutualType: 'within_brand',
+            area: 'kansai',
+            operating_company_name: '株式会社ウェルネスフロンティア',
+            status: 'operating',
+          },
+          {
+            name: 'JOYFIT東十条店',
+            brand: 'joyfit',
+            code: 'STR-10011',
+            pass: 950,
+            mutualOn: true,
+            mutualType: 'within_brand',
+            fc: 'fc-003',
+            area: 'kanto',
+            operating_company_name: '株式会社フィットイースト',
+            status: 'operating',
+          },
+          {
+            name: 'JOYFIT盛岡店',
+            brand: 'joyfit',
+            code: 'STR-10012',
+            pass: 1000,
+            mutualOn: true,
+            mutualType: 'within_brand',
+            fc: 'fc-004',
+            area: 'other',
+            operating_company_name: '株式会社ノースフィットネス',
+            status: 'operating',
           },
         ];
 

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getPaymentSummary } from '@/app/api/_mock-db';
-import { ErrorResponseSchema, PaymentSummarySchema } from '@/app/api/_schemas/member.schema';
+import {
+  ErrorResponseSchema,
+  PaymentPeriodSchema,
+  PaymentSummarySchema,
+} from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
 
 // Register OpenAPI documentation for this route
@@ -19,12 +23,27 @@ registerRoute({
       description: 'Member ID',
       schema: { type: 'string' },
     },
+    {
+      name: 'period',
+      in: 'query',
+      required: false,
+      description: 'Filter by period',
+      schema: {
+        type: 'string',
+        enum: ['all', 'thisMonth', 'lastMonth', '3months', '6months'],
+      },
+    },
   ],
   responses: [
     {
       status: 200,
       schema: PaymentSummarySchema,
       description: 'Payment summary',
+    },
+    {
+      status: 400,
+      schema: ErrorResponseSchema,
+      description: 'Invalid query parameters',
     },
     {
       status: 404,
@@ -41,9 +60,16 @@ registerRoute({
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await params; // Verify params can be awaited (member exists check moved to middleware)
+    const { id } = await params;
 
-    const summary = getPaymentSummary();
+    const periodResult = PaymentPeriodSchema.default('all').safeParse(
+      _request.nextUrl.searchParams.get('period') ?? undefined,
+    );
+    if (!periodResult.success) {
+      return NextResponse.json({ error: 'Invalid query parameters' }, { status: 400 });
+    }
+
+    const summary = getPaymentSummary(id, periodResult.data);
 
     return NextResponse.json(summary, { status: 200 });
   } catch (error) {

@@ -1,5 +1,4 @@
 import type {
-  CreateLockerContractRequest,
   CreateLockerRequest,
   LockerContractChangeHistoryItem,
   LockerContractDetail,
@@ -26,6 +25,7 @@ import {
 } from '@/app/api/crm/lockers/_utils/locker-slot-lock-settings.util';
 import {
   LOCKER_SHAPE_DIMENSIONS,
+  LOCKER_SLOT_START_NUMBER,
   buildLockerSlotPositions,
   buildNumberingPatternLabel,
   getLockerSlotCount,
@@ -41,10 +41,7 @@ import {
   resolveLockerContractTypeFromCode,
   toLockerOptionRef,
 } from '../seeds/locker.seed';
-
-void LOCKER_CONTRACT_TYPE_DESCRIPTIONS;
-void (toLockerOptionRef as unknown);
-void (parseLockerSize as unknown);
+import { joinJapaneseName } from '../seeds/membership.seed';
 
 export function createLockerTables(getDb: () => DbType) {
   return {
@@ -76,36 +73,36 @@ export function createLockerTables(getDb: () => DbType) {
             locker_id: 'LK-002',
             store_id: 'store-001',
             area: '1F 女性更衣室',
-            shape: '3x6',
+            shape: '3x7',
             option_type: 'standard',
-            slots: 18,
-            available_slots: 16,
+            slots: 21,
+            available_slots: 19,
             in_use_slots: 2,
-            numbering_pattern: 'B-001〜B-018',
+            numbering_pattern: 'B-001〜B-021',
           },
           {
             id: 'locker-003',
             locker_id: 'LK-003',
             store_id: 'store-009',
             area: '2F トレーニングエリア',
-            shape: '2x10',
+            shape: '3x5',
             option_type: 'none',
-            slots: 20,
-            available_slots: 19,
+            slots: 15,
+            available_slots: 14,
             in_use_slots: 1,
-            numbering_pattern: 'C-001〜C-020',
+            numbering_pattern: 'C-001〜C-015',
           },
           {
             id: 'locker-004',
             locker_id: 'LK-004',
             store_id: 'store-008',
             area: '1F エントランス',
-            shape: '2x4',
+            shape: '3x2',
             option_type: 'none',
-            slots: 8,
-            available_slots: 5,
+            slots: 6,
+            available_slots: 3,
             in_use_slots: 3,
-            numbering_pattern: 'F-001〜F-008',
+            numbering_pattern: 'F-001〜F-006',
           },
         ] satisfies Array<Omit<LockerListItem, 'store_name'>>;
 
@@ -120,16 +117,18 @@ export function createLockerTables(getDb: () => DbType) {
         this._detailMetaById = {
           'locker-001': {
             option_contract_code: 'LK-3x9-PREMIUM-001',
-            contract_type_code: 'LK-3x9-PREMIUM-001',
+            contract_type_code: 'LK-STD-001',
+            bottom_contract_type_code: 'LK-DSC-001',
             guide_text: '更衣室入口から右手奥、男性専用エリアの隣',
             note: '1F男性更衣室入口付近に設置。プレミアムロッカーとして契約可能。',
-            image_url: null,
+            image_url:
+              'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=800&h=600&fit=crop',
             created_at: '2025/01/15 10:00',
             updated_at: '2026/03/10 09:00',
             slot_prefix: 'A',
             slot_columns: 9,
-            slot_numbering_pattern: 'top_left_to_right' as LockerNumberingPattern,
-            start_number: 1,
+            // 「左下から右下へ」採番: 最下段(1段)が A-001〜A-009、最上段(3段)が A-019〜A-027 になる
+            slot_numbering_pattern: 'bottom_left_to_right' as LockerNumberingPattern,
             default_slot_size: { width_cm: 35, height_cm: 40, depth_cm: 50 },
             default_open_type: 'door' as LockerSlotOpenType,
             default_lock_type: 'dial' as LockerLockType,
@@ -176,23 +175,37 @@ export function createLockerTables(getDb: () => DbType) {
               'A-021': '9637',
               'A-025': '5480',
             },
+            password_changed_at_by_slot: {
+              'A-002': '2026/02/14',
+              'A-004': '2025/08/15',
+              'A-007': '2025/12/03',
+              'A-009': '2025/10/01',
+              'A-011': '2026/04/22',
+              'A-012': '2025/07/15',
+              'A-015': '2026/01/09',
+              'A-018': '2025/11/01',
+              'A-021': '2026/01/15',
+              'A-025': '2025/09/28',
+            },
+            // FR-013: the fee option comes from the cabinet pair (contract_type_code /
+            // bottom_contract_type_code) via `is_bottom_row`. 3x9 with bottom-left-to-right
+            // numbering puts the bottom row at A-001〜A-009, so those slots default to the
+            // bottom-row code. A-004 / A-009 are seeded back onto the standard code to cover
+            // the case FR-013 allows: a bottom-row slot that was never given a discount.
             contract_type_code_by_slot: {
-              'A-002': 'LK-DSC-001',
               'A-004': 'LK-STD-001',
               'A-009': 'LK-STD-001',
-              'A-011': 'LK-STD-001',
-              'A-012': 'LK-STD-001',
-              'A-015': 'LK-PRM-001',
-              'A-018': 'LK-STD-001',
-              'A-021': 'LK-STD-001',
             },
             individual_fee_by_slot: { 'A-002': { amount: 880, applied_at: '2026/02/01' } },
+            // FR-011: reminders target slots before the cancellation date (in use + cancellation date set),
+            // so the history belongs to the slots listed in `scheduledTerminationBySlot` — not to
+            // already-released ones, whose history the sheet no longer renders.
             reminder_notifications_by_slot: {
-              'A-007': [
+              'A-009': [
                 { id: 'notify-001', sent_at: '2026/04/10 10:00', method: 'push', status: 'sent' },
                 { id: 'notify-002', sent_at: '2026/04/10 10:00', method: 'in_app', status: 'sent' },
               ],
-              'A-025': [
+              'A-015': [
                 { id: 'notify-003', sent_at: '2026/03/15 09:30', method: 'push', status: 'failed' },
                 { id: 'notify-004', sent_at: '2026/03/15 09:30', method: 'in_app', status: 'sent' },
                 { id: 'notify-005', sent_at: '2026/03/20 11:00', method: 'push', status: 'sent' },
@@ -200,17 +213,18 @@ export function createLockerTables(getDb: () => DbType) {
             },
           } satisfies LockerDetailSeedMeta,
           'locker-002': {
-            option_contract_code: 'LK-3x6-STANDARD-001',
-            contract_type_code: 'LK-3x6-STANDARD-001',
+            option_contract_code: 'LK-3x7-STANDARD-001',
+            contract_type_code: 'LK-STD-001',
+            bottom_contract_type_code: null,
             guide_text: '女性更衣室入口から左手側の壁面ロッカーです。',
             note: '女性専用エリアで運用している標準ロッカーです。',
-            image_url: null,
+            image_url:
+              'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=800&h=600&fit=crop',
             created_at: '2025/02/01 09:30',
             updated_at: '2026/03/18 11:20',
             slot_prefix: 'B',
-            slot_columns: 6,
+            slot_columns: 7,
             slot_numbering_pattern: 'top_left_to_right' as LockerNumberingPattern,
-            start_number: 1,
             default_slot_size: { width_cm: 35, height_cm: 60, depth_cm: 50 },
             default_open_type: 'door' as LockerSlotOpenType,
             default_lock_type: 'dial' as LockerLockType,
@@ -218,22 +232,24 @@ export function createLockerTables(getDb: () => DbType) {
             open_type_by_slot: {},
             lock_type_by_slot: { 'B-012': 'cylinder' },
             password_by_slot: { 'B-003': '6012', 'B-014': '4471' },
-            contract_type_code_by_slot: { 'B-014': 'LK-STD-001' },
+            password_changed_at_by_slot: { 'B-003': '2026/01/20', 'B-014': '2025/12/05' },
+            contract_type_code_by_slot: {},
             individual_fee_by_slot: {},
             reminder_notifications_by_slot: {},
           } satisfies LockerDetailSeedMeta,
           'locker-003': {
             option_contract_code: null,
             contract_type_code: null,
+            bottom_contract_type_code: null,
             guide_text: 'トレーニングエリア壁面沿いに設置されています。',
             note: '共用利用向けの簡易ロッカーです。',
-            image_url: null,
+            image_url:
+              'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=800&h=600&fit=crop',
             created_at: '2024/11/10 08:00',
             updated_at: '2026/02/14 16:10',
             slot_prefix: 'C',
-            slot_columns: 10,
+            slot_columns: 5,
             slot_numbering_pattern: 'top_left_to_right' as LockerNumberingPattern,
-            start_number: 1,
             default_slot_size: { width_cm: 40, height_cm: 60, depth_cm: 50 },
             default_open_type: 'door' as LockerSlotOpenType,
             default_lock_type: 'dial' as LockerLockType,
@@ -241,6 +257,7 @@ export function createLockerTables(getDb: () => DbType) {
             open_type_by_slot: {},
             lock_type_by_slot: { 'C-007': 'cylinder' },
             password_by_slot: {},
+            password_changed_at_by_slot: {},
             contract_type_code_by_slot: {},
             individual_fee_by_slot: {},
             reminder_notifications_by_slot: {},
@@ -248,15 +265,16 @@ export function createLockerTables(getDb: () => DbType) {
           'locker-004': {
             option_contract_code: null,
             contract_type_code: null,
+            bottom_contract_type_code: null,
             guide_text: '入口脇に設置された短時間利用向けロッカーです。',
             note: '会員・見学者共用の小型ロッカーです。',
-            image_url: null,
+            image_url:
+              'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=800&h=600&fit=crop',
             created_at: '2025/03/20 13:00',
             updated_at: '2026/04/06 09:15',
             slot_prefix: 'F',
-            slot_columns: 4,
+            slot_columns: 2,
             slot_numbering_pattern: 'top_left_to_right' as LockerNumberingPattern,
-            start_number: 1,
             default_slot_size: { width_cm: 35, height_cm: 40, depth_cm: 50 },
             default_open_type: 'door' as LockerSlotOpenType,
             default_lock_type: 'dial' as LockerLockType,
@@ -264,6 +282,7 @@ export function createLockerTables(getDb: () => DbType) {
             open_type_by_slot: {},
             lock_type_by_slot: {},
             password_by_slot: { 'F-004': '2408', 'F-006': '5114' },
+            password_changed_at_by_slot: { 'F-004': '2026/03/02', 'F-006': '2026/02/18' },
             contract_type_code_by_slot: {},
             individual_fee_by_slot: {},
             reminder_notifications_by_slot: {},
@@ -277,7 +296,7 @@ export function createLockerTables(getDb: () => DbType) {
               date: '2026/03/10 09:00',
               user: '山田 太郎',
               action: 'スロット状態変更',
-              detail: 'A-007 開放待ち → 利用可能',
+              detail: 'A-007 開放待ち → 利用可',
             },
             {
               id: 'hist-002',
@@ -291,7 +310,7 @@ export function createLockerTables(getDb: () => DbType) {
               date: '2026/02/15 10:00',
               user: '山田 太郎',
               action: 'スロット状態変更',
-              detail: 'A-025 開放待ち → 利用可能',
+              detail: 'A-025 開放待ち → 利用可',
             },
             {
               id: 'hist-004',
@@ -371,11 +390,18 @@ export function createLockerTables(getDb: () => DbType) {
         const optionContractMaster = meta.option_contract_code
           ? getDb().optionMasters.getByCode(meta.option_contract_code)
           : undefined;
+        // FR-013: the cabinet's two fee options (designed backend: `option_id` / `bottom_option_id`)
+        const standardOptionContractMaster = meta.contract_type_code
+          ? getDb().optionMasters.getByCode(meta.contract_type_code)
+          : undefined;
+        const bottomOptionContractMaster = meta.bottom_contract_type_code
+          ? getDb().optionMasters.getByCode(meta.bottom_contract_type_code)
+          : undefined;
         const slotPositions = buildLockerSlotPositions(
           meta.slot_prefix,
           locker.shape,
           meta.slot_numbering_pattern,
-          meta.start_number,
+          LOCKER_SLOT_START_NUMBER,
         );
 
         const slots: LockerSlotItem[] = slotPositions.map((position) => {
@@ -396,6 +422,18 @@ export function createLockerTables(getDb: () => DbType) {
           const lockType =
             pending?.lock_type ?? meta.lock_type_by_slot[slotNumber] ?? meta.default_lock_type;
           const openType = meta.open_type_by_slot[slotNumber] ?? meta.default_open_type;
+          // FR-013: the fee option is derived from the cabinet pair — the bottom-row code for
+          // slots flagged `is_bottom_row`, the standard code for the rest. A per-slot entry is
+          // only an exceptional override and must still name one of those two codes.
+          const contractTypeCode =
+            meta.contract_type_code_by_slot[slotNumber] ??
+            (position.is_bottom_row
+              ? (meta.bottom_contract_type_code ?? meta.contract_type_code)
+              : meta.contract_type_code);
+          // Resolved here so screens can label a slot without pulling the whole G-02 master down.
+          const contractTypeMaster = contractTypeCode
+            ? getDb().optionMasters.getByCode(contractTypeCode)
+            : undefined;
 
           return {
             id: `slot-${id}-${slotNumber}`,
@@ -412,13 +450,32 @@ export function createLockerTables(getDb: () => DbType) {
             depth_cm: size.depth_cm,
             password:
               assigned && lockType === 'dial' ? (meta.password_by_slot[slotNumber] ?? null) : null,
+            // FR-009: slots whose PIN was never changed treat the contract start date as the initial setting date
+            password_changed_at:
+              assigned && lockType === 'dial'
+                ? normalizeLockerDate(
+                    meta.password_changed_at_by_slot[slotNumber] ?? activeContract?.start_date,
+                  )
+                : null,
             member_name: pending?.member_name ?? activeContract?.member_name ?? null,
             member_id: pending?.member_id ?? activeContract?.member_id ?? null,
-            cancel_date: pending?.cancel_date ?? null,
+            // A cancellation date can also be set on in-use slots once cancellation is processed (a batch moves them to pending release after the date passes).
+            // FR-011 reminder notifications target slots before the cancellation date, i.e. in use + cancellation date set.
+            cancel_date:
+              pending?.cancel_date ??
+              (activeContract
+                ? getDb().lockerContracts.getTerminationDate(activeContract.id)
+                : null),
             contract_start_date: activeContract?.start_date ?? null,
             option_contract_name: assigned ? (optionContractMaster?.name ?? null) : null,
             contract_id: activeContract?.contract_id ?? null,
-            contract_type_code: meta.contract_type_code_by_slot[slotNumber] ?? null,
+            contract_type_code: contractTypeCode,
+            contract_type: contractTypeMaster
+              ? {
+                  ...toLockerOptionRef(contractTypeMaster),
+                  description: LOCKER_CONTRACT_TYPE_DESCRIPTIONS[contractTypeMaster.code] ?? null,
+                }
+              : null,
             individual_fee: fee?.amount ?? null,
             fee_applied_at: fee?.applied_at ?? null,
             reminder_notifications: meta.reminder_notifications_by_slot[slotNumber] ?? [],
@@ -435,15 +492,22 @@ export function createLockerTables(getDb: () => DbType) {
           ...locker,
           location_symbol: meta.slot_prefix,
           slot_numbering_pattern: meta.slot_numbering_pattern,
-          start_number: meta.start_number,
           default_open_type: meta.default_open_type,
           default_lock_type: meta.default_lock_type,
+          default_slot_size: meta.default_slot_size,
           slot_lock_settings: collectSlotLockSettings(meta as LockerSlotLockSettingsMeta),
           has_active_slots: inUseSlots > 0 || pendingReleaseSlots > 0,
           option_contract_master: optionContractMaster
             ? (toLockerOptionRef(optionContractMaster) as LockerOptionMasterRef)
             : null,
           contract_type_code: meta.contract_type_code,
+          bottom_contract_type_code: meta.bottom_contract_type_code,
+          standard_option_contract_master: standardOptionContractMaster
+            ? (toLockerOptionRef(standardOptionContractMaster) as LockerOptionMasterRef)
+            : null,
+          bottom_option_contract_master: bottomOptionContractMaster
+            ? (toLockerOptionRef(bottomOptionContractMaster) as LockerOptionMasterRef)
+            : null,
           guide_text: meta.guide_text,
           note: meta.note,
           image_url: meta.image_url,
@@ -505,6 +569,7 @@ export function createLockerTables(getDb: () => DbType) {
           getDb().lockerPendingSlots.removeBySlotNumber(lockerId, slotNumber);
           getDb().lockerContracts.releaseByLockerNumber(lockerId, slotNumber);
           delete meta.password_by_slot[slotNumber];
+          delete meta.password_changed_at_by_slot[slotNumber];
           delete meta.reminder_notifications_by_slot[slotNumber];
           released.push(slotNumber);
         }
@@ -595,8 +660,11 @@ export function createLockerTables(getDb: () => DbType) {
           if (lockType === 'dial') {
             if (patch.password === null) {
               delete meta.password_by_slot[slotNumber];
+              delete meta.password_changed_at_by_slot[slotNumber];
             } else {
               meta.password_by_slot[slotNumber] = patch.password;
+              // FR-009: update the last-changed date when the PIN is changed
+              meta.password_changed_at_by_slot[slotNumber] = formatLockerTimestamp();
             }
           } else if (patch.password !== null) {
             return undefined;
@@ -608,11 +676,12 @@ export function createLockerTables(getDb: () => DbType) {
           if (patch.contract_type_code === null) {
             delete meta.contract_type_code_by_slot[slotNumber];
           } else {
-            getDb().optionMasters._seed();
-            const exists = getDb().optionMasters._rows.some(
-              (row) => row.code === patch.contract_type_code,
+            // FR-013: the slot fee must be one of the cabinet's two options — the designed
+            // backend rejects anything else on the slot-contract endpoint (E-VAL-001).
+            const allowedCodes = [meta.contract_type_code, meta.bottom_contract_type_code].filter(
+              (code): code is string => Boolean(code),
             );
-            if (!exists) return undefined;
+            if (!allowedCodes.includes(patch.contract_type_code)) return undefined;
             meta.contract_type_code_by_slot[slotNumber] = patch.contract_type_code;
           }
         }
@@ -633,7 +702,8 @@ export function createLockerTables(getDb: () => DbType) {
 
         const detail = this.getDetailById(lockerId);
         const slot = detail?.slot_items.find((item) => item.id === slotId);
-        if (!slot || slot.status !== 'pending_release' || !slot.cancel_date) return undefined;
+        // FR-011: reminders target slots before the cancellation date (in use + cancellation date set)
+        if (!slot || slot.status !== 'in_use' || !slot.cancel_date) return undefined;
 
         void reminderDays;
 
@@ -682,14 +752,14 @@ export function createLockerTables(getDb: () => DbType) {
         const numberingPatternLabel = buildNumberingPatternLabel(
           input.location_symbol,
           input.shape,
-          input.slot_numbering_pattern,
-          input.start_number,
+          LOCKER_SLOT_START_NUMBER,
         );
 
         const meta: LockerDetailSeedMeta = {
           option_contract_code:
             input.option_type === 'none' ? null : (input.contract_type_code ?? null),
           contract_type_code: input.contract_type_code ?? null,
+          bottom_contract_type_code: input.bottom_contract_type_code ?? null,
           guide_text: input.guide_text ?? null,
           note: input.note ?? null,
           image_url: input.image_url ?? null,
@@ -698,14 +768,14 @@ export function createLockerTables(getDb: () => DbType) {
           slot_prefix: input.location_symbol,
           slot_columns: cols,
           slot_numbering_pattern: input.slot_numbering_pattern,
-          start_number: input.start_number,
-          default_slot_size: { width_cm: 35, height_cm: 40, depth_cm: 50 },
+          default_slot_size: input.default_slot_size,
           default_open_type: input.default_open_type,
           default_lock_type: input.default_lock_type,
           slot_size_by_slot: {},
           open_type_by_slot: {},
           lock_type_by_slot: {},
           password_by_slot: {},
+          password_changed_at_by_slot: {},
           contract_type_code_by_slot: {},
           individual_fee_by_slot: {},
           reminder_notifications_by_slot: {},
@@ -764,7 +834,6 @@ export function createLockerTables(getDb: () => DbType) {
 
         const nextPrefix = patch.location_symbol ?? meta.slot_prefix;
         const nextNumberingPattern = patch.slot_numbering_pattern ?? meta.slot_numbering_pattern;
-        const nextStartNumber = patch.start_number ?? meta.start_number;
         const nextDefaultLockType = patch.default_lock_type ?? meta.default_lock_type;
         const nextDefaultOpenType = patch.default_open_type ?? meta.default_open_type;
         const nextOptionType = patch.option_type ?? locker.option_type;
@@ -777,6 +846,9 @@ export function createLockerTables(getDb: () => DbType) {
           meta.option_contract_code =
             nextOptionType === 'none' ? null : (patch.contract_type_code ?? null);
         }
+        if (patch.bottom_contract_type_code !== undefined) {
+          meta.bottom_contract_type_code = patch.bottom_contract_type_code;
+        }
         if (patch.option_type !== undefined) {
           locker.option_type = patch.option_type as LockerOptionType;
           if (patch.option_type === 'none') {
@@ -786,8 +858,10 @@ export function createLockerTables(getDb: () => DbType) {
 
         meta.slot_prefix = nextPrefix;
         meta.slot_numbering_pattern = nextNumberingPattern;
-        meta.start_number = nextStartNumber;
         meta.default_open_type = nextDefaultOpenType;
+        if (patch.default_slot_size !== undefined) {
+          meta.default_slot_size = patch.default_slot_size;
+        }
 
         if (patch.area_label !== undefined) {
           locker.area = patch.area_label;
@@ -806,8 +880,7 @@ export function createLockerTables(getDb: () => DbType) {
         locker.numbering_pattern = buildNumberingPatternLabel(
           nextPrefix,
           locker.shape,
-          nextNumberingPattern,
-          nextStartNumber,
+          LOCKER_SLOT_START_NUMBER,
         );
 
         meta.updated_at = formatLockerTimestamp();
@@ -843,8 +916,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-001',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '田中 花子',
-            member_id: 'M-0042',
+            member_id: 'M-00042',
             locker_number: 'A-002',
             contract_type: 'premium',
             start_date: '2025/06/01',
@@ -856,8 +928,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-002',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '佐藤 健一',
-            member_id: 'M-0108',
+            member_id: 'M-00108',
             locker_number: 'A-004',
             contract_type: 'premium',
             start_date: '2025/08/15',
@@ -869,8 +940,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-003',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '鈴木 美咲',
-            member_id: 'M-0215',
+            member_id: 'M-00015',
             locker_number: 'A-007',
             contract_type: 'premium',
             start_date: '2025/04/01',
@@ -882,8 +952,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-004',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '高橋 直樹',
-            member_id: 'M-0331',
+            member_id: 'M-00131',
             locker_number: 'A-009',
             contract_type: 'premium',
             start_date: '2025/10/01',
@@ -895,8 +964,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-005',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '伊藤 さくら',
-            member_id: 'M-0088',
+            member_id: 'M-00088',
             locker_number: 'A-011',
             contract_type: 'premium',
             start_date: '2025/03/01',
@@ -908,8 +976,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-006',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '渡辺 隆',
-            member_id: 'M-0174',
+            member_id: 'M-00174',
             locker_number: 'A-012',
             contract_type: 'premium',
             start_date: '2025/07/15',
@@ -921,8 +988,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-007',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '山田 陽子',
-            member_id: 'M-0253',
+            member_id: 'M-00153',
             locker_number: 'A-015',
             contract_type: 'premium',
             start_date: '2025/09/01',
@@ -934,8 +1000,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-008',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '中村 大輔',
-            member_id: 'M-0319',
+            member_id: 'M-00119',
             locker_number: 'A-018',
             contract_type: 'premium',
             start_date: '2025/11/01',
@@ -947,8 +1012,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-009',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '小林 恵',
-            member_id: 'M-0402',
+            member_id: 'M-00102',
             locker_number: 'A-021',
             contract_type: 'premium',
             start_date: '2026/01/15',
@@ -960,8 +1024,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-010',
             locker_id: 'locker-001',
             store_id: 'store-006',
-            member_name: '加藤 浩二',
-            member_id: 'M-0467',
+            member_id: 'M-00067',
             locker_number: 'A-025',
             contract_type: 'premium',
             start_date: '2025/05/01',
@@ -973,7 +1036,6 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-011',
             locker_id: 'locker-002',
             store_id: 'store-001',
-            member_name: '山田 健一',
             member_id: 'M-00198',
             locker_number: 'B-003',
             contract_type: 'standard',
@@ -986,7 +1048,6 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-012',
             locker_id: 'locker-002',
             store_id: 'store-001',
-            member_name: '渡辺 由美',
             member_id: 'M-00167',
             locker_number: 'B-014',
             contract_type: 'standard',
@@ -999,8 +1060,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-013',
             locker_id: 'locker-003',
             store_id: 'store-009',
-            member_name: '高橋 直樹',
-            member_id: 'M-00523',
+            member_id: 'M-00123',
             locker_number: 'C-007',
             contract_type: 'standard',
             start_date: '2025/03/01',
@@ -1012,8 +1072,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-014',
             locker_id: 'locker-004',
             store_id: 'store-008',
-            member_name: '高橋 由美',
-            member_id: 'M-00567',
+            member_id: 'M-00157',
             locker_number: 'F-002',
             contract_type: 'standard',
             start_date: '2025/12/01',
@@ -1025,8 +1084,7 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-015',
             locker_id: 'locker-004',
             store_id: 'store-008',
-            member_name: '岩田 真司',
-            member_id: 'M-00601',
+            member_id: 'M-00061',
             locker_number: 'F-004',
             contract_type: 'standard',
             start_date: '2026/01/10',
@@ -1038,52 +1096,62 @@ export function createLockerTables(getDb: () => DbType) {
             contract_id: 'CNT-016',
             locker_id: 'locker-004',
             store_id: 'store-008',
-            member_name: '松田 麻衣',
-            member_id: 'M-00618',
+            member_id: 'M-00018',
             locker_number: 'F-006',
             contract_type: 'standard',
             start_date: '2026/02/01',
             end_date: '2027/01/31',
             status: 'in_use',
           },
-        ] satisfies Array<Omit<LockerContractListItem, 'store_name'>>;
+        ] satisfies Array<Omit<LockerContractListItem, 'store_name' | 'member_name'>>;
 
+        /**
+         * Contract holders are resolved from the members table rather than kept as a
+         * locker-local copy: the edit screen reads `/crm/members/{id}/contracts/summary`
+         * for the FR-005 unpaid check, so a member id that exists only here would 404 and
+         * the name/contact shown would contradict the member detail screen.
+         */
         this._rows = seedSpecs.map((row) => {
           const store = getDb().stores._rows.find((storeRow) => storeRow.id === row.store_id);
           if (!store) {
             throw new Error(`Store not found for locker contract seed: ${row.store_id}`);
           }
-          return { ...row, store_name: store.name };
+          const member = getDb().members.get(row.member_id);
+          if (!member) {
+            throw new Error(`Member not found for locker contract seed: ${row.member_id}`);
+          }
+          return {
+            ...row,
+            store_name: store.name,
+            member_name: joinJapaneseName(
+              member.personalInfo.lastName,
+              member.personalInfo.firstName,
+            ),
+          };
         });
-
-        const memberContacts: Record<string, { phone: string; email: string }> = {
-          'M-0042': { phone: '090-1111-2222', email: 'hanako.tanaka@example.com' },
-          'M-0108': { phone: '090-2222-3333', email: 'kenichi.sato@example.com' },
-          'M-0215': { phone: '090-3333-4444', email: 'misaki.suzuki@example.com' },
-          'M-0331': { phone: '090-4444-5555', email: 'naoki.takahashi@example.com' },
-          'M-0088': { phone: '090-5555-6666', email: 'sakura.ito@example.com' },
-          'M-0174': { phone: '090-1234-5678', email: 'takashi.watanabe@example.com' },
-          'M-0253': { phone: '090-6666-7777', email: 'yoko.yamada@example.com' },
-          'M-0319': { phone: '090-7777-8888', email: 'daisuke.nakamura@example.com' },
-          'M-0402': { phone: '090-8888-9999', email: 'megumi.kobayashi@example.com' },
-          'M-0467': { phone: '090-9999-0000', email: 'koji.kato@example.com' },
-          'M-00198': { phone: '090-1010-2020', email: 'kenichi.yamada@example.com' },
-          'M-00167': { phone: '090-2020-3030', email: 'yumi.watanabe@example.com' },
-          'M-00523': { phone: '090-3030-4040', email: 'naoki.takahashi2@example.com' },
-          'M-00567': { phone: '090-4040-5050', email: 'yumi.takahashi@example.com' },
-          'M-00601': { phone: '090-5050-6060', email: 'shinji.iwata@example.com' },
-          'M-00618': { phone: '090-6060-7070', email: 'mai.matsuda@example.com' },
-        };
 
         this._detailMetaById = {};
         this._changeHistoryById = {};
 
+        /**
+         * Contracts already cancelled but whose cancellation date has not arrived yet (slot status stays in use).
+         * The FR-011 leftover-belongings reminder targets slots in this state.
+         */
+        const scheduledTerminationBySlot: Record<string, string> = {
+          'A-009': '2026/07/31',
+          'A-015': '2026/07/15',
+        };
+
         for (const row of this._rows) {
-          const contact = memberContacts[row.member_id] ?? {
-            phone: '090-0000-0000',
-            email: 'member@example.com',
+          const member = getDb().members.get(row.member_id);
+          const contact = {
+            phone: member?.personalInfo.phone ?? '090-0000-0000',
+            email: member?.personalInfo.email ?? 'member@example.com',
           };
-          const terminationDate = row.status === 'pending_release' ? row.end_date : null;
+          const terminationDate =
+            row.status === 'pending_release'
+              ? row.end_date
+              : (scheduledTerminationBySlot[row.locker_number] ?? null);
 
           this._detailMetaById[row.id] = {
             member_phone: contact.phone,
@@ -1156,6 +1224,7 @@ export function createLockerTables(getDb: () => DbType) {
           contract_type_code: slot?.contract_type_code ?? null,
           option_contract_name: optionContractName,
           slot_size: slotSize,
+          lock_type: slot?.lock_type ?? 'dial',
           member_phone: meta.member_phone,
           member_email: meta.member_email,
           termination_date: normalizeLockerDate(meta.termination_date),
@@ -1168,6 +1237,10 @@ export function createLockerTables(getDb: () => DbType) {
       getChangeHistory(id: string): LockerContractChangeHistoryItem[] {
         this._seed();
         return [...(this._changeHistoryById[id] ?? [])];
+      },
+      getTerminationDate(id: string): string | null {
+        this._seed();
+        return normalizeLockerDate(this._detailMetaById[id]?.termination_date);
       },
       cancel(
         id: string,
@@ -1218,112 +1291,6 @@ export function createLockerTables(getDb: () => DbType) {
         if (index === -1) return false;
         this._rows[index] = { ...this._rows[index]!, status: 'available' };
         return true;
-      },
-      create(
-        input: CreateLockerContractRequest,
-      ):
-        | { ok: true; contract: LockerContractDetail }
-        | { ok: false; error: string; status: number } {
-        this._seed();
-        getDb().optionMasters._seed();
-
-        const member = getDb().members.get(input.member_id);
-        if (!member) {
-          return { ok: false, error: '会員が見つかりません', status: 404 };
-        }
-
-        const memberContracts = getDb().contracts.getByMemberId(input.member_id);
-        const unpaidAmount = memberContracts?.unpaid_info?.amount ?? 0;
-        if (unpaidAmount > 0) {
-          return {
-            ok: false,
-            error: '未納金が残っている会員はロッカー契約を締結できません',
-            status: 409,
-          };
-        }
-
-        const locker = getDb().lockers.getDetailById(input.locker_id);
-        if (!locker) {
-          return { ok: false, error: 'ロッカーが見つかりません', status: 404 };
-        }
-
-        const slot = locker.slot_items.find((item) => item.slot_number === input.slot_number);
-        if (!slot) {
-          return { ok: false, error: 'スロットが見つかりません', status: 404 };
-        }
-
-        if (slot.status !== 'available') {
-          const occupied = this._rows.find(
-            (row) =>
-              row.locker_id === input.locker_id &&
-              row.locker_number === input.slot_number &&
-              row.status === 'in_use',
-          );
-          const memberName = occupied?.member_name ?? slot.member_name ?? '別の会員';
-          return {
-            ok: false,
-            error: `このスロットは既に契約されています（${memberName} さん）`,
-            status: 409,
-          };
-        }
-
-        const contractType = getDb().optionMasters.getByCode(input.contract_type_code);
-        if (!contractType || contractType.category !== 'locker_option') {
-          return { ok: false, error: '契約種類が見つかりません', status: 404 };
-        }
-
-        if (slot.lock_type === 'dial' && !input.password) {
-          return { ok: false, error: 'ダイヤル錠の場合はパスワードが必須です', status: 400 };
-        }
-
-        const nextNumber = this._rows.length + 1;
-        const id = `locker-contract-${String(nextNumber).padStart(3, '0')}`;
-        const contractId = `CNT-${String(nextNumber).padStart(3, '0')}`;
-        const normalizedStartDate = normalizeLockerDate(input.start_date) ?? input.start_date;
-        const endDate = computeLockerContractEndDate(normalizedStartDate);
-        const now = formatLockerTimestamp();
-
-        const row: LockerContractListItem = {
-          id,
-          contract_id: contractId,
-          locker_id: input.locker_id,
-          store_id: locker.store_id,
-          store_name: locker.store_name,
-          member_name: member.basic_info.name_kanji,
-          member_id: input.member_id,
-          locker_number: input.slot_number,
-          contract_type: resolveLockerContractTypeFromCode(input.contract_type_code),
-          start_date: normalizedStartDate,
-          end_date: endDate,
-          status: 'in_use',
-        };
-
-        this._rows.push(row);
-        this._detailMetaById[id] = {
-          member_phone: member.basic_info.phone,
-          member_email: member.basic_info.email,
-          termination_date: null,
-          password_updated_at: input.password ? normalizedStartDate : null,
-          created_at: now,
-          updated_at: now,
-        };
-
-        const lockerMeta = getDb().lockers._detailMetaById[input.locker_id];
-        if (lockerMeta) {
-          lockerMeta.contract_type_code_by_slot[input.slot_number] = input.contract_type_code;
-          if (input.password) {
-            lockerMeta.password_by_slot[input.slot_number] = input.password;
-          }
-          lockerMeta.updated_at = now;
-        }
-        getDb().lockers.syncLockerListCounts(input.locker_id);
-
-        const contract = this.getById(id);
-        if (!contract) {
-          return { ok: false, error: '契約の作成に失敗しました', status: 500 };
-        }
-
-        return { ok: true, contract };
       },
       update(
         id: string,
@@ -1414,6 +1381,7 @@ export function createLockerTables(getDb: () => DbType) {
             ? resolveLockerContractTypeFromCode(nextContractTypeCode)
             : currentRow.contract_type,
           start_date: nextStartDate,
+          // FR-006: the end date follows the start date here; only the cancellation flow (#36) sets 解約日
           end_date: computeLockerContractEndDate(nextStartDate),
         };
 
@@ -1422,6 +1390,7 @@ export function createLockerTables(getDb: () => DbType) {
           if (previousMeta) {
             delete previousMeta.contract_type_code_by_slot[previousSlotNumber];
             delete previousMeta.password_by_slot[previousSlotNumber];
+            delete previousMeta.password_changed_at_by_slot[previousSlotNumber];
             previousMeta.updated_at = now;
           }
           getDb().lockers.syncLockerListCounts(previousLockerId);
@@ -1437,6 +1406,7 @@ export function createLockerTables(getDb: () => DbType) {
               delete nextMeta.password_by_slot[nextSlotNumber];
             } else {
               nextMeta.password_by_slot[nextSlotNumber] = patch.password;
+              nextMeta.password_changed_at_by_slot[nextSlotNumber] = now;
               meta.password_updated_at = now;
             }
           }
@@ -1471,8 +1441,7 @@ export function createLockerTables(getDb: () => DbType) {
             locker_location: 'a_changing_room',
             locker_name: 'ロッカーA',
             slot_number: 'A-007',
-            member_name: '鈴木 美咲',
-            member_id: 'M-0215',
+            member_id: 'M-00015',
             cancel_date: '2026/04/30',
             pending_since: '2026/04/01',
             pending_days: 30,
@@ -1486,8 +1455,7 @@ export function createLockerTables(getDb: () => DbType) {
             locker_location: 'a_changing_room',
             locker_name: 'ロッカーA',
             slot_number: 'A-025',
-            member_name: '加藤 浩二',
-            member_id: 'M-0467',
+            member_id: 'M-00067',
             cancel_date: '2026/03/31',
             pending_since: '2026/03/15',
             pending_days: 16,
@@ -1501,7 +1469,6 @@ export function createLockerTables(getDb: () => DbType) {
             locker_location: 'a_changing_room',
             locker_name: 'ロッカーB',
             slot_number: 'B-003',
-            member_name: '山田 健一',
             member_id: 'M-00198',
             cancel_date: '2025/12/31',
             pending_since: '2025/12/15',
@@ -1516,8 +1483,7 @@ export function createLockerTables(getDb: () => DbType) {
             locker_location: 'b_gym_area',
             locker_name: 'ロッカーC',
             slot_number: 'C-007',
-            member_name: '高橋 直樹',
-            member_id: 'M-00523',
+            member_id: 'M-00123',
             cancel_date: '2026/02/28',
             pending_since: '2026/02/10',
             pending_days: 18,
@@ -1531,22 +1497,32 @@ export function createLockerTables(getDb: () => DbType) {
             locker_location: 'f_entrance',
             locker_name: 'ロッカーF',
             slot_number: 'F-002',
-            member_name: '高橋 由美',
-            member_id: 'M-00567',
+            member_id: 'M-00157',
             cancel_date: '2026/04/05',
             pending_since: '2026/04/06',
             pending_days: 10,
             size: 'W35×H40×D50',
             lock_type: 'dial',
           },
-        ] satisfies Array<Omit<LockerPendingSlotListItem, 'store_name'>>;
+        ] satisfies Array<Omit<LockerPendingSlotListItem, 'store_name' | 'member_name'>>;
 
         this._rows = seedSpecs.map((row) => {
           const store = getDb().stores._rows.find((storeRow) => storeRow.id === row.store_id);
           if (!store) {
             throw new Error(`Store not found for locker pending seed: ${row.store_id}`);
           }
-          return { ...row, store_name: store.name };
+          const member = getDb().members.get(row.member_id);
+          if (!member) {
+            throw new Error(`Member not found for locker pending seed: ${row.member_id}`);
+          }
+          return {
+            ...row,
+            store_name: store.name,
+            member_name: joinJapaneseName(
+              member.personalInfo.lastName,
+              member.personalInfo.firstName,
+            ),
+          };
         });
       },
       getList(): LockerPendingSlotListItem[] {

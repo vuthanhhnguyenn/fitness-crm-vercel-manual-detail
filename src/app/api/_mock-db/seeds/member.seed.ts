@@ -1,4 +1,20 @@
-import type { PaymentSummary } from '@/app/api/_schemas/member.schema';
+import type {
+  AccessAuthMethod,
+  AccessEventType,
+  MemberAccessSettings,
+  PaymentPeriod,
+  PaymentSummary,
+} from '@/app/api/_schemas/member.schema';
+import { format } from 'date-fns';
+
+/**
+ * Mock helper: derive a deterministic seed value from a member ID.
+ * Member-detail mocks vary their data per member via this seed instead of sharing one
+ * global list (otherwise every member would show the exact same history).
+ */
+function memberSeed(memberId: string): number {
+  return Number(memberId.replace(/\D/g, '')) || 0;
+}
 
 export const MOCK_PAYMENT_HISTORY: Array<{
   date: string;
@@ -35,10 +51,16 @@ export const MOCK_BILLING_LIST: Array<{
   month: string;
   type: 'monthly' | 'oneTime';
   amount: number;
-  status: 'pending' | 'paid' | 'uncollected' | 'written-off';
+  status: 'pending' | 'confirmed' | 'paid' | 'uncollected' | 'written-off';
   billingDate: string;
 }> = [
-  { month: '2026年4月', type: 'monthly', amount: 9900, status: 'paid', billingDate: '2026/04/01' },
+  {
+    month: '2026年4月',
+    type: 'monthly',
+    amount: 9900,
+    status: 'confirmed',
+    billingDate: '2026/04/01',
+  },
   { month: '2026年3月', type: 'monthly', amount: 9900, status: 'paid', billingDate: '2026/03/01' },
   {
     month: '2026年3月',
@@ -78,201 +100,256 @@ export const MOCK_BILLING_LIST: Array<{
   },
 ];
 
-export function getPaymentSummary(): PaymentSummary {
-  const currentMonthAmount = MOCK_BILLING_LIST.filter((item) => item.month === '2026年4月').reduce(
-    (sum, item) => sum + item.amount,
-    0,
-  );
+export const PAYMENT_PERIOD_LABELS: Record<PaymentPeriod, string> = {
+  all: '全期間',
+  thisMonth: '今月',
+  lastMonth: '先月',
+  '3months': '過去3ヶ月',
+  '6months': '過去6ヶ月',
+};
 
-  const unpaidTotal = MOCK_BILLING_LIST.filter((item) =>
-    ['uncollected', 'written-off'].includes(item.status),
-  ).reduce((sum, item) => sum + item.amount, 0);
+/** Per-member payment history (drops 0-3 trailing rows so members differ) */
+export function getPaymentHistoryForMember(memberId: string): typeof MOCK_PAYMENT_HISTORY {
+  const drop = memberSeed(memberId) % 4;
+  return MOCK_PAYMENT_HISTORY.slice(0, MOCK_PAYMENT_HISTORY.length - drop);
+}
 
-  const paidRecords = MOCK_BILLING_LIST.filter((item) => item.status === 'paid');
-  const lastPaymentDate = paidRecords.length > 0 ? paidRecords[0]!.billingDate : null;
+/** Per-member billing list (drops 0-2 trailing rows so members differ) */
+export function getBillingListForMember(memberId: string): typeof MOCK_BILLING_LIST {
+  const drop = memberSeed(memberId) % 3;
+  return MOCK_BILLING_LIST.slice(0, MOCK_BILLING_LIST.length - drop);
+}
+
+/**
+ * Period filter for the payment ledger. Shared between the ledger and the payment summary
+ * so the summary numbers never disagree with the list.
+ * (The reference date is fixed at 2026-04-22 because this is a mock.)
+ */
+export function filterPaymentHistoryByPeriod(
+  period: PaymentPeriod,
+  memberId: string,
+): typeof MOCK_PAYMENT_HISTORY {
+  const history = getPaymentHistoryForMember(memberId);
+  if (period === 'all') return [...history];
+
+  const now = new Date('2026-04-22');
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+
+  return history.filter((item) => {
+    const itemDate = new Date(item.date.replaceAll('/', '-'));
+
+    switch (period) {
+      case 'thisMonth':
+        return itemDate >= monthStart;
+      case 'lastMonth':
+        return itemDate >= lastMonthStart && itemDate < monthStart;
+      case '3months':
+        return itemDate >= threeMonthsAgo;
+      case '6months':
+        return itemDate >= sixMonthsAgo;
+      default:
+        return true;
+    }
+  });
+}
+
+export function getPaymentSummary(memberId: string, period: PaymentPeriod = 'all'): PaymentSummary {
+  const billingList = getBillingListForMember(memberId);
+  const currentMonthAmount = billingList
+    .filter((item) => item.month === '2026年4月')
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  const unpaidTotal = billingList
+    .filter((item) => ['uncollected', 'written-off'].includes(item.status))
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  // Sales / refunds are aggregated with the same period filter as the ledger
+  const records = filterPaymentHistoryByPeriod(period, memberId);
+
+  const totalSales = records
+    .filter((item) => item.type === 'sale')
+    .reduce((sum, item) => sum + Math.max(0, item.amount), 0);
+  const refundTotal = records
+    .filter((item) => item.type === 'refund')
+    .reduce((sum, item) => sum + Math.abs(item.amount), 0);
+
+  const lastPayment = [...records]
+    .filter((item) => item.amount > 0)
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
 
   return {
+    periodLabel: PAYMENT_PERIOD_LABELS[period],
+    totalSales,
+    refundTotal,
+    netAmount: totalSales - refundTotal,
     currentMonthAmount,
     unpaidTotal,
-    lastPaymentDate,
+    lastPaymentDate: lastPayment?.date ?? null,
     paymentMethod: 'SBPS',
   };
 }
 
-export const MOCK_VISIT_RECORDS = [
-  {
-    id: 'vr-001',
-    entry_time: '2026-04-23T18:00:00Z',
-    exit_time: '2026-04-23T19:30:00Z',
-    stay_time: 90,
-    store_id: 'store-001',
-    store_name: 'JOYFIT渋谷店',
-    entry_method: 'qr_code',
-  },
-  {
-    id: 'vr-002',
-    entry_time: '2026-04-22T06:00:00Z',
-    exit_time: '2026-04-22T07:15:00Z',
-    stay_time: 75,
-    store_id: 'store-002',
-    store_name: 'JOYFIT新宿店',
-    entry_method: 'ic_card',
-  },
-  {
-    id: 'vr-003',
-    entry_time: '2026-04-21T19:30:00Z',
-    exit_time: null,
-    stay_time: undefined,
-    store_id: 'store-001',
-    store_name: 'JOYFIT渋谷店',
-    entry_method: 'qr_code',
-  },
-  {
-    id: 'vr-004',
-    entry_time: '2026-04-20T18:00:00Z',
-    exit_time: '2026-04-20T20:00:00Z',
-    stay_time: 120,
-    store_id: 'store-001',
-    store_name: 'JOYFIT渋谷店',
-    entry_method: 'face_recognition',
-  },
-  {
-    id: 'vr-005',
-    entry_time: '2026-04-19T06:30:00Z',
-    exit_time: '2026-04-19T08:00:00Z',
-    stay_time: 90,
-    store_id: 'store-003',
-    store_name: 'FIT365六本木',
-    entry_method: 'member_card',
-  },
-  {
-    id: 'vr-006',
-    entry_time: '2026-04-18T18:45:00Z',
-    exit_time: '2026-04-18T19:45:00Z',
-    stay_time: 60,
-    store_id: 'store-002',
-    store_name: 'JOYFIT新宿店',
-    entry_method: 'qr_code',
-  },
-  {
-    id: 'vr-007',
-    entry_time: '2026-04-17T19:00:00Z',
-    exit_time: null,
-    stay_time: undefined,
-    store_id: 'store-002',
-    store_name: 'JOYFIT新宿店',
-    entry_method: 'ic_card',
-  },
-  {
-    id: 'vr-008',
-    entry_time: '2026-04-16T07:00:00Z',
-    exit_time: '2026-04-16T08:30:00Z',
-    stay_time: 90,
-    store_id: 'store-001',
-    store_name: 'JOYFIT渋谷店',
-    entry_method: 'face_recognition',
-  },
-] as const;
+type EntryExitEventMock = {
+  id: string;
+  occurredAt: string;
+  storeId: string;
+  storeName: string;
+  eventType: AccessEventType;
+  authMethod: AccessAuthMethod;
+};
 
-export const MOCK_LESSON_RESERVATIONS = [
-  {
-    id: 'lr-001',
-    lesson_date: '2026-04-23',
-    lesson_name: 'ボクシング基礎',
-    instructor_name: '田中太郎',
-    status: 'attended' as const,
-  },
-  {
-    id: 'lr-002',
-    lesson_date: '2026-04-22',
-    lesson_name: 'ヨガ基礎',
-    instructor_name: '鈴木花子',
-    status: 'attended' as const,
-  },
-  {
-    id: 'lr-003',
-    lesson_date: '2026-04-21',
-    lesson_name: 'パーソナルトレーニング',
-    instructor_name: '佐藤次郎',
-    status: 'absent' as const,
-  },
-  {
-    id: 'lr-004',
-    lesson_date: '2026-04-20',
-    lesson_name: 'グループレッスン',
-    instructor_name: '山田美咲',
-    status: 'attended' as const,
-  },
-  {
-    id: 'lr-005',
-    lesson_date: '2026-04-19',
-    lesson_name: 'ボクシング基礎',
-    instructor_name: '田中太郎',
-    status: 'cancelled' as const,
-  },
-  {
-    id: 'lr-006',
-    lesson_date: '2026-04-25',
-    lesson_name: 'ピラティス',
-    instructor_name: '中村優子',
-    status: 'reserved' as const,
-  },
-  {
-    id: 'lr-007',
-    lesson_date: '2026-05-01',
-    lesson_name: 'ダンスエクササイズ',
-    instructor_name: '高橋健太',
-    status: 'reserved' as const,
-  },
-  {
-    id: 'lr-008',
-    lesson_date: '2026-05-05',
-    lesson_name: 'スイミング',
-    instructor_name: '伊藤由美',
-    status: 'reserved' as const,
-  },
-  {
-    id: 'lr-009',
-    lesson_date: '2026-04-18',
-    lesson_name: 'ヨガ基礎',
-    instructor_name: '鈴木花子',
-    status: 'attended' as const,
-  },
-  {
-    id: 'lr-010',
-    lesson_date: '2026-04-17',
-    lesson_name: 'パーソナルトレーニング',
-    instructor_name: '佐藤次郎',
-    status: 'cancelled' as const,
-  },
-] as const;
+// Generated relative to "now" so the default month (current month) always has
+// data, and the previous month is populated too (for MonthPicker navigation).
+//
+// One row = one gate event (入館 / 退館), matching both the UI prototype's
+// 入退館履歴 table and the backend design doc (`eventType: entry | exit`).
+// A visit that is still in progress simply has no `exit` row yet.
+function buildEntryExitEvents(seed: number): EntryExitEventMock[] {
+  const stores = [
+    { id: 'store-001', name: 'JOYFIT渋谷店' },
+    { id: 'store-002', name: 'JOYFIT新宿店' },
+    { id: 'store-003', name: 'FIT365六本木' },
+  ];
+  const methods: AccessAuthMethod[] = ['qr', 'nfc', 'face', 'manual'];
+  const now = new Date();
+  const events: EntryExitEventMock[] = [];
+  // 8〜15 visits spread over the last ~45 days (covers current + previous month).
+  // The per-member seed varies count, store and time slot so members do not share one history
+  const count = 8 + (seed % 8);
+  for (let i = 0; i < count; i++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i * 3 - (seed % 3));
+    const store = stores[(i + seed) % stores.length]!;
+    const hour = (i + seed) % 2 === 0 ? 18 : 6;
+    const entry = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0);
+    const stillIn = i === 0 && seed % 5 === 2;
+    const stay = 60 + ((i + seed) % 4) * 15;
+    const authMethod = methods[(i + seed) % methods.length]!;
+    const visitId = `${seed}-${String(i + 1).padStart(3, '0')}`;
 
-export const MOCK_MEMBER_ACCESS_SETTINGS: Record<
-  string,
-  { auth_method: string; ic_card_number: string | null; qr_code: string | null; gate_stop: boolean }
-> = {
+    events.push({
+      id: `ee-${visitId}-in`,
+      occurredAt: entry.toISOString(),
+      storeId: store.id,
+      storeName: store.name,
+      eventType: 'entry',
+      authMethod,
+    });
+
+    if (!stillIn) {
+      events.push({
+        id: `ee-${visitId}-out`,
+        occurredAt: new Date(entry.getTime() + stay * 60_000).toISOString(),
+        storeId: store.id,
+        storeName: store.name,
+        eventType: 'exit',
+        authMethod,
+      });
+    }
+  }
+  // Newest first, like the gate log itself
+  return events.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+}
+
+const entryExitEventsByMember = new Map<string, EntryExitEventMock[]>();
+
+/** Per-member entry/exit events (deterministic seed; the same member always gets the same history) */
+export function getEntryExitEventsForMember(memberId: string): EntryExitEventMock[] {
+  let events = entryExitEventsByMember.get(memberId);
+  if (!events) {
+    events = buildEntryExitEvents(memberSeed(memberId));
+    entryExitEventsByMember.set(memberId, events);
+  }
+  return events;
+}
+
+type LessonReservationMock = {
+  id: string;
+  lessonDate: string;
+  lessonName: string;
+  instructorName: string;
+  status: 'attended' | 'absent' | 'cancelled' | 'reserved';
+};
+
+// Generated relative to "now" so the default month (current month) always has
+// data, and the previous month is populated too (for MonthPicker navigation).
+function buildLessonReservations(seed: number): LessonReservationMock[] {
+  const lessons = [
+    { name: 'ボクシング基礎', instructor: '田中太郎' },
+    { name: 'ヨガ基礎', instructor: '鈴木花子' },
+    { name: 'パーソナルトレーニング', instructor: '佐藤次郎' },
+    { name: 'グループレッスン', instructor: '山田美咲' },
+    { name: 'ピラティス', instructor: '中村優子' },
+    { name: 'ダンスエクササイズ', instructor: '高橋健太' },
+    { name: 'スイミング', instructor: '伊藤由美' },
+  ];
+  const statuses: LessonReservationMock['status'][] = [
+    'attended',
+    'attended',
+    'absent',
+    'cancelled',
+    'reserved',
+  ];
+  const now = new Date();
+  const records: LessonReservationMock[] = [];
+  // 6〜12 reservations spread over the last ~45 days.
+  // The per-member seed varies lessons and count
+  const count = 6 + (seed % 7);
+  for (let i = 0; i < count; i++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i * 5 - (seed % 4));
+    const lesson = lessons[(i + seed) % lessons.length]!;
+    records.push({
+      id: `lr-${seed}-${String(i + 1).padStart(3, '0')}`,
+      lessonDate: format(day, 'yyyy-MM-dd'),
+      lessonName: lesson.name,
+      instructorName: lesson.instructor,
+      status: statuses[(i + seed) % statuses.length]!,
+    });
+  }
+  return records;
+}
+
+const lessonReservationsByMember = new Map<string, LessonReservationMock[]>();
+
+/** Per-member lesson reservations (deterministic seed; the same member always gets the same history) */
+export function getLessonReservationsForMember(memberId: string): LessonReservationMock[] {
+  let records = lessonReservationsByMember.get(memberId);
+  if (!records) {
+    records = buildLessonReservations(memberSeed(memberId));
+    lessonReservationsByMember.set(memberId, records);
+  }
+  return records;
+}
+
+// camelCase per the A-01-01 design doc (naming unification for member-detail endpoints).
+// `authMethod` stores the enum key (never a Japanese label) so it shares one
+// vocabulary with the entry/exit events — the UI resolves labels via
+// `_constants/auth-method.ts`.
+export const MOCK_MEMBER_ACCESS_SETTINGS: Record<string, MemberAccessSettings> = {
   'member-001': {
-    auth_method: 'QRコード',
-    ic_card_number: null,
-    qr_code: 'QR123456789',
-    gate_stop: false,
+    authMethod: 'qr',
+    icCardNumber: null,
+    qrCode: 'QR123456789',
+    gateStop: false,
   },
   'member-002': {
-    auth_method: 'ICカード',
-    ic_card_number: 'IC-0002',
-    qr_code: null,
-    gate_stop: true,
+    authMethod: 'nfc',
+    icCardNumber: 'IC-0002',
+    qrCode: null,
+    gateStop: true,
   },
   'member-003': {
-    auth_method: 'QRコード',
-    ic_card_number: null,
-    qr_code: 'QR987654321',
-    gate_stop: false,
+    authMethod: 'qr',
+    icCardNumber: null,
+    qrCode: 'QR987654321',
+    gateStop: false,
   },
   'member-004': {
-    auth_method: '顔認証',
-    ic_card_number: 'IC-0004',
-    qr_code: 'QR111222333',
-    gate_stop: false,
+    authMethod: 'face',
+    icCardNumber: 'IC-0004',
+    qrCode: 'QR111222333',
+    gateStop: false,
   },
 };

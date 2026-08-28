@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
-  type CancelRequest,
   CancelRequestSchema,
-  type CancelResponse,
   CancelResponseSchema,
   ErrorResponseSchema,
 } from '@/app/api/_schemas/membership-application.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { hasPermissions } from '@/utils/permission.util';
+
+import { Permission, UserRole } from '@/types/permission.type';
 
 // Register OpenAPI documentation for this route
 registerRoute({
   method: 'post',
   path: '/crm/membership-applications/{id}/cancel',
   summary: 'Cancel membership application',
-  description: 'Cancel a membership application (post-approval cancellation)',
+  description: 'Cancel a membership application on the applicant behalf',
   tags: ['Membership Applications'],
   parameters: [
     {
@@ -26,67 +28,79 @@ registerRoute({
       schema: { type: 'string' },
     },
   ],
-  requestBody: {
-    schema: CancelRequestSchema,
-    description: 'Cancellation information',
-  },
+  requestBody: { schema: CancelRequestSchema, description: 'Cancellation information' },
   responses: [
     {
       status: 200,
       schema: CancelResponseSchema,
       description: 'Application cancelled successfully',
     },
+    { status: 400, schema: ErrorResponseSchema, description: 'Bad request - invalid request body' },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthenticated' },
+    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
+    { status: 404, schema: ErrorResponseSchema, description: 'Application not found' },
     {
-      status: 400,
+      status: 409,
       schema: ErrorResponseSchema,
-      description: 'Bad request - invalid request body',
+      description: 'Invalid status, usage start date reached, or same-day limit reached',
     },
-    {
-      status: 404,
-      schema: ErrorResponseSchema,
-      description: 'Application not found',
-    },
-    {
-      status: 500,
-      schema: ErrorResponseSchema,
-      description: 'Internal server error',
-    },
+    { status: 500, schema: ErrorResponseSchema, description: 'Internal server error' },
   ],
 });
 
-// POST /api/crm/membership-applications/{id}/cancel - 後から却下
+// POST /api/crm/membership-applications/{id}/cancel - 取り消し
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await params;
-    const body = await request.json();
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    // C-01: 入会取り消し is its own permission, distinct from 承認・否認.
+    if (
+      !hasPermissions(authResult.user.role as UserRole, [Permission.MembershipApplicationsCancel])
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const allowedStoreIds = getAllowedStoreIds(authResult.user);
 
-    // Validate request body with Zod
+    const { id } = await params;
+    const body: unknown = await request.json();
     const validationResult = CancelRequestSchema.safeParse(body);
     if (!validationResult.success) {
       const errors = validationResult.error.issues.map((issue) => issue.message).join(', ');
       return NextResponse.json({ error: errors }, { status: 400 });
     }
+    const { cancellation_reason } = validationResult.data;
 
-    const validatedBody: CancelRequest = validationResult.data;
-    const { cancellation_reason, staff_id } = validatedBody;
+    const result = db.membershipApplications.cancel(
+      id,
+      cancellation_reason,
+      authResult.user.name,
+      allowedStoreIds,
+    );
 
-    const updated = db.membershipApplications.updateStatus(id, 'cancelled');
-    if (!updated) {
+    if (result === 'not_found') {
       return NextResponse.json({ error: 'Application not found' }, { status: 404 });
     }
+    if (result === 'invalid_status') {
+      return NextResponse.json(
+        { error: 'Application cannot be cancelled in its current status' },
+        {
+          status: 409,
+        },
+      );
+    }
+    if (result === 'usage_start_reached') {
+      return NextResponse.json(
+        { error: '利用開始日を過ぎた申請はキャンセルできません。' },
+        { status: 409 },
+      );
+    }
+    if (result === 'same_day_limit') {
+      return NextResponse.json({ error: '当日のキャンセル操作は2回までです。' }, { status: 409 });
+    }
 
-    const response: CancelResponse = {
-      success: true,
-      application_id: id,
-      status: 'cancelled',
-      cancelled_at: new Date().toISOString(),
-      cancelled_by: staff_id || 'staff-001',
-      cancellation_reason: cancellation_reason,
-      refund_processed: true,
-      refund_amount: 5000,
-    };
-
-    return NextResponse.json(response);
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Error cancelling application:', error);
     return NextResponse.json({ error: 'Failed to cancel application' }, { status: 500 });

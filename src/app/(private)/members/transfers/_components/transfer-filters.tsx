@@ -1,5 +1,7 @@
 'use client';
 
+import { toSelectItems } from '@/utils/app.util';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, Search, SlidersHorizontal } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -13,41 +15,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+import { getCrmStoresOptions } from '@/lib/api/@tanstack/react-query.gen';
+
+import {
+  ALL_OPTION_VALUE,
+  TRANSFER_APPLIED_PERIOD_OPTIONS,
+  TRANSFER_AUTO_OPTIONS,
+  TRANSFER_BRAND_OPTIONS,
+  TRANSFER_STATUS_OPTIONS,
+} from '../_constants/constants';
 import { useTransferFiltersContext } from '../_contexts/transfer-filters-context';
-
-const MOCK_STORES = [
-  { value: 'all', label: '全店舗（移籍先）' },
-  { value: 'store-joyfit-001', label: 'JOYFIT池袋店' },
-  { value: 'store-joyfit-002', label: 'JOYFIT新宿店' },
-  { value: 'store-joyfit-003', label: 'JOYFIT渋谷店' },
-  { value: 'store-joyfit-004', label: 'JOYFIT横浜店' },
-  { value: 'store-fit365-001', label: 'FIT365八潮店' },
-  { value: 'store-fit365-002', label: 'FIT365川口店' },
-  { value: 'store-fit365-003', label: 'FIT365大宮店' },
-  { value: 'store-fit365-004', label: 'FIT365越谷店' },
-];
-
-const STATUS_OPTIONS = [
-  { value: 'all', label: '全ステータス' },
-  { value: 'pending', label: '申請中' },
-  { value: 'from_store_approved', label: '店舗承認済' },
-  { value: 'approved', label: '承認済' },
-  { value: 'rejected', label: '却下' },
-  { value: 'completed', label: '移籍完了' },
-];
-
-const APPLIED_PERIOD_OPTIONS = [
-  { value: 'all', label: '全期間' },
-  { value: 'this_month', label: '今月' },
-  { value: 'last_month', label: '先月' },
-  { value: 'this_year', label: '今年' },
-];
-
-const BRAND_OPTIONS = [
-  { value: 'all', label: '全ブランド' },
-  { value: 'joyfit', label: 'JOYFIT' },
-  { value: 'fit365', label: 'FIT365' },
-];
 
 function filterActiveClass(isActive: boolean) {
   return isActive ? 'border-primary bg-primary/10 text-foreground' : '';
@@ -64,6 +41,23 @@ export function TransferFilters({
 }: Readonly<TransferFiltersProps>) {
   const { filters, searchInput, setSearchInput, updateFilter, clearFilters, activeFilterCount } =
     useTransferFiltersContext();
+
+  // Stores come from the API, not a hardcoded list — the endpoint returns only the stores this
+  // user can access, so the dropdown can never offer a store whose rows they cannot see.
+  const { data: storesRes } = useQuery({
+    ...getCrmStoresOptions({
+      query: { page: 1, limit: 100, sort_by: 'name', sort_order: 'asc' },
+    }),
+  });
+
+  const storeOptions = [
+    ...(storesRes?.stores ?? []).map((store) => ({ value: store.id, label: store.name })),
+  ];
+  const fromStoreOptions = [
+    { value: ALL_OPTION_VALUE, label: '全店舗（移籍元）' },
+    ...storeOptions,
+  ];
+  const toStoreOptions = [{ value: ALL_OPTION_VALUE, label: '全店舗（移籍先）' }, ...storeOptions];
 
   return (
     <div className="flex flex-col gap-3 p-4">
@@ -102,16 +96,16 @@ export function TransferFilters({
         </Button>
       </div>
 
-      {/* Expandable filter bar */}
+      {/* Expandable filter bar — six controls in V0 order */}
       {isFilterOpen && (
         <div className="flex flex-wrap items-center gap-2">
           {/* ステータス */}
           <Select
-            value={filters.status ?? 'all'}
+            value={filters.status ?? ALL_OPTION_VALUE}
             onValueChange={(v) =>
-              updateFilter('status', v === 'all' ? null : (v as typeof filters.status))
+              updateFilter('status', v === ALL_OPTION_VALUE ? null : (v as typeof filters.status))
             }
-            items={STATUS_OPTIONS}
+            items={toSelectItems(TRANSFER_STATUS_OPTIONS)}
           >
             <SelectTrigger
               className={`h-8 w-[140px] text-xs ${filterActiveClass(filters.status !== null)}`}
@@ -119,7 +113,7 @@ export function TransferFilters({
               <SelectValue placeholder="全ステータス" />
             </SelectTrigger>
             <SelectContent>
-              {STATUS_OPTIONS.map((opt) => (
+              {TRANSFER_STATUS_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value} className="text-xs">
                   {opt.label}
                 </SelectItem>
@@ -129,9 +123,9 @@ export function TransferFilters({
 
           {/* 移籍元店舗 */}
           <Select
-            value={filters.from_store_id ?? 'all'}
-            onValueChange={(v) => updateFilter('from_store_id', v === 'all ' ? null : v)}
-            items={MOCK_STORES}
+            value={filters.from_store_id ?? ALL_OPTION_VALUE}
+            onValueChange={(v) => updateFilter('from_store_id', v === ALL_OPTION_VALUE ? null : v)}
+            items={toSelectItems(fromStoreOptions)}
           >
             <SelectTrigger
               className={`h-8 w-[160px] text-xs ${filterActiveClass(filters.from_store_id !== null)}`}
@@ -139,7 +133,7 @@ export function TransferFilters({
               <SelectValue placeholder="全店舗（移籍元）" />
             </SelectTrigger>
             <SelectContent>
-              {MOCK_STORES.map((store) => (
+              {fromStoreOptions.map((store) => (
                 <SelectItem key={store.value} value={store.value} className="text-xs">
                   {store.label}
                 </SelectItem>
@@ -149,9 +143,9 @@ export function TransferFilters({
 
           {/* 移籍先店舗 */}
           <Select
-            value={filters.to_store_id ?? 'all'}
-            onValueChange={(v) => updateFilter('to_store_id', v === 'all' ? null : v)}
-            items={MOCK_STORES}
+            value={filters.to_store_id ?? ALL_OPTION_VALUE}
+            onValueChange={(v) => updateFilter('to_store_id', v === ALL_OPTION_VALUE ? null : v)}
+            items={toSelectItems(toStoreOptions)}
           >
             <SelectTrigger
               className={`h-8 w-[160px] text-xs ${filterActiveClass(filters.to_store_id !== null)}`}
@@ -159,7 +153,7 @@ export function TransferFilters({
               <SelectValue placeholder="全店舗（移籍先）" />
             </SelectTrigger>
             <SelectContent>
-              {MOCK_STORES.map((store) => (
+              {toStoreOptions.map((store) => (
                 <SelectItem key={store.value} value={store.value} className="text-xs">
                   {store.label}
                 </SelectItem>
@@ -169,11 +163,11 @@ export function TransferFilters({
 
           {/* ブランド */}
           <Select
-            value={filters.brand ?? 'all'}
+            value={filters.brand ?? ALL_OPTION_VALUE}
             onValueChange={(v) =>
-              updateFilter('brand', v === 'all' ? null : (v as typeof filters.brand))
+              updateFilter('brand', v === ALL_OPTION_VALUE ? null : (v as typeof filters.brand))
             }
-            items={BRAND_OPTIONS}
+            items={toSelectItems(TRANSFER_BRAND_OPTIONS)}
           >
             <SelectTrigger
               className={`h-8 w-[130px] text-xs ${filterActiveClass(filters.brand !== null)}`}
@@ -181,12 +175,8 @@ export function TransferFilters({
               <SelectValue placeholder="全ブランド" />
             </SelectTrigger>
             <SelectContent>
-              {BRAND_OPTIONS.map((item) => (
-                <SelectItem
-                  key={item.value}
-                  value={item.value}
-                  className={item.value !== 'all' ? 'text-xs' : ''}
-                >
+              {TRANSFER_BRAND_OPTIONS.map((item) => (
+                <SelectItem key={item.value} value={item.value} className="text-xs">
                   {item.label}
                 </SelectItem>
               ))}
@@ -195,14 +185,14 @@ export function TransferFilters({
 
           {/* 申請日 */}
           <Select
-            value={filters.applied_period ?? 'all'}
+            value={filters.applied_period ?? ALL_OPTION_VALUE}
             onValueChange={(v) =>
               updateFilter(
                 'applied_period',
-                v === 'all' ? null : (v as typeof filters.applied_period),
+                v === ALL_OPTION_VALUE ? null : (v as typeof filters.applied_period),
               )
             }
-            items={APPLIED_PERIOD_OPTIONS}
+            items={toSelectItems(TRANSFER_APPLIED_PERIOD_OPTIONS)}
           >
             <SelectTrigger
               className={`h-8 w-[120px] text-xs ${filterActiveClass(filters.applied_period !== null)}`}
@@ -210,7 +200,32 @@ export function TransferFilters({
               <SelectValue placeholder="全期間" />
             </SelectTrigger>
             <SelectContent>
-              {APPLIED_PERIOD_OPTIONS.map((opt) => (
+              {TRANSFER_APPLIED_PERIOD_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* 自動移籍 */}
+          <Select
+            value={filters.auto_transfer ?? ALL_OPTION_VALUE}
+            onValueChange={(v) =>
+              updateFilter(
+                'auto_transfer',
+                v === ALL_OPTION_VALUE ? null : (v as typeof filters.auto_transfer),
+              )
+            }
+            items={toSelectItems(TRANSFER_AUTO_OPTIONS)}
+          >
+            <SelectTrigger
+              className={`h-8 w-[140px] text-xs ${filterActiveClass(filters.auto_transfer !== null)}`}
+            >
+              <SelectValue placeholder="自動移籍: すべて" />
+            </SelectTrigger>
+            <SelectContent>
+              {TRANSFER_AUTO_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value} className="text-xs">
                   {opt.label}
                 </SelectItem>

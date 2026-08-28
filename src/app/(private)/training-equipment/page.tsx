@@ -1,30 +1,35 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
 import { useAuthUser } from '@/contexts/auth-user.context';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RowSelectionState, SortingState } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { DataStateBoundary } from '@/components/common/data-state-boundary';
+import { Empty } from '@/components/common/data-state-boundary/empty';
 import { Loading } from '@/components/common/data-state-boundary/loading';
 import { DataTable } from '@/components/common/data-table';
+import { FilterResultBanner } from '@/components/common/filter-result-banner';
 import { PageHeader } from '@/components/common/page-header';
 import { RoleGatedButton } from '@/components/common/role-gated-button';
 import { TablePaginationWithSize } from '@/components/common/table-pagination-with-size';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
 import {
+  getCrmToolTypesOptions,
   getCrmTrainingEquipmentOptions,
   getCrmTrainingEquipmentQueryKey,
-  postCrmTrainingEquipmentBulkStatusMutation,
+  postCrmTrainingEquipmentBulkStatusUpdateMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
+import type { InstallationStatus } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import { Permission } from '@/types/permission.type';
@@ -34,8 +39,11 @@ import { TrainingEquipmentCsvExportButton } from './_components/training-equipme
 import { TrainingEquipmentFilters } from './_components/training-equipment-filters';
 import { getTrainingEquipmentTableColumns } from './_components/training-equipment-table-columns';
 import {
-  TRAINING_EQUIPMENT_STATUS_LABELS,
-  type TrainingEquipmentStatus,
+  INSTALLATION_STATUS_LABELS,
+  TRAINING_EQUIPMENT_ENTITY_LABEL,
+  TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT,
+  TRAINING_EQUIPMENT_STATUS_FILTER_OPTIONS,
+  getTrainingEquipmentTableMaxHeightClass,
 } from './_constants/training-equipment.constants';
 import { useTrainingEquipmentFilters } from './_hooks/use-training-equipment-filters.hook';
 
@@ -43,17 +51,16 @@ function TrainingEquipmentPageContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { hasPermission } = useAuthUser();
-  const canEdit = hasPermission(Permission.TrainingEquipmentEdit);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const canChangeStatus = hasPermission(Permission.TrainingEquipmentEdit);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const {
-    activeFilterCount,
-    clearFilterSelects,
     clearFilters,
     currentPage,
+    exportParams,
     filters,
     hasActiveFilters,
+    isStoreScopeReady,
     pageSize,
     queryParams,
     searchInput,
@@ -63,70 +70,71 @@ function TrainingEquipmentPageContent() {
     setSearchInput,
   } = useTrainingEquipmentFilters();
 
-  const sorting: SortingState = filters.te_sort_by
-    ? [{ id: filters.te_sort_by, desc: filters.te_sort_order === 'desc' }]
+  const sorting: SortingState = filters.te_sort
+    ? [{ id: filters.te_sort, desc: filters.te_order === 'desc' }]
     : [];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     ...getCrmTrainingEquipmentOptions({ query: queryParams }),
+    placeholderData: keepPreviousData,
+    enabled: isStoreScopeReady,
   });
+  const { data: toolTypesRes } = useQuery({ ...getCrmToolTypesOptions() });
+  const toolTypes = toolTypesRes?.items ?? [];
 
   const bulkStatusMutation = useMutation({
-    ...postCrmTrainingEquipmentBulkStatusMutation(),
+    ...postCrmTrainingEquipmentBulkStatusUpdateMutation(),
     onSuccess: (result, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: getCrmTrainingEquipmentQueryKey({ query: queryParams }),
-      });
+      queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
+      setBulkDialogOpen(false);
+      setRowSelection({});
 
-      const nextStatus = variables.body?.next_status;
-      if (!nextStatus) return;
+      const newStatus = variables.body?.newStatus;
+      if (!newStatus) return;
 
-      const statusLabel = TRAINING_EQUIPMENT_STATUS_LABELS[nextStatus];
-
-      if (result.updated_count > 0) {
-        toast.success(`${result.updated_count}件の設置状態を「${statusLabel}」に変更しました`);
+      const statusLabel = INSTALLATION_STATUS_LABELS[newStatus];
+      if (result.updated > 0) {
+        toast.success(`${result.updated}件の機材の設置状態を「${statusLabel}」に変更しました`);
       }
-
-      const failedCount = result.results.filter((item) => !item.success).length;
-      if (failedCount > 0) {
-        toast.error(`${failedCount}件の設置状態変更に失敗しました`);
+      if (result.skipped > 0) {
+        toast.info(`${result.skipped}件は設置状態が変わらないためスキップしました`);
       }
-    },
-    onError: () => {
-      toast.error('一括設置状態変更に失敗しました');
     },
   });
 
-  const selectedIDs = Object.keys(rowSelection);
-
-  const columns = getTrainingEquipmentTableColumns();
+  const selectedIds = Object.keys(rowSelection);
+  // The scope has to settle before the list can be fetched, so treat the wait as part of loading.
+  const isListLoading = isLoading || !isStoreScopeReady;
   const items = data?.items ?? [];
-  const total = data?.total ?? 0;
-  const page = data?.page ?? currentPage;
-  const limit = data?.page_size ?? pageSize;
-  const isFilteredEmpty = hasActiveFilters && !isLoading && total === 0;
+  const pagination = data?.pagination;
+  const total = pagination?.totalItems ?? 0;
+  // The API returns the denominator as the count with conditions cleared (when the active filter
+  // shows discarded rows they are counted too, so the filtered count can never exceed it).
+  const totalAll = pagination?.totalAllItems ?? total;
+  const page = pagination?.page ?? currentPage;
+  const limit = pagination?.limit ?? pageSize;
+
+  const columns = useMemo(
+    () => getTrainingEquipmentTableColumns({ canSelectRows: canChangeStatus }),
+    [canChangeStatus],
+  );
+
+  const filterSummary = [
+    searchInput ? `検索: "${searchInput}"` : '',
+    filters.te_tool
+      ? `器具種別: ${toolTypes.find((item) => item.id === filters.te_tool)?.name ?? filters.te_tool}`
+      : '',
+    filters.te_status !== TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT
+      ? `設置状態: ${TRAINING_EQUIPMENT_STATUS_FILTER_OPTIONS.find((option) => option.value === filters.te_status)?.label ?? ''}`
+      : '',
+  ].filter(Boolean);
 
   const handleBulkStatusSubmit = (payload: {
-    next_status: TrainingEquipmentStatus;
-    reason: string;
+    newStatus: InstallationStatus;
+    changedReason: string;
   }) => {
-    if (selectedIDs.length === 0) return;
-
-    bulkStatusMutation.mutate(
-      {
-        body: {
-          ids: selectedIDs,
-          next_status: payload.next_status,
-          reason: payload.reason,
-        },
-      },
-      {
-        onSuccess: () => {
-          setBulkDialogOpen(false);
-          setRowSelection({});
-        },
-      },
-    );
+    if (selectedIds.length === 0) return;
+    bulkStatusMutation.mutate({ body: { equipmentIds: selectedIds, ...payload } });
   };
 
   return (
@@ -134,13 +142,18 @@ function TrainingEquipmentPageContent() {
       <PageHeader
         title="トレーニング機材管理"
         badge={
-          <Badge variant="outline" className="text-xs">
-            {total}件
-          </Badge>
+          // Without data there is no count yet — showing 「0件」 while loading reads as "no records".
+          isListLoading ? (
+            <Skeleton className="h-5 w-12 rounded-full" />
+          ) : isError ? null : (
+            <Badge variant="outline" className="text-xs">
+              {totalAll.toLocaleString()}件
+            </Badge>
+          )
         }
         actions={
           <div className="flex items-center gap-2">
-            <TrainingEquipmentCsvExportButton />
+            <TrainingEquipmentCsvExportButton query={exportParams} disabled={!isStoreScopeReady} />
             <RoleGatedButton
               requiredPermission={Permission.TrainingEquipmentCreate}
               className="gap-1"
@@ -155,45 +168,20 @@ function TrainingEquipmentPageContent() {
       />
 
       <div className="bg-background flex flex-1 flex-col px-6 py-4">
-        {hasActiveFilters && (
-          <Alert className="mb-4 py-2">
-            <AlertDescription className="flex items-center justify-between text-xs">
-              <span>
-                <span className="font-medium">{total} 件</span>を抽出中
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 shrink-0 text-xs"
-                onClick={clearFilters}
-              >
-                条件をクリア
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
         <Card className="gap-0 overflow-hidden rounded-xl border py-0">
           <div className="space-y-3 px-4 py-3">
             <TrainingEquipmentFilters
-              activeFilterCount={activeFilterCount}
-              clearFilterSelects={clearFilterSelects}
-              clearFilters={clearFilters}
               filters={filters}
-              hasActiveFilters={hasActiveFilters}
-              isFilterOpen={isFilterOpen}
+              toolTypes={toolTypes}
               searchInput={searchInput}
               setFilters={setFilters}
-              setIsFilterOpen={setIsFilterOpen}
               setSearchInput={setSearchInput}
-              showBanner={false}
-              total={total}
             />
 
-            {selectedIDs.length > 0 && canEdit && (
+            {selectedIds.length > 0 && (
               <div className="bg-primary/10 border-primary/20 flex items-center gap-3 rounded-lg border px-3 py-2">
                 <span className="text-primary text-sm font-medium">
-                  {selectedIDs.length}件選択中
+                  {selectedIds.length}件選択中
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => setRowSelection({})}>
                   選択解除
@@ -201,7 +189,7 @@ function TrainingEquipmentPageContent() {
                 <div className="bg-primary/20 h-4 w-px" />
                 <RoleGatedButton
                   requiredPermission={Permission.TrainingEquipmentEdit}
-                  denyTooltip="一括設置状態変更の権限がありません"
+                  denyTooltip="設置状態変更の権限がありません"
                   size="sm"
                   onClick={() => setBulkDialogOpen(true)}
                 >
@@ -211,49 +199,83 @@ function TrainingEquipmentPageContent() {
             )}
           </div>
 
-          <DataTable
-            columns={columns}
-            data={items}
-            isLoading={isLoading}
-            variant="simple"
-            className="rounded-none border-x-0 border-b-0"
-            containerClassName={
-              isFilterOpen ? 'max-h-[calc(100vh-390px)]' : 'max-h-[calc(100vh-330px)]'
-            }
-            onRowClick={(row) => router.push(navigate('/training-equipment/[id]', row.id))}
-            getRowClassName={(row) => (rowSelection[row.id] ? 'bg-primary/10' : undefined)}
-            emptyContent={
-              isFilteredEmpty ? (
-                <div className="flex min-h-60 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-                  <p className="text-muted-foreground text-sm">条件に一致する機材がありません</p>
-                  <Button variant="outline" size="sm" className="text-xs" onClick={clearFilters}>
-                    条件をクリア
-                  </Button>
-                </div>
-              ) : undefined
-            }
-            tableOptions={{
-              manualSorting: true,
-              enableRowSelection: canEdit,
-              getRowId: (originalRow) => originalRow.id,
-              onRowSelectionChange: setRowSelection,
-              onSortingChange: (updater) => {
-                const next = typeof updater === 'function' ? updater(sorting) : updater;
-                if (next.length === 0) {
-                  setFilters({ te_sort_by: null, te_sort_order: null, te_page: 1 });
-                  return;
-                }
-                setFilters({
-                  te_sort_by: next[0]?.id as typeof filters.te_sort_by,
-                  te_sort_order: next[0]?.desc ? 'desc' : 'asc',
-                  te_page: 1,
-                });
-              },
-              state: { sorting, rowSelection },
-            }}
+          <FilterResultBanner
+            show={hasActiveFilters}
+            totalCount={totalAll}
+            filteredCount={total}
+            filterSummary={filterSummary}
+            onClear={clearFilters}
           />
 
-          {total > 0 && (
+          <DataStateBoundary
+            isLoading={isListLoading}
+            isError={isError}
+            isEmpty={false}
+            onRetry={() => void refetch()}
+            errorTitle="トレーニング機材一覧の取得に失敗しました"
+            skeleton={
+              <DataTable
+                columns={columns}
+                data={[]}
+                isLoading
+                variant="simple"
+                className="rounded-none border-x-0 border-b-0"
+              />
+            }
+          >
+            <DataTable
+              columns={columns}
+              data={items}
+              isFetching={isFetching}
+              variant="simple"
+              className="rounded-none border-x-0 border-b-0"
+              containerClassName={getTrainingEquipmentTableMaxHeightClass(
+                hasActiveFilters,
+                selectedIds.length > 0,
+              )}
+              onRowClick={(row) => router.push(navigate('/training-equipment/[id]', row.id))}
+              getRowClassName={(row) => (rowSelection[row.id] ? 'bg-primary/10' : undefined)}
+              emptyContent={
+                <Empty
+                  variant={hasActiveFilters ? 'filtered' : 'empty'}
+                  entityLabel={TRAINING_EQUIPMENT_ENTITY_LABEL}
+                  action={
+                    hasActiveFilters ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={clearFilters}
+                      >
+                        条件をクリア
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              }
+              tableOptions={{
+                manualSorting: true,
+                enableRowSelection: canChangeStatus,
+                getRowId: (originalRow) => originalRow.id,
+                onRowSelectionChange: setRowSelection,
+                onSortingChange: (updater) => {
+                  const next = typeof updater === 'function' ? updater(sorting) : updater;
+                  if (next.length === 0) {
+                    setFilters({ te_sort: null, te_order: null, te_page: 1 });
+                    return;
+                  }
+                  setFilters({
+                    te_sort: next[0]?.id as typeof filters.te_sort,
+                    te_order: next[0]?.desc ? 'desc' : 'asc',
+                    te_page: 1,
+                  });
+                },
+                state: { sorting, rowSelection },
+              }}
+            />
+          </DataStateBoundary>
+
+          {total > 0 && !isError && (
             <TablePaginationWithSize
               total={total}
               currentPage={page}
@@ -268,8 +290,9 @@ function TrainingEquipmentPageContent() {
       <TrainingEquipmentBulkStatusDialog
         open={bulkDialogOpen}
         onOpenChange={setBulkDialogOpen}
-        selectedCount={selectedIDs.length}
+        selectedCount={selectedIds.length}
         isSubmitting={bulkStatusMutation.isPending}
+        isSubmitError={bulkStatusMutation.isError}
         onSubmit={handleBulkStatusSubmit}
       />
     </>

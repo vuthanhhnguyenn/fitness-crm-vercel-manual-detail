@@ -23,9 +23,9 @@ function RequiredMark() {
 }
 
 const STUDIO_TYPE_LABELS: Record<string, string> = {
-  normal: 'ノーマル',
-  hot_yoga: 'ホットヨガ',
-  virtual: 'バーチャル',
+  'studio-lesson': 'スタジオレッスン用',
+  pt: 'PT用',
+  'body-care': 'ボディケア用',
 };
 
 export function StudioFormBasicInfo() {
@@ -108,9 +108,9 @@ export function StudioFormBasicInfo() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="normal">ノーマル</SelectItem>
-                  <SelectItem value="hot_yoga">ホットヨガ</SelectItem>
-                  <SelectItem value="virtual">バーチャル</SelectItem>
+                  <SelectItem value="studio-lesson">スタジオレッスン用</SelectItem>
+                  <SelectItem value="pt">PT用</SelectItem>
+                  <SelectItem value="body-care">ボディケア用</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage className="text-xs" />
@@ -122,7 +122,10 @@ export function StudioFormBasicInfo() {
           name="operatingHours"
           render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-sm font-medium">利用可能時間</FormLabel>
+              <FormLabel className="text-sm font-medium">
+                利用可能時間
+                <RequiredMark />
+              </FormLabel>
               <FormControl>
                 <div className="flex items-center gap-3">
                   <Input
@@ -173,6 +176,9 @@ export function StudioFormBasicInfo() {
                   <span className="text-muted-foreground text-sm">名</span>
                 </div>
               </FormControl>
+              <p className="text-muted-foreground mt-1 text-xs">
+                消防法・安全面に基づくスタジオの物理的な収容上限
+              </p>
               <FormMessage className="text-xs" />
             </FormItem>
           )}
@@ -202,6 +208,9 @@ export function StudioFormBasicInfo() {
                   <span className="text-muted-foreground text-sm">名</span>
                 </div>
               </FormControl>
+              <p className="text-muted-foreground mt-1 text-xs">
+                物理定員を超えて受け入れ可能な追加人数（見学者・体験者等を想定）
+              </p>
               <FormMessage className="text-xs" />
             </FormItem>
           )}

@@ -2,12 +2,9 @@
 
 import { useCallback, useMemo, useState } from 'react';
 
-import { useQuery } from '@tanstack/react-query';
-
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { getCrmOptionsOptions } from '@/lib/api/@tanstack/react-query.gen';
 import type { GetCrmLockersByIdResponse } from '@/lib/api/types.gen';
 
 import { ReleaseConfirmDialog } from '../../_components/release-confirm-dialog';
@@ -28,15 +25,8 @@ interface SlotManagementTabProps {
 export function SlotManagementTab({ locker }: SlotManagementTabProps) {
   const { releaseSlots, updateSlot, sendReminder, isReleasing, isUpdatingSlot, isSendingReminder } =
     useLockerSlotMutations(locker.id);
-  const { data: lockerOptionMastersData } = useQuery({
-    ...getCrmOptionsOptions({
-      query: { page: 1, limit: 200, status: 'active', category: 'locker_option' },
-    }),
-  });
-  const lockerOptionMasters = lockerOptionMastersData?.options ?? [];
   const { mutate: exportCsv, isPending: isExportingCsv } = useLockerSlotsCsvExport(
     locker.locker_id,
-    lockerOptionMasters.map((item) => ({ code: item.code, name: item.name })),
   );
 
   const [pendingOnly, setPendingOnly] = useState(false);
@@ -46,6 +36,20 @@ export function SlotManagementTab({ locker }: SlotManagementTabProps) {
   const [releaseTargets, setReleaseTargets] = useState<string[]>([]);
 
   const slots = locker.slot_items;
+
+  /**
+   * FR-013: a slot's fee comes from the cabinet's pair — standard row vs bottom row — so those
+   * are the only two codes assignable to a slot. Deduped: many cabinets price every row alike.
+   */
+  const feeOptions = useMemo(() => {
+    const candidates = [
+      locker.standard_option_contract_master,
+      locker.bottom_option_contract_master,
+    ].filter((option) => option !== null);
+    return candidates.filter(
+      (option, index) => candidates.findIndex((item) => item.code === option.code) === index,
+    );
+  }, [locker.standard_option_contract_master, locker.bottom_option_contract_master]);
 
   const rowNumbers = useMemo(
     () => [...new Set(slots.map((slot) => slot.row_number))].sort((a, b) => b - a),
@@ -63,9 +67,10 @@ export function SlotManagementTab({ locker }: SlotManagementTabProps) {
   );
 
   const displayedSlots = useMemo(() => {
-    const occupied = slots.filter((slot) => slot.status !== 'available');
-    if (pendingOnly) return pendingSlots;
-    return occupied;
+    const rows = pendingOnly ? pendingSlots : slots.filter((slot) => slot.status !== 'available');
+    // `slot_items` is ordered for the layout grid (top row first). The list below reads as a
+    // roster, so order it by slot number instead.
+    return [...rows].sort((a, b) => a.slot_number.localeCompare(b.slot_number, 'ja'));
   }, [slots, pendingOnly, pendingSlots]);
 
   const selectedSlot = useMemo(
@@ -224,10 +229,10 @@ export function SlotManagementTab({ locker }: SlotManagementTabProps) {
               <div className="flex items-center gap-3">
                 <span className="text-foreground font-medium">状態:</span>
                 <div className="flex items-center gap-1">
-                  <div className="border-border bg-background size-3 rounded border" /> 利用可能
+                  <div className="border-border bg-background size-3 rounded border" /> 利用可
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="border-info/20 bg-info/15 size-3 rounded border" /> 利用中
+                  <div className="border-info/20 bg-info/15 size-3 rounded border" /> 使用中
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="border-warning/20 bg-warning/15 size-3 rounded border" /> 開放待ち
@@ -256,11 +261,11 @@ export function SlotManagementTab({ locker }: SlotManagementTabProps) {
           </div>
           <div className="bg-border h-4 w-px" />
           <div className="text-muted-foreground text-xs">
-            利用可能: <span className="text-success font-semibold">{summary.available}</span>
+            利用可: <span className="text-success font-semibold">{summary.available}</span>
           </div>
           <div className="bg-border h-4 w-px" />
           <div className="text-muted-foreground text-xs">
-            利用中: <span className="text-info font-semibold">{summary.inUse}</span>
+            使用中: <span className="text-info font-semibold">{summary.inUse}</span>
           </div>
           <div className="bg-border h-4 w-px" />
           <div className="text-muted-foreground text-xs">
@@ -269,7 +274,7 @@ export function SlotManagementTab({ locker }: SlotManagementTabProps) {
         </div>
 
         <SlotContractsTable
-          lockerOptionMasters={lockerOptionMasters}
+          feeOptions={feeOptions}
           pendingSlots={pendingSlots}
           displayedSlots={displayedSlots}
           pendingOnly={pendingOnly}
@@ -297,7 +302,7 @@ export function SlotManagementTab({ locker }: SlotManagementTabProps) {
         slot={selectedSlot}
         contractDetailId={selectedContractDetailId}
         lockerArea={locker.area}
-        lockerOptionMasters={lockerOptionMasters}
+        feeOptions={feeOptions}
         isUpdating={isUpdatingSlot}
         isSendingReminder={isSendingReminder}
         onContractTypeSave={handleContractTypeChange}

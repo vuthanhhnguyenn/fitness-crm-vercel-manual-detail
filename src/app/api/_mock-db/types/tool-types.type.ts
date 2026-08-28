@@ -7,5 +7,6 @@ export type ToolTypesType = {
   _seeded: boolean;
   _seed(): void;
   list(options?: { includeNone?: boolean; includeInactive?: boolean }): ToolType[];
+  getById(id: string): ToolTypeMockRow | undefined;
   getByCode(code: string): ToolTypeMockRow | undefined;
 };

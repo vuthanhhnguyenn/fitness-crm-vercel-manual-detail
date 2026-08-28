@@ -7,7 +7,7 @@ interface BlacklistUnpaidCardProps {
   unpaidAmount: number;
 }
 
-export function BlacklistUnpaidCard({ unpaidAmount }: BlacklistUnpaidCardProps) {
+export function BlacklistUnpaidCard({ unpaidAmount }: Readonly<BlacklistUnpaidCardProps>) {
   const hasDebt = unpaidAmount > 0;
 
   return (

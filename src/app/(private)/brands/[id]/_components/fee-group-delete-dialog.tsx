@@ -1,5 +1,10 @@
 'use client';
 
+import { useState } from 'react';
+
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,27 +16,72 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-import type { GetCrmBrandsByIdFeesResponse } from '@/lib/api/types.gen';
+import {
+  deleteCrmBrandsByIdFeesBySubBrandCodeMutation,
+  getCrmBrandsByIdChangeHistoryQueryKey,
+  getCrmBrandsByIdFeesQueryKey,
+  getCrmBrandsByIdQueryKey,
+} from '@/lib/api/@tanstack/react-query.gen';
 
-type BrandFeeGroup = GetCrmBrandsByIdFeesResponse['fee_groups'][number];
+import type { BrandFeeGroup } from '../_types/brand-fee.type';
 
 interface FeeGroupDeleteDialogProps {
-  open: boolean;
+  brandId: string;
   feeGroup: BrandFeeGroup | null;
-  isPending: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
 }
 
 export function FeeGroupDeleteDialog({
-  open,
+  brandId,
   feeGroup,
-  isPending,
   onOpenChange,
-  onConfirm,
 }: FeeGroupDeleteDialogProps) {
+  const queryClient = useQueryClient();
+
+  const deleteFeeGroupMutation = useMutation({
+    ...deleteCrmBrandsByIdFeesBySubBrandCodeMutation(),
+    onSuccess: (response) => {
+      toast.success(response.message || '費用マスタを削除しました');
+      queryClient.invalidateQueries({
+        queryKey: getCrmBrandsByIdFeesQueryKey({ path: { id: brandId } }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getCrmBrandsByIdQueryKey({ path: { id: brandId } }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getCrmBrandsByIdChangeHistoryQueryKey({ path: { id: brandId } }),
+      });
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast.error('費用マスタの削除に失敗しました');
+    },
+  });
+
+  // Keep showing the last fee group's details while the dialog animates closed.
+  const [prevFeeGroup, setPrevFeeGroup] = useState(feeGroup);
+  const [displayFeeGroup, setDisplayFeeGroup] = useState<BrandFeeGroup | null>(feeGroup);
+  if (feeGroup !== prevFeeGroup) {
+    setPrevFeeGroup(feeGroup);
+    if (feeGroup) {
+      setDisplayFeeGroup(feeGroup);
+    }
+  }
+
+  const handleConfirm = () => {
+    if (!feeGroup) return;
+    deleteFeeGroupMutation.mutate({
+      path: { id: brandId, subBrandCode: feeGroup.sub_brand_code },
+    });
+  };
+
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog
+      open={!!feeGroup}
+      onOpenChange={(open) => {
+        if (!deleteFeeGroupMutation.isPending) onOpenChange(open);
+      }}
+    >
       <AlertDialogContent
         size="default"
         className="max-w-[392px] gap-0 overflow-hidden p-0 sm:max-w-[392px]"
@@ -41,19 +91,22 @@ export function FeeGroupDeleteDialog({
             費用マスタを削除しますか？
           </AlertDialogTitle>
           <AlertDialogDescription className="text-sm leading-7">
-            {feeGroup
-              ? `「${feeGroup.parent_brand_name} / ${feeGroup.display_name}」（${feeGroup.fee_master_id}）の費用マスタを削除します。この操作は取り消せません。`
+            {displayFeeGroup
+              ? `「${displayFeeGroup.parent_brand_name} / ${displayFeeGroup.display_name}」（${displayFeeGroup.fee_master_id}）の費用マスタを削除します。この操作は取り消せません。`
               : ''}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="mx-0 mb-0 justify-end gap-2 px-4 pt-4 pb-5 sm:flex-row sm:justify-end">
-          <AlertDialogCancel disabled={isPending} className="h-8 rounded-md px-4 text-sm">
+          <AlertDialogCancel
+            disabled={deleteFeeGroupMutation.isPending}
+            className="h-8 rounded-md px-4 text-sm"
+          >
             キャンセル
           </AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive hover:bg-destructive/90 h-8 rounded-md px-4 text-sm text-white"
-            disabled={isPending || !feeGroup}
-            onClick={onConfirm}
+            disabled={deleteFeeGroupMutation.isPending || !feeGroup}
+            onClick={handleConfirm}
           >
             削除する
           </AlertDialogAction>

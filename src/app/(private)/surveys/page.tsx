@@ -49,7 +49,7 @@ function SurveysPageContent() {
     ...deleteCrmSurveysByIdMutation(),
     onSuccess: (response) => {
       toast.success(response.message || 'アンケートを削除しました');
-      queryClient.invalidateQueries({ queryKey: getCrmSurveysQueryKey(), refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: getCrmSurveysQueryKey() });
       setDeleteTarget(null);
     },
     onError: () => {

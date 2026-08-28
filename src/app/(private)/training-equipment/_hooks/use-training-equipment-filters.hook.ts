@@ -1,147 +1,153 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
+import { ALL_STORES, useCurrentStore } from '@/contexts/current-store.context';
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
 
-import type { GetCrmTrainingEquipmentData } from '@/lib/api/types.gen';
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
+
+import type {
+  GetCrmTrainingEquipmentData,
+  GetCrmTrainingEquipmentExportData,
+} from '@/lib/api/types.gen';
 
 import {
+  TRAINING_EQUIPMENT_DEFAULT_PAGE_SIZE,
   TRAINING_EQUIPMENT_PAGE_SIZE_OPTIONS,
   TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT,
+  TRAINING_EQUIPMENT_STATUS_FILTER_OPTIONS,
 } from '../_constants/training-equipment.constants';
+import {
+  type TrainingEquipmentStatusFilter,
+  toInstallationStatusParams,
+} from '../_utils/training-equipment-query.util';
 
 type TrainingEquipmentQuery = NonNullable<GetCrmTrainingEquipmentData['query']>;
+type TrainingEquipmentExportQuery = NonNullable<GetCrmTrainingEquipmentExportData['query']>;
 
-const TOOL_TYPE_VALUES = [
-  'machine',
-  'cableMachine',
-  'smithMachine',
-  'barbell',
-  'dumbbell',
-  'kettlebell',
-  'resistanceBand',
-  'trx',
-  'other',
-] satisfies Array<NonNullable<TrainingEquipmentQuery['tool_type']>>;
+const STATUS_FILTER_VALUES = TRAINING_EQUIPMENT_STATUS_FILTER_OPTIONS.map((option) => option.value);
 
-const STATUS_VALUES = [
-  'installed',
-  'maintenance',
-  'removed',
-  'discarded',
-  'exclude_discarded',
-  'all',
-] satisfies Array<NonNullable<TrainingEquipmentQuery['status']>>;
-
-const SORT_BY_VALUES = [
+const SORT_VALUES = [
   'id',
   'name',
-  'tool_type',
-  'quantity',
-  'installation_area',
-  'status',
-  'last_updated_at',
-] satisfies Array<NonNullable<TrainingEquipmentQuery['sort_by']>>;
+  'toolType',
+  'locationInGym',
+  'installationStatus',
+  'updatedAt',
+] satisfies Array<NonNullable<TrainingEquipmentQuery['sort']>>;
 
-type TrainingEquipmentStatusFilter = (typeof STATUS_VALUES)[number];
+export type { TrainingEquipmentStatusFilter };
 
 export type TrainingEquipmentUrlFilters = {
   te_keyword: string;
-  te_tool_type: TrainingEquipmentQuery['tool_type'] | null;
+  te_tool: string | null;
   te_status: TrainingEquipmentStatusFilter;
-  te_sort_by: TrainingEquipmentQuery['sort_by'] | null;
-  te_sort_order: 'asc' | 'desc' | null;
+  te_sort: NonNullable<TrainingEquipmentQuery['sort']> | null;
+  te_order: 'asc' | 'desc' | null;
   te_page: number;
-  te_page_size: number;
+  te_limit: number;
 };
 
+/**
+ * Keeps the FR-002 filter conditions in the URL. The status filter is converted into the API
+ * design's two axes: `installationStatus` + `includeDiscarded`.
+ */
 export function useTrainingEquipmentFilters() {
+  const { currentStoreId, canSelectAllStores, isLoading: isStoreLoading } = useCurrentStore();
   const [filters, setFilters] = useQueryStates(
     {
       te_keyword: parseAsString.withDefault(''),
-      te_tool_type: parseAsStringEnum(TOOL_TYPE_VALUES),
-      te_status: parseAsStringEnum(STATUS_VALUES).withDefault(
+      te_tool: parseAsString,
+      te_status: parseAsStringEnum([...STATUS_FILTER_VALUES]).withDefault(
         TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT,
       ),
-      te_sort_by: parseAsStringEnum(SORT_BY_VALUES),
-      te_sort_order: parseAsStringEnum(['asc', 'desc']),
+      te_sort: parseAsStringEnum(SORT_VALUES),
+      te_order: parseAsStringEnum<'asc' | 'desc'>(['asc', 'desc']),
       te_page: parseAsInteger.withDefault(1),
-      te_page_size: parseAsInteger.withDefault(50),
+      te_limit: parseAsInteger.withDefault(TRAINING_EQUIPMENT_DEFAULT_PAGE_SIZE),
     },
     { history: 'push', shallow: false },
   );
 
-  const [searchInput, setSearchInput] = useState(() => filters.te_keyword);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(filters.te_keyword, (value) =>
+    setFilters({ te_keyword: value || null, te_page: 1 }),
+  );
+
+  // A new store scope is a new result set, so the current page offset no longer means anything.
+  // The first resolved scope is not a change — only later switches reset the page.
+  const previousStoreIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (searchInput !== filters.te_keyword) {
-        setFilters({ te_keyword: searchInput || null, te_page: 1 });
-      }
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [filters.te_keyword, searchInput, setFilters]);
+    if (isStoreLoading) return;
 
-  const normalizedPageSize = TRAINING_EQUIPMENT_PAGE_SIZE_OPTIONS.includes(
-    filters.te_page_size as (typeof TRAINING_EQUIPMENT_PAGE_SIZE_OPTIONS)[number],
+    const previousStoreId = previousStoreIdRef.current;
+    previousStoreIdRef.current = currentStoreId;
+    if (previousStoreId === null || previousStoreId === currentStoreId) return;
+
+    setFilters({ te_page: 1 });
+  }, [currentStoreId, isStoreLoading, setFilters]);
+
+  const limit = TRAINING_EQUIPMENT_PAGE_SIZE_OPTIONS.includes(
+    filters.te_limit as (typeof TRAINING_EQUIPMENT_PAGE_SIZE_OPTIONS)[number],
   )
-    ? filters.te_page_size
-    : 50;
+    ? filters.te_limit
+    : TRAINING_EQUIPMENT_DEFAULT_PAGE_SIZE;
 
-  const queryParams: TrainingEquipmentQuery = {
+  const statusParams = toInstallationStatusParams(filters.te_status);
+
+  // 「全店舗（本部）」 is selectable by HQ roles only (`canSelectAllStores`). Only then is `storeId`
+  // omitted to fetch across stores; every other case sends the own store (omitting it is a 400).
+  const isAllStoresScope = canSelectAllStores && currentStoreId === ALL_STORES;
+  const scopedStoreId = isAllStoresScope ? undefined : currentStoreId;
+
+  // The CSV export (FR-010) is "what the list currently shows": the same filters and ordering as
+  // the list, only without pagination. Built from the same source so the URL is not parsed twice.
+  const exportParams: TrainingEquipmentExportQuery = {
+    storeId: scopedStoreId,
     keyword: filters.te_keyword || undefined,
-    tool_type: filters.te_tool_type || undefined,
-    status: filters.te_status,
-    sort_by: filters.te_sort_by || undefined,
-    sort_order:
-      filters.te_sort_order === 'asc' || filters.te_sort_order === 'desc'
-        ? filters.te_sort_order
-        : undefined,
-    page: filters.te_page,
-    page_size: normalizedPageSize,
+    mstToolId: filters.te_tool || undefined,
+    ...statusParams,
+    sort: filters.te_sort || undefined,
+    order: filters.te_order || undefined,
   };
 
-  const clearFilterSelects = () => {
-    setFilters({
-      te_tool_type: null,
-      te_status: TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT,
-      te_page: 1,
-    });
+  const queryParams: TrainingEquipmentQuery = {
+    ...exportParams,
+    includeTotalAll: true,
+    page: filters.te_page,
+    limit,
   };
 
   const clearFilters = () => {
     setSearchInput('');
     setFilters({
       te_keyword: null,
-      te_tool_type: null,
+      te_tool: null,
       te_status: TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT,
-      te_sort_by: null,
-      te_sort_order: null,
       te_page: 1,
-      te_page_size: 50,
     });
   };
-
-  const activeFilterCount = [
-    filters.te_tool_type != null,
-    filters.te_status !== TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT,
-  ].filter(Boolean).length;
 
   return {
     filters,
     queryParams,
+    exportParams,
+    /**
+     * Do not hit the list until the store scope is settled. For roles limited to a single store
+     * `currentStoreId` is only known after the store list loads, so firing earlier means a 400 with no `storeId`.
+     */
+    isStoreScopeReady: !isStoreLoading && (isAllStoresScope || currentStoreId !== ALL_STORES),
+    isAllStoresScope,
     searchInput,
     setSearchInput,
     setFilters,
     clearFilters,
-    clearFilterSelects,
     currentPage: filters.te_page,
     setCurrentPage: (page: number) => setFilters({ te_page: page }),
-    setPageSize: (pageSize: number) => setFilters({ te_page_size: pageSize, te_page: 1 }),
-    pageSize: normalizedPageSize,
+    pageSize: limit,
+    setPageSize: (nextLimit: number) => setFilters({ te_limit: nextLimit, te_page: 1 }),
     hasActiveFilters:
       filters.te_keyword.length > 0 ||
-      filters.te_tool_type != null ||
+      filters.te_tool != null ||
       filters.te_status !== TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT,
-    activeFilterCount,
   };
 }

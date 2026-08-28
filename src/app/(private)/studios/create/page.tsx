@@ -8,7 +8,7 @@ export default function StudioCreatePage() {
     <div className="flex flex-col">
       <PageHeader
         breadcrumb={<BackLink label="スタジオ管理に戻る" href="/studios" />}
-        title="新規スタジオ登録"
+        title="スタジオ登録"
       />
       <StudioForm mode="create" />
     </div>

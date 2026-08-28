@@ -1,26 +1,50 @@
-import { BreadcrumbNav } from '@/components/common/breadcrumb-nav';
+import { BackLink } from '@/components/common/back-link';
 import { PageHeader } from '@/components/common/page-header';
+
+import { navigate } from '@/lib/routes/routes.util';
 
 import { EnrollmentForm } from './_components/enrollment-form';
 
-export default async function NewMembershipApplicationPage() {
+interface PageProps {
+  searchParams: Promise<{
+    customer_name?: string;
+    customer_name_kana?: string;
+    birth_date?: string;
+    phone?: string;
+    email?: string;
+  }>;
+}
+
+function splitName(fullName: string | undefined): { family: string; given: string } {
+  if (!fullName) return { family: '', given: '' };
+  const [family = '', given = ''] = fullName.split(/[\s　]+/);
+  return { family, given };
+}
+
+export default async function NewMembershipApplicationPage({ searchParams }: Readonly<PageProps>) {
+  const params = await searchParams;
+  const name = splitName(params.customer_name);
+  const kana = splitName(params.customer_name_kana);
+
   return (
-    <main className="bg-muted/40 min-h-0 flex-1 overflow-y-auto p-6">
-      <div className="mx-auto mb-4 max-w-240">
-        <PageHeader
-          breadcrumb={
-            <BreadcrumbNav
-              items={[
-                { label: '入会申請管理', url: '/membership-applications' },
-                { label: '管理画面入会' },
-              ]}
-            />
-          }
-          title="管理画面入会"
-          className="px-0"
+    <main>
+      <PageHeader
+        breadcrumb={
+          <BackLink label="入会申請管理に戻る" href={navigate('/membership-applications')} />
+        }
+        title="管理画面入会"
+      />
+      <div className="px-6 py-4">
+        <EnrollmentForm
+          prefillFamilyName={name.family}
+          prefillGivenName={name.given}
+          prefillFamilyNameKana={kana.family}
+          prefillGivenNameKana={kana.given}
+          prefillBirthDate={params.birth_date}
+          prefillPhone={params.phone}
+          prefillEmail={params.email}
         />
       </div>
-      <EnrollmentForm />
     </main>
   );
 }

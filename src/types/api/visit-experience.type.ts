@@ -9,8 +9,8 @@ export type VisitExperienceStatus =
 
 export const VISIT_EXPERIENCE_STATUS_LABELS: Record<VisitExperienceStatus, string> = {
   application_received: '申込受付',
-  info_missing: '確認待ち',
-  bl_checking: 'BL照合中',
+  info_missing: '申請者への確認待ち',
+  bl_checking: 'BL照合結果あり・確認待ち',
   visiting: '見学中',
   visit_completed: '見学終了',
   membership_applied: '入会申請済',
@@ -23,6 +23,7 @@ export interface VisitExperience {
   status: VisitExperienceStatus;
   bl_match: boolean;
   brand_name: string;
+  store_id: string;
   store_name: string;
   reserved_at: string;
   visit_start_at: string | null;
@@ -37,6 +38,7 @@ export interface GetVisitExperiencesQuery {
   status?: VisitExperienceStatus;
   brand_name?: string;
   store_name?: string;
+  bl_match?: boolean;
   date_range?: VisitExperienceDateRangeFilter;
   page?: number;
   limit?: 25 | 50 | 100 | 200;
@@ -45,6 +47,7 @@ export interface GetVisitExperiencesQuery {
 export interface GetVisitExperiencesResponse {
   items: VisitExperience[];
   total: number;
+  total_all_items: number;
   page: number;
   limit: number;
   total_pages: number;
@@ -77,6 +80,9 @@ export interface VisitExperienceDetail extends VisitExperience {
   b01_gate: string | null;
   b01_entry_at: string | null;
   b01_exit_at: string | null;
+  enrolled_at: string | null;
+  enrolled_application_id: string | null;
+  cancelled_at: string | null;
   timeline: VisitTimelineEntry[];
 }
 

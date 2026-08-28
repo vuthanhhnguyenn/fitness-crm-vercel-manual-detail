@@ -30,7 +30,13 @@ export async function POST(request: NextRequest) {
     const { category, content_type } = parsed.data;
     const uuid = crypto.randomUUID();
     const ext =
-      content_type === 'image/png' ? 'png' : content_type === 'application/pdf' ? 'pdf' : 'jpg';
+      content_type === 'image/png'
+        ? 'png'
+        : content_type === 'image/webp'
+          ? 'webp'
+          : content_type === 'application/pdf'
+            ? 'pdf'
+            : 'jpg';
 
     // Mock: in production this would call S3 SDK to generate a real presigned URL
     const presign_url = `https://s3.mock.example.com/${category}/${uuid}.${ext}?X-Amz-Signature=mock`;

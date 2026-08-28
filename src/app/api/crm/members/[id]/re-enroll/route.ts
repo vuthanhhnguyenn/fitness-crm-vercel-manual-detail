@@ -68,8 +68,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    const withdrawnStatuses: string[] = [MemberStatus.WITHDRAWN, MemberStatus.FORCE_WITHDRAWN];
-    if (!withdrawnStatuses.includes(member.profile.status)) {
+    // FR-023: re-enrollment bypasses C-01's blacklist screening, so it must carry its own guard
+    if (member.blacklist?.isActive) {
+      return NextResponse.json(
+        { error: 'ブラックリスト登録者のため再入会できません' },
+        { status: 422 },
+      );
+    }
+    if (member.constraints.hasUnpaidFee || member.unpaidAmount > 0) {
+      return NextResponse.json({ error: '未納金があるため再入会できません' }, { status: 422 });
+    }
+
+    const withdrawnStatuses: string[] = [MemberStatus.WITHDRAWN, MemberStatus.FORCED_WITHDRAWAL];
+    if (!withdrawnStatuses.includes(member.memberStatus)) {
       return NextResponse.json({ error: 'Member is not in a withdrawn state' }, { status: 409 });
     }
 
@@ -82,26 +93,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const validatedBody: ReEnrollRequest = validationResult.data;
 
-    // Directly update member profile status in mock DB
+    // Directly update member status in mock DB
     const members = (
       db.members as unknown as {
-        _members: Array<{
-          basic_info: { id: string };
-          profile: { status: string; withdrawn_at?: string };
-        }>;
+        _members: Array<{ memberId: string; memberStatus: string; withdrawnAt?: string }>;
       }
     )._members;
-    const idx = members.findIndex((m) => m.basic_info.id === id);
+    const idx = members.findIndex((m) => m.memberId === id);
     if (idx !== -1) {
-      members[idx].profile.status = MemberStatus.ACTIVE;
-      members[idx].profile.withdrawn_at = undefined;
+      members[idx].memberStatus = MemberStatus.ACTIVE;
+      members[idx].withdrawnAt = undefined;
     }
 
     return NextResponse.json({
       success: true,
       member_id: id,
       re_enroll_month: validatedBody.re_enroll_month,
-      plan: validatedBody.plan,
+      plan_id: validatedBody.plan_id,
       fee_waived: validatedBody.fee_waived,
     });
   } catch (error) {

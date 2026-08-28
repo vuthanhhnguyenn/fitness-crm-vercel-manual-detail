@@ -2,115 +2,92 @@
 
 import { useState } from 'react';
 
-import { decodeJWT } from '@/utils/auth.util';
-import { format, parseISO } from 'date-fns';
-import Cookies from 'universal-cookie';
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RoleGatedButton } from '@/components/common/role-gated-button';
+import { StatusCard } from '@/components/common/status-card';
 
-import type { GetCrmTransfersByIdResponse } from '@/lib/api/types.gen';
+import type { TransferDetail } from '@/lib/api/types.gen';
+import { TransferStatus } from '@/lib/api/types.gen';
 
-import { CookieNames } from '@/types/global.enum';
+import { Permission } from '@/types/permission.type';
 
+import {
+  TRANSFER_STATUS_ICONS,
+  TRANSFER_STATUS_LABELS,
+  TRANSFER_STATUS_TONES,
+  isTransferPending,
+} from '../../_constants/constants';
 import { TransferApproveDialog } from './transfer-approve-dialog';
 import { TransferRejectDialog } from './transfer-reject-dialog';
-import { TransferStatusBadge } from './transfer-status-badge';
-
-type TransferDetail = NonNullable<GetCrmTransfersByIdResponse>['transfer'];
 
 interface Props {
   transfer: TransferDetail;
 }
 
-function getCurrentUserRole(): { role: string; store_id: string | null } {
-  try {
-    const cookies = new Cookies();
-    const session = cookies.get<{ token?: string }>(CookieNames.Session);
-    if (session?.token) {
-      const payload = decodeJWT(session.token) as { role?: string; store_id?: string } | null;
-      if (payload) {
-        return { role: payload.role ?? 'headquarter', store_id: payload.store_id ?? null };
-      }
-    }
-  } catch {
-    // ignore
-  }
-  // fallback for dev / mock environment
-  return { role: 'headquarter', store_id: null };
-}
-
-function canUserApprove(role: string, store_id: string | null, transfer: TransferDetail): boolean {
-  if (['observer', 'trainer'].includes(role)) return false;
-  if (['completed', 'rejected'].includes(transfer.status)) return false;
-
-  if (['headquarter', 'manager'].includes(role)) return true;
-
-  if (role === 'staff') {
-    if (transfer.status === 'pending' && store_id === transfer.from_store_id) return true;
-    if (
-      transfer.status === 'from_store_approved' &&
-      transfer.brand === 'fit365' &&
-      store_id === transfer.to_store_id
-    )
-      return true;
-  }
-
-  return false;
-}
-
+/**
+ * Status hub + the approve / reject actions.
+ *
+ * The pre-update version decoded the session JWT in the browser and **defaulted to
+ * `headquarter`** whenever that failed, so an unauthenticated or malformed session was silently
+ * promoted to full approval rights. That path is gone: the permission check comes from
+ * `RoleGatedButton` and the row-level decision arrives from the server as `transfer.can_act`.
+ */
 export function TransferStatusAction({ transfer }: Readonly<Props>) {
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
 
-  const { role, store_id } = getCurrentUserRole();
-  const canApprove = canUserApprove(role, store_id, transfer);
+  const isFit365WaitingDestination =
+    transfer.brand === 'fit365' && transfer.status === TransferStatus.FROM_STORE_APPROVED;
 
-  const isFit365WaitingDest =
-    transfer.brand === 'fit365' && transfer.status === 'from_store_approved';
-  const approveLabel = isFit365WaitingDest ? '移籍先として承認' : '承認';
-
-  const metaItems = [
-    `申請日: ${format(parseISO(transfer.applied_at), 'yyyy/MM/dd HH:mm')}`,
-    `最終更新: ${format(parseISO(transfer.updated_at), 'yyyy/MM/dd HH:mm')}`,
-    ...(isFit365WaitingDest ? ['移籍先承認待ち'] : []),
+  const meta = [
+    `申請日: ${formatDateYYYYMMDD_HHMM(transfer.applied_at)}`,
+    `最終更新: ${formatDateYYYYMMDD_HHMM(transfer.updated_at)}`,
+    ...(isFit365WaitingDestination ? ['移籍先店舗の承認待ちです'] : []),
   ];
+
+  const notThisStoreTooltip = transfer.can_act ? undefined : 'この申請の担当店舗ではありません';
 
   return (
     <>
       <div className="sticky top-6 flex flex-col gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">ステータス</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center space-y-4">
-            <TransferStatusBadge status={transfer.status} />
-
-            <div className="space-y-1">
-              {metaItems.map((item) => (
-                <p key={item} className="text-muted-foreground text-center text-xs">
-                  {item}
-                </p>
-              ))}
-            </div>
-
-            {canApprove && (
+        <StatusCard
+          tone={TRANSFER_STATUS_TONES[transfer.status]}
+          icon={TRANSFER_STATUS_ICONS[transfer.status]}
+          label={TRANSFER_STATUS_LABELS[transfer.status]}
+          meta={meta}
+          action={
+            // A decided transfer offers no actions at all — not disabled ones.
+            isTransferPending(transfer.status) ? (
               <div className="flex w-full flex-col gap-2">
-                <Button size="sm" className="w-full" onClick={() => setApproveOpen(true)}>
-                  {approveLabel}
-                </Button>
-                <Button
+                <RoleGatedButton
+                  requiredPermission={Permission.MembersTransfersApprove}
+                  denyTooltip="移籍承認の権限がありません"
+                  tooltip={notThisStoreTooltip}
+                  disabled={!transfer.can_act}
+                  size="sm"
+                  fullWidth
+                  onClick={() => setApproveOpen(true)}
+                >
+                  {isFit365WaitingDestination ? '移籍先として承認' : '承認'}
+                </RoleGatedButton>
+                <RoleGatedButton
+                  requiredPermission={Permission.MembersTransfersApprove}
+                  denyTooltip="移籍却下の権限がありません"
+                  tooltip={notThisStoreTooltip}
+                  disabled={!transfer.can_act}
                   variant="outline"
                   size="sm"
-                  className="text-destructive hover:text-destructive w-full"
+                  fullWidth
+                  className="text-destructive hover:text-destructive"
                   onClick={() => setRejectOpen(true)}
                 >
                   却下
-                </Button>
+                </RoleGatedButton>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            ) : undefined
+          }
+        />
       </div>
 
       <TransferApproveDialog open={approveOpen} onOpenChange={setApproveOpen} transfer={transfer} />

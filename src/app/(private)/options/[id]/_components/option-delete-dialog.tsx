@@ -78,7 +78,6 @@ export function OptionDeleteDialog({
       toast.success(data.message || 'オプションを削除しました');
       queryClient.invalidateQueries({
         queryKey: getCrmOptionsQueryKey(),
-        refetchType: 'all',
       });
       onOpenChange(false);
       if (redirectOnSuccess) {

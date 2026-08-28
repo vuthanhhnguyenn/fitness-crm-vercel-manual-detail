@@ -39,12 +39,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'User not found' }, { status: 401 });
     }
 
+    const linkedStaff = user.staff_id
+      ? db.staffs.getList().find((s) => s.staff_id === user.staff_id)
+      : undefined;
+
     const body: MeResponse = {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
       position: user.position,
+      staff_id: linkedStaff?.id ?? '',
+      managed_store_ids: user.role === 'Manager' ? (user.managed_store_ids ?? []) : undefined,
     };
 
     return NextResponse.json(body, { status: 200 });

@@ -16,6 +16,15 @@ export type FranchiseCompaniesType = {
   getById(id: string): FranchiseCompanyRow | undefined;
   getHistory(id: string): FranchiseCompanyHistoryItem[];
   create(input: CreateFranchiseCompanyBody): FranchiseCompanyDetail;
-  update(id: string, input: UpdateFranchiseCompanyBody): FranchiseCompanyDetail | undefined;
-  delete(id: string): boolean;
+  update(
+    id: string,
+    input: UpdateFranchiseCompanyBody,
+    operator?: string,
+  ): FranchiseCompanyDetail | undefined;
+  delete(id: string, operator?: string): boolean;
+  appendHistoryEntry(
+    id: string,
+    entry: { changed_item: string; before: string | null; after: string | null },
+    operator: string,
+  ): void;
 };

@@ -1,12 +1,22 @@
 import type {
+  AppMaintenancesType,
+  AppVersionsType,
+  ArticleCategoriesType,
+  ArticleCategoryMappingsType,
+  BannersType,
+  BillingRecordsType,
   BrandsType,
   BusinessHoursType,
   CampaignsType,
   ContractsType,
   ControllersType,
   CorporateMastersType,
+  CrmMaintenancesType,
   EnrollmentFeeMastersType,
+  EntryExitLogsType,
   EquipmentType,
+  ExerciseMastersType,
+  ExercisesType,
   FamilyType,
   FranchiseCompaniesType,
   GetMemberRelationshipsType,
@@ -34,15 +44,19 @@ import type {
   PromoCodesType,
   ReferralsType,
   ReservationsType,
+  RoutineCategoriesType,
+  RoutinesType,
   StaffPermissionsType,
   StaffsType,
   StoreAccessSettingsType,
+  StoreCampaignLinksType,
   StoreHolidaysType,
   StoreMainContractsType,
   StoreOptionsType,
   StoresType,
   StudiosType,
   SurveyReportingType,
+  SurveyVisibilityType,
   SurveysType,
   TemplatesType,
   TermsType,
@@ -62,10 +76,12 @@ export type DbType = {
   getMemberRelationships: GetMemberRelationshipsType;
   mainContracts: MainContractsType;
   campaigns: CampaignsType;
+  storeCampaignLinks: StoreCampaignLinksType;
   promoCodes: PromoCodesType;
   optionMasters: OptionMastersType;
   surveys: SurveysType;
   surveyReporting: SurveyReportingType;
+  surveyVisibility: SurveyVisibilityType;
   optionDiscount: OptionDiscountType;
   storeMainContracts: StoreMainContractsType;
   storeOptions: StoreOptionsType;
@@ -89,7 +105,8 @@ export type DbType = {
   equipment: EquipmentType;
   toolTypes: ToolTypesType;
   trainingEquipment: TrainingEquipmentType;
-  terms: TermsType;
+  exercises: ExercisesType;
+  exerciseMasters: ExerciseMastersType;
   controllers: ControllersType;
   visitExperiences: VisitExperiencesType;
   users: UsersType;
@@ -105,5 +122,16 @@ export type DbType = {
   templates: TemplatesType;
   storeHolidays: StoreHolidaysType;
   reservations: ReservationsType;
+  entryExitLogs: EntryExitLogsType;
+  billingRecords: BillingRecordsType;
+  routines: RoutinesType;
+  routineCategories: RoutineCategoriesType;
+  appVersions: AppVersionsType;
   manualNotifications: ManualNotificationsType;
+  banners: BannersType;
+  articleCategories: ArticleCategoriesType;
+  articleCategoryMappings: ArticleCategoryMappingsType;
+  appMaintenances: AppMaintenancesType;
+  terms: TermsType;
+  crmMaintenances: CrmMaintenancesType;
 };

@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
+import { ErrorResponseSchema } from '@/app/api/_schemas/auth.schema';
 import {
   type GetVisitExperiencesSummaryResponse,
   GetVisitExperiencesSummaryResponseSchema,
@@ -19,12 +21,27 @@ registerRoute({
       schema: GetVisitExperiencesSummaryResponseSchema,
       description: 'KPI summary counts',
     },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthorized' },
+    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
   ],
 });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const all = db.visitExperiences.getAll();
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+
+    const allowedStoreIds = getAllowedStoreIds(authResult.user);
+    if (allowedStoreIds !== null && allowedStoreIds.length === 0) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const all =
+      allowedStoreIds === null
+        ? db.visitExperiences.getAll()
+        : db.visitExperiences.getAll().filter((ve) => allowedStoreIds.includes(ve.store_id));
 
     const todayStr = new Date().toISOString().split('T')[0];
 

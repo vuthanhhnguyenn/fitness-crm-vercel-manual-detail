@@ -12,14 +12,38 @@ type LockerContractUnpaidAlertProps = {
 };
 
 export function LockerContractUnpaidAlert({ memberId }: LockerContractUnpaidAlertProps) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     ...getCrmMembersByIdContractsSummaryOptions({ path: { id: memberId ?? '' } }),
     enabled: Boolean(memberId),
   });
 
   if (!memberId || isLoading) return null;
 
-  const unpaidAmount = data?.unpaid_amount ?? 0;
+  /**
+   * FR-005: an unreachable summary means the unpaid balance is *unknown*, never "0円".
+   * Claiming 契約可能 here would let staff reassign a slot for a member who may still owe
+   * money, so the unknown state gets its own warning and the edit page blocks saving.
+   */
+  if (isError || !data) {
+    return (
+      <Alert className="border-warning/50 bg-warning/10">
+        <AlertTriangle className="text-warning size-4" />
+        <AlertDescription className="text-warning text-xs">
+          未納金の確認ができませんでした。安全のため、スロットの変更は保存できません。
+          <button
+            type="button"
+            className="text-warning ml-1 underline underline-offset-4 disabled:opacity-60"
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            再試行
+          </button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  const unpaidAmount = data.unpaidAmount;
   const hasUnpaidBalance = unpaidAmount > 0;
 
   if (hasUnpaidBalance) {

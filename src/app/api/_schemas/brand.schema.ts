@@ -23,6 +23,13 @@ export const BrandIdInputSchema = z
     example: 'joyfit',
   });
 
+export const BrandEnumSchema = z
+  .enum(['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus', 'fit365'])
+  .openapi({
+    title: 'BrandEnum',
+    description: '全てのブランドコード',
+  });
+
 export const BrandStatusSchema = z.enum(['active', 'inactive']).openapi({
   title: 'BrandStatus',
   description: 'ブランドまたはサブブランドの有効状態',
@@ -147,6 +154,26 @@ export const BrandScheduledFeeChangeSchema = z
     description: '予約中の費用改定',
   });
 
+export const BrandScheduledFeeChangeInputSchema = z
+  .object({
+    effective_start_date: z
+      .string()
+      .trim()
+      .regex(/^\d{4}\/\d{2}\/\d{2}$/)
+      .openapi({
+        example: '2026/09/01',
+        description: '予約適用開始日',
+      }),
+    value_including_tax_yen: z.number().int().min(0).openapi({
+      example: 12000,
+      description: '予約後の定価（税込・円）',
+    }),
+  })
+  .openapi({
+    title: 'BrandScheduledFeeChangeInput',
+    description: '予約中の費用改定の入力（registered_at/registered_byはサーバー側で付与）',
+  });
+
 export const BrandFeeItemSchema = z
   .object({
     item_code: z.string().trim().min(1).openapi({
@@ -196,6 +223,9 @@ export const UpdateBrandFeeItemSchema = z
         example: '2025/04/01',
         description: '現行設定の有効開始日',
       }),
+    scheduled_changes: z.array(BrandScheduledFeeChangeInputSchema).optional().openapi({
+      description: '予約中の改定一覧（省略時は空配列として扱う）',
+    }),
   })
   .openapi({
     title: 'UpdateBrandFeeItem',
@@ -446,6 +476,7 @@ export type BrandFeeItem = z.infer<typeof BrandFeeItemSchema>;
 export type BrandListItem = z.infer<typeof BrandListItemSchema>;
 export type BrandPagination = z.infer<typeof BrandPaginationSchema>;
 export type BrandScheduledFeeChange = z.infer<typeof BrandScheduledFeeChangeSchema>;
+export type BrandScheduledFeeChangeInput = z.infer<typeof BrandScheduledFeeChangeInputSchema>;
 export type BrandStatus = z.infer<typeof BrandStatusSchema>;
 export type CreateBrandRequest = z.infer<typeof CreateBrandRequestSchema>;
 export type CreateBrandResponse = z.infer<typeof CreateBrandResponseSchema>;
@@ -462,3 +493,4 @@ export type UpdateBrandFeeGroupResponse = z.infer<typeof UpdateBrandFeeGroupResp
 export type UpdateBrandFeeItem = z.infer<typeof UpdateBrandFeeItemSchema>;
 export type UpdateBrandRequest = z.infer<typeof UpdateBrandRequestSchema>;
 export type UpdateBrandResponse = z.infer<typeof UpdateBrandResponseSchema>;
+export type BrandEnum = z.infer<typeof BrandEnumSchema>;

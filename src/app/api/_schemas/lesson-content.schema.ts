@@ -47,7 +47,7 @@ export const LessonContentStatusSchema = z.enum(['active', 'inactive']).openapi(
   description: 'Lesson content status',
 });
 
-export const LessonPricingTypeSchema = z.enum(['included', 'paid']).openapi({
+export const LessonPricingTypeSchema = z.enum(['included', 'monthly', 'per_use']).openapi({
   title: 'LessonPricingType',
   description: 'Studio/body-care pricing type',
 });

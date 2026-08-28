@@ -15,6 +15,7 @@ import { Plus } from 'lucide-react';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 
+import { Empty } from '@/components/common/data-state-boundary/empty';
 import { RoleGatedButton } from '@/components/common/role-gated-button';
 import { TablePagination } from '@/components/common/table-pagination';
 import { Badge } from '@/components/ui/badge';
@@ -32,34 +33,44 @@ import {
   getCrmLessonSchedulesByScheduleIdReservationsQueryKey,
   patchCrmLessonSchedulesByScheduleIdReservationsByReservationIdAttendanceMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { Reservation, ReservationListResponse } from '@/lib/api/types.gen';
+import type {
+  LessonScheduleListItem,
+  Reservation,
+  ReservationListResponse,
+} from '@/lib/api/types.gen';
 
 import { Permission } from '@/types/permission.type';
 
+import { isOwnSessionScope, scopedManageRoles } from '../_utils/session-scope.util';
 import { getReservationListColumns } from './reservation-list-columns';
 
 const PAGE_SIZE = 7;
 
 interface ReservationListTableProps {
   scheduleId: string;
+  schedule: LessonScheduleListItem;
   data: ReservationListResponse;
+  isCancelled: boolean;
   onAddReservation: () => void;
   onCancelReservation: (reservation: Reservation) => void;
 }
 
 export function ReservationListTable({
   scheduleId,
+  schedule,
   data,
+  isCancelled,
   onAddReservation,
   onCancelReservation,
 }: ReservationListTableProps) {
   const [, setPage] = useQueryState('page', parseAsInteger.withDefault(1));
   const [sorting, setSorting] = useState<SortingState>([]);
   const queryClient = useQueryClient();
-  const { hasPermission } = useAuthUser();
+  const { hasPermission, user } = useAuthUser();
 
-  const canManageReservation = hasPermission(Permission.LessonsReservationManage);
-  const canManageAttendance = hasPermission(Permission.LessonsAttendanceManage);
+  const isOwnSession = isOwnSessionScope(user, schedule);
+  const canManageReservation = hasPermission(Permission.LessonsReservationManage) && isOwnSession;
+  const canManageAttendance = hasPermission(Permission.LessonsAttendanceManage) && isOwnSession;
 
   const attendanceMutation = useMutation({
     ...patchCrmLessonSchedulesByScheduleIdReservationsByReservationIdAttendanceMutation(),
@@ -90,6 +101,7 @@ export function ReservationListTable({
     onCancelReservation,
     canManageReservation,
     canManageAttendance,
+    isCancelled,
   });
 
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -116,8 +128,11 @@ export function ReservationListTable({
           </div>
           <RoleGatedButton
             requiredPermission={Permission.LessonsReservationManage}
+            allowedRoles={scopedManageRoles(isOwnSession)}
             size="sm"
             className="h-8 text-xs"
+            disabled={isCancelled}
+            tooltip={isCancelled ? 'このレッスンは中止されています' : undefined}
             onClick={onAddReservation}
           >
             <Plus className="mr-1 size-3" />
@@ -143,11 +158,26 @@ export function ReservationListTable({
         <TableBody>
           {table.getRowModel().rows.length === 0 ? (
             <TableRow>
-              <TableCell
-                colSpan={columns.length}
-                className="text-muted-foreground h-24 text-center text-sm"
-              >
-                予約者はいません
+              <TableCell colSpan={columns.length}>
+                <Empty
+                  variant="empty"
+                  title="予約者はいません"
+                  description="このレッスンにはまだ予約がありません"
+                  action={
+                    !isCancelled && (
+                      <RoleGatedButton
+                        requiredPermission={Permission.LessonsReservationManage}
+                        allowedRoles={scopedManageRoles(isOwnSession)}
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={onAddReservation}
+                      >
+                        <Plus className="mr-1 size-3" />
+                        予約を追加
+                      </RoleGatedButton>
+                    )
+                  }
+                />
               </TableCell>
             </TableRow>
           ) : (
@@ -166,13 +196,15 @@ export function ReservationListTable({
           )}
         </TableBody>
       </Table>
-      <TablePagination
-        currentPage={data.page}
-        totalPages={data.totalPages}
-        total={data.total}
-        limit={PAGE_SIZE}
-        onPageChange={setPage}
-      />
+      {data.totalPages > 1 && (
+        <TablePagination
+          currentPage={data.page}
+          totalPages={data.totalPages}
+          total={data.total}
+          limit={PAGE_SIZE}
+          onPageChange={setPage}
+        />
+      )}
     </Card>
   );
 }

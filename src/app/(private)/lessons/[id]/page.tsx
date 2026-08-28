@@ -131,6 +131,7 @@ function LessonDetailPageContent() {
       </div>
 
       <LessonDeleteDialog
+        lessonId={lessonId}
         lessonName={detail.name}
         usageCount={detail.usage_count}
         open={deleteOpen}

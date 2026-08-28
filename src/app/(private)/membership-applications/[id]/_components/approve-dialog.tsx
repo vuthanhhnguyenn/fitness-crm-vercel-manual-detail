@@ -1,3 +1,4 @@
+import { formatYen } from '@/utils/format.util';
 import { AlertTriangle } from 'lucide-react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -13,25 +14,33 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Separator } from '@/components/ui/separator';
 
+import {
+  type ApplicationDetail,
+  EXEMPTION_KIND_LABELS,
+  previewExemption,
+} from './membership-application.utils';
+
 interface ApproveDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  app: any;
-  totalFee: number;
+  app: ApplicationDetail;
+  staffExemptionReason: string;
   onConfirm: () => void;
-}
-
-function formatPrice(price: number) {
-  return `¥${price.toLocaleString()}`;
 }
 
 export function ApproveDialog({
   open,
   onOpenChange,
   app,
-  totalFee,
+  staffExemptionReason,
   onConfirm,
 }: Readonly<ApproveDialogProps>) {
+  const preview = previewExemption(app.enrollment_fee_exemption, staffExemptionReason);
+  const enrollmentFeeRow = app.fee_rows.find((r) => r.key === 'enrollment_fee');
+  const rowsTotal = app.fee_rows.reduce((sum, r) => sum + r.amount, 0);
+  const hasExemption = Boolean(preview) && (preview?.discountAmount ?? 0) > 0 && enrollmentFeeRow;
+  const total = hasExemption ? rowsTotal - (preview?.discountAmount ?? 0) : rowsTotal;
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -55,12 +64,33 @@ export function ApproveDialog({
             <span>{app.plan_name}</span>
           </div>
           <Separator />
+          {hasExemption && enrollmentFeeRow && preview && (
+            <>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">入会金（定価）</span>
+                <span className="text-muted-foreground line-through">
+                  {formatYen(enrollmentFeeRow.amount)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-success">
+                  入会金免除（{EXEMPTION_KIND_LABELS[preview.kind]}）
+                </span>
+                <span className="text-success font-medium">
+                  -{formatYen(preview.discountAmount)}
+                </span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">初期費用合計</span>
-            <span className="font-medium">{formatPrice(totalFee)}</span>
+            <span className="font-medium">{formatYen(total)}</span>
           </div>
+          <p className="text-muted-foreground text-xs">
+            確定金額は承認時に初回請求（売上管理）へ反映されます。
+          </p>
         </div>
-        {app.blacklist_match && (
+        {app.blacklist_state === 'matched' && (
           <Alert className="border-destructive/50 bg-destructive/10">
             <AlertTriangle className="text-destructive size-4" />
             <AlertDescription className="text-destructive text-sm">

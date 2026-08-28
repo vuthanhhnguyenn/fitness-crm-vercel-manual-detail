@@ -72,8 +72,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    const response: UpdateMarketingConsentResponse = updatedMember.consent
-      ?.marketing_consent as any;
+    const response: UpdateMarketingConsentResponse = ((
+      updatedMember as { _marketingConsent?: UpdateMarketingConsentResponse }
+    )._marketingConsent ?? {
+      email: false,
+      sms: false,
+      push: false,
+    }) as UpdateMarketingConsentResponse;
     return NextResponse.json(response);
   } catch {
     return NextResponse.json({ error: 'Failed to update marketing consent' }, { status: 500 });

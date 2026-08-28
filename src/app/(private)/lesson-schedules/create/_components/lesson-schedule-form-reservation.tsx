@@ -2,7 +2,9 @@
 
 import { useFormContext, useWatch } from 'react-hook-form';
 
-import { Info } from 'lucide-react';
+import Link from 'next/link';
+
+import { ArrowRight, Info } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -14,12 +16,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+import { navigate } from '@/lib/routes/routes.util';
+
 import { BUFFER_DURATION_OPTIONS, MINIMUM_RECEPTION_OPTIONS } from '../_constants/constants';
 import type { LessonScheduleFormValues } from '../_schemas/lesson-schedule-form.schema';
 
 export function LessonScheduleFormReservation() {
   const form = useFormContext<LessonScheduleFormValues>();
-  const isPublished = useWatch({ control: form.control, name: 'is_published' });
+  const [isPublished, instructorIds] = useWatch({
+    control: form.control,
+    name: ['is_published', 'instructor_ids'],
+  });
+  const primaryInstructorId = instructorIds?.[0];
 
   return (
     <Card>
@@ -40,9 +48,20 @@ export function LessonScheduleFormReservation() {
             <Label className="mb-3 block text-sm font-medium">バッファ設定</Label>
             <div className="border-info/20 bg-info/15 mb-3 flex items-start gap-2 rounded-md border px-3 py-2">
               <Info className="text-info mt-0.5 size-4 shrink-0" />
-              <p className="text-info text-xs">
-                バッファ設定は指導者ごとに一意です。下記は指導者プロフィール（D-04）の現在値を表示しています。値を変更すると指導者プロフィールに反映されます。
-              </p>
+              <div className="space-y-1">
+                <p className="text-info text-xs">
+                  バッファ設定は指導者ごとに一意です。下記は指導者プロフィール（D-04）の現在値を表示しています。値を変更すると指導者プロフィールに反映されます。
+                </p>
+                {primaryInstructorId && (
+                  <Link
+                    href={navigate('/instructors/[id]', primaryInstructorId)}
+                    className="text-info inline-flex items-center gap-1 text-xs font-medium hover:underline"
+                  >
+                    指導者プロフィールを開く
+                    <ArrowRight className="size-3" />
+                  </Link>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>

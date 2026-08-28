@@ -19,6 +19,7 @@ interface LessonFormConfirmDialogProps {
   mode: LessonFormMode;
   values: Partial<LessonFormValues>;
   onConfirm: () => void;
+  isSubmitting?: boolean;
 }
 
 const MODE_LABELS: Record<LessonFormMode, { title: string; confirmLabel: string }> = {
@@ -54,6 +55,7 @@ export function LessonFormConfirmDialog({
   mode,
   values,
   onConfirm,
+  isSubmitting,
 }: LessonFormConfirmDialogProps) {
   const labels = MODE_LABELS[mode];
 
@@ -78,7 +80,9 @@ export function LessonFormConfirmDialog({
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel>キャンセル</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>{labels.confirmLabel}</AlertDialogAction>
+          <AlertDialogAction onClick={onConfirm} disabled={isSubmitting}>
+            {labels.confirmLabel}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

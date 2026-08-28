@@ -1,32 +1,42 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
+import type { BlacklistCheckState } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface BlacklistResultSectionProps {
-  readonly state: 'unchecked' | 'no-match' | 'match';
+  readonly state: BlacklistCheckState;
 }
 
-const CONFIG = {
-  unchecked: {
+const CONFIG: Record<
+  BlacklistCheckState,
+  { badgeClass: string; badgeLabel: string; description: string; cardClass: string }
+> = {
+  not_checked: {
     badgeClass: 'bg-warning/15 text-warning border-warning/20',
     badgeLabel: '未照合',
     description: '申請者情報を入力後、照合が自動実行されます。',
     cardClass: '',
   },
-  'no-match': {
+  incomplete: {
+    badgeClass: 'bg-warning/15 text-warning border-warning/20',
+    badgeLabel: '未照合',
+    description: '申請者情報を入力後、照合が自動実行されます。',
+    cardClass: '',
+  },
+  no_match: {
     badgeClass: 'bg-success/15 text-success border-success/20',
     badgeLabel: '照合済み：該当なし',
     description: 'ブラックリストとの一致はありません。',
     cardClass: '',
   },
-  match: {
+  matched: {
     badgeClass: 'bg-destructive/15 text-destructive border-destructive/20',
     badgeLabel: '照合済み：一致あり',
     description: '申請者情報がブラックリストと一致しています。審査を慎重に行ってください。',
     cardClass: 'border-destructive/50 bg-destructive/10',
   },
-} as const;
+};
 
 export function BlacklistResultSection({ state }: BlacklistResultSectionProps) {
   const cfg = CONFIG[state];

@@ -55,8 +55,23 @@ interface DataTableProps<TData, TValue> {
   containerClassName?: string;
   tableSize?: 'default' | 'md';
   getRowClassName?: (row: TData) => string | undefined;
+  /**
+   * Rendered inside the table body when there are no rows. Keeps the header
+   * and any surrounding filters/toolbar mounted (unlike an outer boundary that
+   * would unmount them). Prefer this over `DataStateBoundary` for empty state.
+   */
   emptyContent?: React.ReactNode;
 }
+
+/**
+ * State ownership: DataTable handles LOADING (`isLoading` -> skeleton rows) and
+ * EMPTY (`emptyContent`, rendered in the table body so filters stay mounted).
+ *
+ * Convention: when using DataTable, do NOT wrap it in a `DataStateBoundary`.
+ * DataTable covers loading + empty on its own; for query errors just show a
+ * toast (`sonner`) in the query's `onError` — no boundary, no full-region error
+ * swap that would hide the filters/toolbar.
+ */
 
 export function DataTable<TData, TValue>({
   columns,
@@ -116,16 +131,32 @@ export function DataTable<TData, TValue>({
 
   // Simple table mode (no pagination)
   if (variant === 'simple') {
+    // Overlay while refetching (search/filter/page change) when we STILL have the
+    // previous data thanks to `keepPreviousData`. Not used on the first load
+    // (isLoading -> skeleton), so the table doesn't flash back to the skeleton on
+    // every search.
+    const showOverlay = Boolean(isFetching) && !isLoading;
     return (
-      <div className={cn('overflow-hidden rounded-md border', className)}>
+      <div className={cn('relative overflow-hidden rounded-md border', className)}>
+        {showOverlay && (
+          <div className="bg-background/40 pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+            <LoaderCircle className="text-muted-foreground h-6 w-6 animate-spin" />
+          </div>
+        )}
         <Table size={tableSize} containerClassName={cn('overflow-y-auto', containerClassName)}>
-          <TableHeader className="overflow-hidden">
+          <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="bg-muted/50">
                 {headerGroup.headers.map((header) => {
                   const meta = header.column.columnDef.meta as Record<string, unknown> | undefined;
                   return (
-                    <TableHead key={header.id} className={meta?.className as string}>
+                    <TableHead
+                      key={header.id}
+                      className={cn(
+                        'bg-muted sticky top-0 z-10 text-xs font-semibold',
+                        meta?.className as string,
+                      )}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(header.column.columnDef.header, header.getContext())}
@@ -135,7 +166,7 @@ export function DataTable<TData, TValue>({
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
+          <TableBody className={cn('transition-opacity', showOverlay && 'opacity-50')}>
             {isLoading
               ? Array.from({ length: 20 }).map((_, i) => (
                   <TableRow key={`skeleton-${i}`}>
@@ -197,6 +228,7 @@ export function DataTable<TData, TValue>({
                   <TableHead
                     key={header.id}
                     className={cn(
+                      'text-xs font-semibold',
                       (header.column.columnDef.meta as Record<string, unknown> | undefined)
                         ?.className as string,
                     )}

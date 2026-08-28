@@ -1,15 +1,17 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useMemo } from 'react';
 
 import { useRouter } from 'next/navigation';
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { SortingState } from '@tanstack/react-table';
 
+import { Empty } from '@/components/common/data-state-boundary/empty';
 import { Loading } from '@/components/common/data-state-boundary/loading';
 import { DataTable } from '@/components/common/data-table';
-import { TablePagination } from '@/components/common/table-pagination';
+import { FilterResultBanner } from '@/components/common/filter-result-banner';
+import { TablePaginationWithSize } from '@/components/common/table-pagination-with-size';
 import { Card } from '@/components/ui/card';
 
 import { getCrmLockersOptions } from '@/lib/api/@tanstack/react-query.gen';
@@ -17,10 +19,11 @@ import { navigate } from '@/lib/routes/routes.util';
 
 import { LockersFilters } from './_components/lockers-filters';
 import { getLockersTableColumns } from './_components/lockers-table-columns';
+import { LOCKER_SHAPE_LABELS } from './_constants/constants';
 import { useLockersFilters } from './_hooks/use-lockers-filters';
+import { useQueryErrorToast } from './_hooks/use-query-error-toast.hook';
 
 function LockersPageContent() {
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const router = useRouter();
   const {
     filters,
@@ -32,20 +35,21 @@ function LockersPageContent() {
     currentPage,
     setCurrentPage,
     pageSize,
+    setPageSize,
     hasActiveFilters,
-    activeFilterCount,
   } = useLockersFilters();
 
-  const { data, isLoading } = useQuery({
-    ...getCrmLockersOptions({
-      query: queryParams,
-    }),
+  const { data, isLoading, isFetching, isError } = useQuery({
+    ...getCrmLockersOptions({ query: queryParams }),
+    placeholderData: keepPreviousData,
   });
 
-  const lockers = data?.lockers ?? [];
+  useQueryErrorToast(isError, 'ロッカー一覧の取得に失敗しました');
+
+  const lockers = useMemo(() => data?.lockers ?? [], [data?.lockers]);
   const pagination = data?.pagination;
-  const total = pagination?.total ?? 0;
-  const totalPages = pagination?.total_pages ?? 0;
+  const totalLockers = pagination?.all_total ?? 0;
+  const filteredTotal = pagination?.total ?? 0;
   const page = pagination?.page ?? currentPage;
   const limit = pagination?.limit ?? pageSize;
 
@@ -69,31 +73,43 @@ function LockersPageContent() {
   };
 
   return (
-    <Card className="gap-3 overflow-hidden rounded-xl border p-0">
-      <div className="p-3 pb-0">
+    <Card className="flex gap-0 overflow-hidden rounded-xl border p-0">
+      <div className="px-4 py-3">
         <LockersFilters
-          activeFilterCount={activeFilterCount}
-          clearFilters={clearFilters}
           filters={filters}
-          hasActiveFilters={hasActiveFilters}
-          isFilterOpen={isFilterOpen}
           searchInput={searchInput}
           setFilters={setFilters}
-          setIsFilterOpen={setIsFilterOpen}
           setSearchInput={setSearchInput}
         />
       </div>
+
+      <FilterResultBanner
+        show={hasActiveFilters}
+        totalCount={totalLockers}
+        filteredCount={filteredTotal}
+        filterSummary={[
+          filters.lockers_search ? `"${filters.lockers_search}"` : '',
+          filters.lockers_shape ? LOCKER_SHAPE_LABELS[filters.lockers_shape] : '',
+        ]}
+        onClear={clearFilters}
+      />
 
       <DataTable
         columns={columns}
         data={lockers}
         isLoading={isLoading}
+        isFetching={isFetching}
         variant="simple"
         className="rounded-none border-x-0 border-b-0"
-        containerClassName={
-          isFilterOpen ? 'max-h-[calc(100vh-320px)]' : 'max-h-[calc(100vh-270px)]'
-        }
+        containerClassName="max-h-[calc(100vh-300px)]"
         onRowClick={(row) => router.push(navigate('/lockers/[id]', row.id))}
+        emptyContent={
+          <Empty
+            variant={hasActiveFilters ? 'filtered' : 'empty'}
+            entityLabel="ロッカー"
+            onAction={hasActiveFilters ? clearFilters : undefined}
+          />
+        }
         tableOptions={{
           manualSorting: true,
           onSortingChange: handleSortingChange,
@@ -101,13 +117,12 @@ function LockersPageContent() {
         }}
       />
 
-      <TablePagination
+      <TablePaginationWithSize
         currentPage={page}
-        totalPages={totalPages}
-        total={total}
-        limit={limit}
+        total={filteredTotal}
+        pageSize={limit}
         onPageChange={setCurrentPage}
-        isLoading={isLoading}
+        onPageSizeChange={setPageSize}
       />
     </Card>
   );

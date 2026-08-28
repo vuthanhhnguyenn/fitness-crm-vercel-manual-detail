@@ -9,8 +9,10 @@ interface PageHeaderProps {
   title: string;
   /** ステータスBadge等。分類Badge等は呼び出し側でフラグメントとして渡す */
   badge?: ReactNode;
-  /** ID表記など text-xs muted。タイトル下に配置 */
-  subtitle?: string;
+  /** 日付選択スロット（MonthPicker 等）。タイトル横に配置 */
+  dateControl?: ReactNode;
+  /** ID表記など text-xs muted。タイトル下に配置。リンク等を含める場合は ReactNode を渡す */
+  subtitle?: ReactNode;
   /** ボタン群。空でも min-h-8 で揺れ防止 */
   actions?: ReactNode;
   /**
@@ -33,6 +35,7 @@ export function PageHeader({
   breadcrumb,
   title,
   badge,
+  dateControl,
   subtitle,
   actions,
   sticky = true,
@@ -42,7 +45,7 @@ export function PageHeader({
   return (
     <header
       className={
-        sticky ? `sticky bg-white ${stickyTopClassName} z-10 border-b backdrop-blur-sm` : 'mb-4'
+        sticky ? `sticky bg-white ${stickyTopClassName} z-50 border-b backdrop-blur-sm` : 'mb-4'
       }
     >
       <div className={cn('bg-muted/40 px-6 py-4', className)}>
@@ -51,6 +54,7 @@ export function PageHeader({
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="truncate text-xl font-bold">{title}</h1>
             {badge}
+            {dateControl && <div className="ml-2">{dateControl}</div>}
           </div>
           <div className="flex min-h-8 shrink-0 items-center gap-2">{actions}</div>
         </div>

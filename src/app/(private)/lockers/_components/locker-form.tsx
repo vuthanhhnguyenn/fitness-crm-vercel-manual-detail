@@ -1,5 +1,3 @@
-'use client';
-
 import { LockerFormAreaSection } from './locker-form-area-section';
 import { LockerFormBasicInfoSection } from './locker-form-basic-info-section';
 import { LockerFormConfigurationSection } from './locker-form-configuration-section';

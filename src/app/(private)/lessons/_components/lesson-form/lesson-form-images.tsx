@@ -164,7 +164,7 @@ export function LessonFormImages() {
             {isUploading ? 'アップロード中...' : '画像をドラッグ&ドロップで追加'}
           </p>
           <p className="text-muted-foreground mt-1 text-[10px]">
-            推奨: 1200 x 800px (3:2) | JPG, PNG | 最大5MB | 複数枚対応
+            推奨: 1200 x 800px (3:2) | JPG, PNG, WebP | 最大5MB | 複数枚対応
           </p>
           <span className="bg-background hover:bg-accent mt-3 inline-flex h-8 items-center justify-center gap-1 rounded-md border px-3 text-xs">
             <Upload className="size-3" />
@@ -174,7 +174,7 @@ export function LessonFormImages() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png"
+          accept="image/jpeg,image/png,image/webp"
           multiple
           className="hidden"
           onChange={handleFileSelect}

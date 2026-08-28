@@ -1,482 +1,296 @@
+import { buildTermsSeed } from '@/app/api/_mock-db/seeds/terms.seed';
 import type {
-  ActiveTermsItem,
+  TermsCreateResult,
+  TermsDeleteResult,
+  TermsRow,
+  TermsType as TermsTableType,
+  TermsUpdateResult,
+} from '@/app/api/_mock-db/types/terms.type';
+import type {
   CreateTermsBody,
-  CreateTermsVersionBody,
-  GetActiveTermsQuery,
-  RecordTermsConsentBody,
-  TermsDetail,
-  TermsFile,
-  TermsListItem,
-  TermsListQuery,
-  TermsListResponse,
+  GetTermsQuery,
+  TermsBrand,
+  TermsDetailResponse,
+  TermsListItemResponse,
   TermsStatus,
-  TermsVersionStatus,
+  TermsVersionEntry,
   UpdateTermsBody,
-  VersionHistoryItem,
 } from '@/app/api/_schemas/terms.schema';
 
-import {
-  buildTermsPdfUrl,
-  createSeedTermsConsents,
-  createSeedTermsRows,
-  getSeedTermsPdfFileSize,
-} from '../seeds/terms.seed';
-import type { TermsConsentRow, TermsRow } from '../types/terms.type';
+/** Mirrors `banner.table.ts`'s `computeStatus` — never stored, always derived from `now()`. */
+export function computeStatus(effectiveFrom: string, effectiveTo: string | null): TermsStatus {
+  const now = Date.now();
+  const from = new Date(effectiveFrom).getTime();
 
-const TERMS_STATUS_MOCK_AS_OF_DATE = '2025-11-15';
-
-interface TermsStatusInput {
-  readonly effectiveDate: string;
-  readonly expiryDate?: string | null;
-  readonly isDeleted?: boolean;
-  readonly asOfDate?: string;
-}
-
-function getTermsStatusAsOfDate(): string {
-  return TERMS_STATUS_MOCK_AS_OF_DATE;
-}
-
-function getTermsStatusFromDates({
-  effectiveDate,
-  expiryDate = null,
-  isDeleted = false,
-  asOfDate = getTermsStatusAsOfDate(),
-}: TermsStatusInput): TermsStatus {
-  if (effectiveDate > asOfDate) return 'draft';
-  if (isDeleted) return 'expired';
-  if (expiryDate && expiryDate < asOfDate) return 'expired';
+  if (now < from) return 'draft';
+  if (effectiveTo && now > new Date(effectiveTo).getTime()) return 'expired';
   return 'published';
 }
 
-function getTermsVersionStatusFromDates({
-  effectiveDate,
-  expiryDate = null,
-  isDeleted = false,
-  asOfDate = getTermsStatusAsOfDate(),
-}: TermsStatusInput): TermsVersionStatus {
-  if (effectiveDate > asOfDate) return 'draft';
-  if (isDeleted) return 'expired';
-  if (expiryDate && expiryDate < asOfDate) return 'expired';
-  return 'active';
+export function computeVersionKind(row: TermsRow): 'original' | 'version' {
+  return row.parent_terms_id === null ? 'original' : 'version';
 }
 
-function formatDateDisplay(date: string): string {
-  return date.replace(/-/g, '/');
+export function lineageRootId(row: TermsRow): string {
+  return row.parent_terms_id ?? row.id;
 }
 
-function getPreviousDateString(date: string): string {
-  const [year = 0, month = 1, day = 1] = date.split('-').map(Number);
-  const previousDate = new Date(Date.UTC(year, month - 1, day - 1));
-  const previousYear = previousDate.getUTCFullYear();
-  const previousMonth = String(previousDate.getUTCMonth() + 1).padStart(2, '0');
-  const previousDay = String(previousDate.getUTCDate()).padStart(2, '0');
-
-  return `${previousYear}-${previousMonth}-${previousDay}`;
+export function lineage(rootId: string, allRows: TermsRow[]): TermsRow[] {
+  return allRows
+    .filter((row) => !row.is_deleted && lineageRootId(row) === rootId)
+    .sort((a, b) => new Date(a.effective_from).getTime() - new Date(b.effective_from).getTime());
 }
 
-function formatDateTimeDisplay(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  const hours = String(date.getUTCHours()).padStart(2, '0');
-  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-
-  return `${year}/${month}/${day} ${hours}:${minutes}`;
+export function computeIsCurrentlyApplied(row: TermsRow): boolean {
+  return computeStatus(row.effective_from, row.effective_to) === 'published';
 }
 
-function getPdfFileName(row: Pick<TermsRow, 'id' | 'pdfS3Key' | 'pdfFileName'>): string {
-  return row.pdfFileName ?? row.pdfS3Key.split('/').pop() ?? `${row.id}.pdf`;
+/** Mirrors `terms.seed.ts`'s placeholder — real PDF extraction is a backend concern (research.md #3). */
+function synthesizeBodyText(title: string, version: string): string {
+  return `第1条（総則）\n本規約は「${title}」（${version}）の内容を定めるものです。\n第2条（適用範囲）\n本規約は全ての会員に適用されます。`;
 }
 
-function getPdfFileSize(row: Pick<TermsRow, 'id' | 'pdfS3Key' | 'pdfFileName'>): string {
-  return getSeedTermsPdfFileSize(getPdfFileName(row));
-}
-
-function buildTermsFile(row: TermsRow): TermsFile {
-  return { name: getPdfFileName(row), size: getPdfFileSize(row), url: row.pdfUrl };
-}
-
-function getLineageRootId(row: TermsRow): string {
-  return row.parentTermsId ?? row.id;
-}
-
-function getTermsStatus(row: TermsRow, asOf = getTermsStatusAsOfDate()): TermsStatus {
-  return getTermsStatusFromDates({
-    effectiveDate: row.effectiveFrom,
-    expiryDate: row.effectiveTo,
-    isDeleted: row.deletedAt !== null,
-    asOfDate: asOf,
-  });
-}
-
-function getVersionStatus(row: TermsRow, asOf = getTermsStatusAsOfDate()): TermsVersionStatus {
-  return getTermsVersionStatusFromDates({
-    effectiveDate: row.effectiveFrom,
-    expiryDate: row.effectiveTo,
-    isDeleted: row.deletedAt !== null,
-    asOfDate: asOf,
-  });
-}
-
-function isTermActive(row: TermsRow, asOf = getTermsStatusAsOfDate()): boolean {
-  return getTermsStatus(row, asOf) === 'published';
-}
-
-function buildTermsNote(row: TermsRow): string {
-  return row.remarks || `${row.title}に関する規約です。`;
-}
-
-function buildTermsBody(row: TermsRow): string {
-  return (
-    row.bodyText ||
-    `第1条（総則）
-${row.title}に関する利用条件を定めます。
-
-第2条（適用範囲）
-対象ブランドの会員は本規約に従うものとします。
-
-第3条（補足）
-詳細はPDF原本を参照してください。`
-  );
-}
-
-function toTermsListItem(row: TermsRow): TermsListItem {
+export function toTermsListItemResponse(row: TermsRow): TermsListItemResponse {
   return {
     id: row.id,
+    termsType: row.terms_type,
+    brandEnum: row.brand_enum,
     title: row.title,
-    termsType: row.termsType,
     version: row.version,
-    brandEnum: row.brandEnum,
-    effectiveFrom: row.effectiveFrom,
-    effectiveTo: row.effectiveTo,
-    displayOrder: row.displayOrder === null ? null : Number(row.displayOrder),
-    requiresConsent: row.requiresConsent,
-    remarks: row.remarks,
-    status: getTermsStatus(row),
-    isDeleted: row.deletedAt !== null,
+    effectiveFrom: row.effective_from,
+    displayOrder: row.display_order,
+    status: computeStatus(row.effective_from, row.effective_to),
+    isDeleted: row.is_deleted,
   };
 }
 
-function toVersionHistoryItem(row: TermsRow): VersionHistoryItem {
-  return {
-    version: row.version,
-    versionType: row.parentTermsId === null && row.prevTermsId === null ? 'original' : 'version',
-    date: formatDateDisplay(row.effectiveFrom),
-    period: `${formatDateDisplay(row.effectiveFrom)} 〜 ${row.effectiveTo ? formatDateDisplay(row.effectiveTo) : '現在'}`,
-    summary: row.remarks || '変更内容の記載なし',
-    status: getVersionStatus(row),
-    file: buildTermsFile(row),
-  };
-}
-
-function parseDisplayOrderInput(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? String(parsed) : null;
-}
-
-function getNextTermsId(rows: TermsRow[]): string {
-  const maxId = rows.reduce((maxValue, row) => {
-    const parsed = Number(row.id);
-    return Number.isFinite(parsed) ? Math.max(maxValue, parsed) : maxValue;
-  }, 0);
-  return String(maxId + 1);
-}
-
-function matchesMobilePurpose(row: TermsRow, purpose?: GetActiveTermsQuery['purpose']): boolean {
-  if (!purpose || purpose === 'app_launch') {
-    return row.termsType !== 'withdrawal' && row.termsType !== 'suspension';
+function findRelatedTermsRef(
+  row: TermsRow,
+  lineageRows: TermsRow[],
+): TermsDetailResponse['relatedTermsRef'] {
+  if (row.parent_terms_id) {
+    const origin = lineageRows.find((entry) => entry.id === row.parent_terms_id);
+    return origin ? { id: origin.id, title: origin.title, version: origin.version } : null;
   }
-  if (purpose === 'withdrawal') return row.termsType === 'withdrawal';
-  return row.termsType === 'suspension';
+
+  const derivedVersions = lineageRows
+    .filter((entry) => entry.prev_terms_id === row.id)
+    .sort((a, b) => new Date(a.effective_from).getTime() - new Date(b.effective_from).getTime());
+
+  const nextVersion = derivedVersions[0];
+  return nextVersion
+    ? { id: nextVersion.id, title: nextVersion.title, version: nextVersion.version }
+    : null;
 }
 
-function sortTermsRows(
-  rows: TermsRow[],
-  sort: TermsListQuery['sort'],
-  order: TermsListQuery['order'],
-): TermsRow[] {
-  const direction = order === 'desc' ? -1 : 1;
-  return [...rows].sort((left, right) => {
-    let comparison = 0;
-    switch (sort) {
-      case 'effectiveFrom':
-        comparison = left.effectiveFrom.localeCompare(right.effectiveFrom, 'ja');
-        break;
-      case 'createdAt':
-        comparison = left.createdAt.localeCompare(right.createdAt, 'ja');
-        break;
-      default: {
-        const leftOrder =
-          left.displayOrder === null ? Number.MAX_SAFE_INTEGER : Number(left.displayOrder);
-        const rightOrder =
-          right.displayOrder === null ? Number.MAX_SAFE_INTEGER : Number(right.displayOrder);
-        comparison = leftOrder - rightOrder;
-      }
-    }
-    if (comparison === 0) comparison = left.id.localeCompare(right.id, 'ja');
-    return comparison * direction;
+export function toTermsDetailResponse(row: TermsRow, allRows: TermsRow[]): TermsDetailResponse {
+  const rootId = lineageRootId(row);
+  const lineageRows = lineage(rootId, allRows);
+
+  const versions: TermsVersionEntry[] = lineageRows.map((entry) => {
+    const isCurrentlyApplied = computeIsCurrentlyApplied(entry);
+    return {
+      id: entry.id,
+      version: entry.version,
+      versionKind: computeVersionKind(entry),
+      status: computeStatus(entry.effective_from, entry.effective_to),
+      effectiveFrom: entry.effective_from,
+      effectiveTo: entry.effective_to,
+      changeSummary: entry.remarks,
+      isCurrentlyApplied,
+      ...(isCurrentlyApplied
+        ? {
+            pdfUrl: entry.pdf_url,
+            pdfFileName: entry.pdf_file_name,
+            pdfFileSize: entry.pdf_file_size,
+          }
+        : {}),
+    };
   });
-}
 
-function getTermsFamily(rows: TermsRow[], row: TermsRow): TermsRow[] {
-  const rootId = getLineageRootId(row);
-  return rows
-    .filter((candidate) => getLineageRootId(candidate) === rootId)
-    .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom, 'ja'));
+  return {
+    id: row.id,
+    parentTermsId: row.parent_terms_id,
+    prevTermsId: row.prev_terms_id,
+    termsType: row.terms_type,
+    brandEnum: row.brand_enum,
+    title: row.title,
+    version: row.version,
+    pdfUrl: row.pdf_url,
+    pdfFileName: row.pdf_file_name,
+    pdfFileSize: row.pdf_file_size,
+    bodyText: row.body_text,
+    effectiveFrom: row.effective_from,
+    effectiveTo: row.effective_to,
+    displayOrder: row.display_order,
+    requiresConsent: row.requires_consent,
+    remarks: row.remarks,
+    isDeleted: row.is_deleted,
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    status: computeStatus(row.effective_from, row.effective_to),
+    versionKind: computeVersionKind(row),
+    isCurrentlyApplied: computeIsCurrentlyApplied(row),
+    relatedTermsRef: findRelatedTermsRef(
+      row,
+      allRows.filter((entry) => !entry.is_deleted),
+    ),
+    versions,
+  };
 }
 
 export function createTermsTables() {
   return {
     terms: {
       _rows: [] as TermsRow[],
-      _consents: [] as TermsConsentRow[],
       _seeded: false,
       _seed(): void {
         if (this._seeded) return;
         this._seeded = true;
-        this._rows = createSeedTermsRows();
-        this._consents = createSeedTermsConsents();
+        this._rows = buildTermsSeed();
       },
-      list(query: TermsListQuery): TermsListResponse {
+      list(
+        query: GetTermsQuery,
+        brandScope: TermsBrand | null,
+      ): { rows: TermsRow[]; total: number; totalAllItems: number } {
         this._seed();
-        let items = this._rows;
-        const totalAllItems = items.filter((row) =>
-          query.includeDeleted ? true : row.deletedAt === null,
-        ).length;
 
-        if (query.search) {
-          const keyword = query.search.toLowerCase();
-          items = items.filter(
-            (row) =>
-              row.id.toLowerCase().includes(keyword) || row.title.toLowerCase().includes(keyword),
+        let rows = query.includeDeleted
+          ? [...this._rows]
+          : this._rows.filter((row) => !row.is_deleted);
+
+        if (brandScope) {
+          rows = rows.filter((row) => row.brand_enum === brandScope);
+        }
+
+        const totalAllItems = rows.length;
+
+        if (query.termsType) {
+          rows = rows.filter((row) => row.terms_type === query.termsType);
+        }
+
+        if (query.brandEnum) {
+          rows = rows.filter((row) => row.brand_enum === query.brandEnum);
+        }
+
+        if (query.status) {
+          rows = rows.filter(
+            (row) => computeStatus(row.effective_from, row.effective_to) === query.status,
           );
         }
-        if (query.brandEnum) items = items.filter((row) => row.brandEnum === query.brandEnum);
-        if (query.termsType) items = items.filter((row) => row.termsType === query.termsType);
-        if (query.status) items = items.filter((row) => getTermsStatus(row) === query.status);
-        if (!query.includeDeleted) items = items.filter((row) => row.deletedAt === null);
 
-        const sorted = sortTermsRows(items, query.sort, query.order);
-        const totalItems = sorted.length;
-        const totalPages = Math.max(1, Math.ceil(totalItems / query.limit));
-        const startIndex = (query.page - 1) * query.limit;
-
-        return {
-          items: sorted.slice(startIndex, startIndex + query.limit).map(toTermsListItem),
-          totalAllItems,
-          pagination: { page: query.page, limit: query.limit, totalItems, totalPages },
-        };
-      },
-
-      getById(id: string): TermsRow | undefined {
-        this._seed();
-        return this._rows.find((row) => row.id === id);
-      },
-
-      getDetail(id: string): TermsDetail | undefined {
-        this._seed();
-        const current = this.getById(id);
-        if (!current) return undefined;
-        const lineage = getTermsFamily(this._rows, current);
-        const activeVersion = lineage.find((row) => getVersionStatus(row) === 'active') ?? current;
-        return {
-          id: current.id,
-          title: current.title,
-          termsType: current.termsType,
-          brandEnum: current.brandEnum,
-          status: getTermsStatus(current),
-          currentVersion: activeVersion.version,
-          effectiveFrom: activeVersion.effectiveFrom,
-          effectiveTo: activeVersion.effectiveTo,
-          displayOrder:
-            activeVersion.displayOrder === null ? null : Number(activeVersion.displayOrder),
-          requiresConsent: activeVersion.requiresConsent,
-          remarks: buildTermsNote(current),
-          bodyText: buildTermsBody(activeVersion),
-          currentFile: buildTermsFile(activeVersion),
-          versions: lineage.map(toVersionHistoryItem),
-          createdBy: current.createdBy,
-          updatedBy: current.updatedBy,
-          createdAt: formatDateTimeDisplay(current.createdAt),
-          updatedAt: formatDateTimeDisplay(current.updatedAt),
-          isDeleted: current.deletedAt !== null,
-        };
-      },
-
-      createOriginal(input: CreateTermsBody): TermsRow {
-        this._seed();
-        const now = new Date().toISOString();
-        const row: TermsRow = {
-          id: getNextTermsId(this._rows),
-          parentTermsId: null,
-          prevTermsId: null,
-          termsType: input.termsType,
-          brandEnum: input.brandEnum,
-          title: input.title,
-          version: input.version,
-          effectiveFrom: input.effectiveFrom,
-          effectiveTo: input.effectiveTo ?? null,
-          displayOrder: parseDisplayOrderInput(input.displayOrder),
-          requiresConsent: input.requiresConsent,
-          remarks: input.remarks ?? null,
-          bodyText: '',
-          pdfS3Key: input.pdfS3Key,
-          pdfUrl: input.pdfUrl ?? buildTermsPdfUrl(input.pdfS3Key),
-          pdfFileName: input.pdfFileName ?? null,
-          createdAt: now,
-          createdBy: '管理者',
-          updatedAt: now,
-          updatedBy: '管理者',
-          deletedAt: null,
-        };
-        this._rows.unshift(row);
-        return row;
-      },
-
-      createVersion(id: string, input: CreateTermsVersionBody): TermsRow | undefined {
-        this._seed();
-        const source = this.getById(id);
-        if (!source) return undefined;
-        const now = new Date().toISOString();
-        if (
-          !source.deletedAt &&
-          source.effectiveFrom < input.effectiveFrom &&
-          (!source.effectiveTo || source.effectiveTo >= input.effectiveFrom)
-        ) {
-          source.effectiveTo = getPreviousDateString(input.effectiveFrom);
-          source.updatedAt = now;
-          source.updatedBy = '管理者';
+        if (query.query) {
+          const normalized = query.query.toLowerCase().trim();
+          rows = rows.filter(
+            (row) =>
+              row.id.toLowerCase().includes(normalized) ||
+              row.title.toLowerCase().includes(normalized),
+          );
         }
-        const row: TermsRow = {
-          id: getNextTermsId(this._rows),
-          parentTermsId: source.parentTermsId ?? source.id,
-          prevTermsId: source.id,
-          termsType: source.termsType,
-          brandEnum: source.brandEnum,
-          title: input.title,
-          version: input.version,
-          effectiveFrom: input.effectiveFrom,
-          effectiveTo: input.effectiveTo ?? null,
-          displayOrder: parseDisplayOrderInput(input.displayOrder) ?? source.displayOrder,
-          requiresConsent: input.requiresConsent,
-          remarks: input.remarks ?? null,
-          bodyText: source.bodyText,
-          pdfS3Key: input.pdfS3Key,
-          pdfUrl: input.pdfUrl ?? buildTermsPdfUrl(input.pdfS3Key),
-          pdfFileName: input.pdfFileName ?? null,
-          createdAt: now,
-          createdBy: '管理者',
-          updatedAt: now,
-          updatedBy: '管理者',
-          deletedAt: null,
-        };
-        this._rows.unshift(row);
+
+        rows = [...rows].sort((a, b) => {
+          const orderA = a.display_order ?? Number.POSITIVE_INFINITY;
+          const orderB = b.display_order ?? Number.POSITIVE_INFINITY;
+          if (orderA !== orderB) return orderA - orderB;
+          return new Date(b.effective_from).getTime() - new Date(a.effective_from).getTime();
+        });
+
+        const total = rows.length;
+        const start = (query.page - 1) * query.limit;
+        return { rows: rows.slice(start, start + query.limit), total, totalAllItems };
+      },
+      getById(id: string, brandScope: TermsBrand | null): TermsRow | undefined | null {
+        this._seed();
+
+        const row = this._rows.find((entry) => entry.id === id);
+        if (!row) return undefined;
+        if (brandScope && row.brand_enum !== brandScope) return null;
+
         return row;
       },
-
-      update(id: string, input: UpdateTermsBody): TermsRow | undefined {
+      create(data: CreateTermsBody, createdBy: string): TermsCreateResult {
         this._seed();
-        const index = this._rows.findIndex((row) => row.id === id);
-        if (index === -1) return undefined;
-        const current = this._rows[index]!;
-        const nextPdfS3Key = input.pdfS3Key ?? current.pdfS3Key;
+
+        const referencedIds = [data.parentTermsId, data.prevTermsId].filter(
+          (value): value is string => !!value,
+        );
+        const invalidRef = referencedIds.some(
+          (refId) => !this._rows.some((row) => row.id === refId && !row.is_deleted),
+        );
+        if (invalidRef) return 'invalid_lineage_ref';
+
+        const ids = this._rows
+          .map((row) => Number.parseInt(row.id.replace('TM-', ''), 10))
+          .filter((n) => !Number.isNaN(n));
+        const nextNumber = ids.length > 0 ? Math.max(...ids) + 1 : 1;
+        const now = new Date().toISOString();
+
+        const row: TermsRow = {
+          id: `TM-${String(nextNumber).padStart(3, '0')}`,
+          parent_terms_id: data.parentTermsId ?? null,
+          prev_terms_id: data.prevTermsId ?? null,
+          terms_type: data.termsType,
+          brand_enum: data.brandEnum,
+          title: data.title,
+          version: data.version,
+          pdf_url: data.pdfUrl,
+          pdf_file_name: data.pdfFileName,
+          pdf_file_size: data.pdfFileSize,
+          body_text: synthesizeBodyText(data.title, data.version),
+          effective_from: data.effectiveFrom,
+          effective_to: data.effectiveTo ?? null,
+          display_order: data.displayOrder ?? null,
+          requires_consent: data.requiresConsent,
+          remarks: data.remarks ?? null,
+          is_deleted: false,
+          created_by: createdBy,
+          updated_by: createdBy,
+          created_at: now,
+          updated_at: now,
+        };
+        this._rows.push(row);
+        return row;
+      },
+      update(id: string, patch: UpdateTermsBody, updatedBy: string): TermsUpdateResult {
+        this._seed();
+
+        const index = this._rows.findIndex((row) => row.id === id && !row.is_deleted);
+        if (index === -1) return 'not_found';
+
+        const existing = this._rows[index];
         const updated: TermsRow = {
-          ...current,
-          title: input.title ?? current.title,
-          version: input.version ?? current.version,
-          effectiveFrom: input.effectiveFrom ?? current.effectiveFrom,
-          effectiveTo: input.effectiveTo === undefined ? current.effectiveTo : input.effectiveTo,
-          displayOrder:
-            input.displayOrder === undefined
-              ? current.displayOrder
-              : parseDisplayOrderInput(input.displayOrder),
-          requiresConsent: input.requiresConsent ?? current.requiresConsent,
-          remarks: input.remarks === undefined ? current.remarks : input.remarks,
-          pdfS3Key: nextPdfS3Key,
-          pdfUrl:
-            input.pdfUrl === undefined
-              ? input.pdfS3Key === undefined
-                ? current.pdfUrl
-                : buildTermsPdfUrl(nextPdfS3Key)
-              : input.pdfUrl,
-          pdfFileName: input.pdfFileName === undefined ? current.pdfFileName : input.pdfFileName,
-          updatedAt: new Date().toISOString(),
-          updatedBy: '管理者',
+          ...existing,
+          title: patch.title ?? existing.title,
+          version: patch.version ?? existing.version,
+          effective_from: patch.effectiveFrom ?? existing.effective_from,
+          effective_to: patch.effectiveTo !== undefined ? patch.effectiveTo : existing.effective_to,
+          display_order:
+            patch.displayOrder !== undefined ? patch.displayOrder : existing.display_order,
+          requires_consent: patch.requiresConsent ?? existing.requires_consent,
+          remarks: patch.remarks !== undefined ? patch.remarks : existing.remarks,
+          pdf_url: patch.pdfUrl ?? existing.pdf_url,
+          pdf_file_name: patch.pdfFileName ?? existing.pdf_file_name,
+          pdf_file_size: patch.pdfFileSize ?? existing.pdf_file_size,
+          body_text: patch.pdfUrl
+            ? synthesizeBodyText(patch.title ?? existing.title, patch.version ?? existing.version)
+            : existing.body_text,
+          updated_by: updatedBy,
+          updated_at: new Date().toISOString(),
         };
         this._rows[index] = updated;
         return updated;
       },
-
-      logicalDelete(id: string): TermsRow | undefined {
+      delete(id: string): TermsDeleteResult {
         this._seed();
-        const row = this.getById(id);
-        if (!row) return undefined;
-        const deletedAt = new Date().toISOString();
-        row.deletedAt = deletedAt;
-        row.updatedAt = deletedAt;
-        row.updatedBy = '管理者';
-        return row;
-      },
 
-      recordConsents(input: RecordTermsConsentBody): number {
-        this._seed();
-        let recorded = 0;
-        for (const requestedTermId of input.termsIds) {
-          const requestedTerm = this.getById(requestedTermId);
-          if (!requestedTerm) continue;
-          const alreadyExists = this._consents.some(
-            (consent) =>
-              consent.memberId === input.memberId && consent.termsId === requestedTerm.id,
-          );
-          if (alreadyExists) continue;
-          this._consents.push({
-            consentId: `TC${String(this._consents.length + 1).padStart(3, '0')}`,
-            memberId: input.memberId,
-            termsId: requestedTerm.id,
-            source: input.source,
-            consentedAt: new Date().toISOString(),
-          });
-          recorded += 1;
-        }
-        return recorded;
-      },
+        const index = this._rows.findIndex((row) => row.id === id && !row.is_deleted);
+        if (index === -1) return 'not_found';
 
-      getActive(query: GetActiveTermsQuery): ActiveTermsItem[] {
-        this._seed();
-        return this._rows
-          .filter(
-            (row) =>
-              row.brandEnum === query.brand &&
-              isTermActive(row) &&
-              matchesMobilePurpose(row, query.purpose),
-          )
-          .sort((left, right) => {
-            const leftOrder =
-              left.displayOrder === null ? Number.MAX_SAFE_INTEGER : Number(left.displayOrder);
-            const rightOrder =
-              right.displayOrder === null ? Number.MAX_SAFE_INTEGER : Number(right.displayOrder);
-            if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-            return left.effectiveFrom.localeCompare(right.effectiveFrom, 'ja');
-          })
-          .map((row) => ({
-            id: row.id,
-            title: row.title,
-            version: row.version,
-            pdfUrl: row.pdfUrl,
-            requiresConsent:
-              row.requiresConsent &&
-              !(
-                query.memberId &&
-                this._consents.some(
-                  (consent) => consent.memberId === query.memberId && consent.termsId === row.id,
-                )
-              ),
-          }));
+        this._rows[index] = { ...this._rows[index], is_deleted: true };
+        return true;
       },
-    },
+    } satisfies TermsTableType,
   };
 }

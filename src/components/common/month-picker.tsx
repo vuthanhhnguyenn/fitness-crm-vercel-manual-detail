@@ -36,10 +36,24 @@ function formatYearMonth(year: number, month: number): string {
   return `${year}/${String(month).padStart(2, '0')}`;
 }
 
+function shiftYearMonth(
+  year: number,
+  month: number,
+  delta: number,
+): { year: number; month: number } {
+  const absoluteMonth = year * 12 + (month - 1) + delta;
+  return {
+    year: Math.floor(absoluteMonth / 12),
+    month: (absoluteMonth % 12) + 1,
+  };
+}
+
 function formatDisplay(value: string): string {
   const parsed = toYearMonth(value);
   if (!parsed) return '';
-  return format(new Date(parsed.year, parsed.month - 1, 1), 'yyyy年M月', { locale: ja });
+  return format(new Date(parsed.year, parsed.month - 1, 1), 'yyyy年M月', {
+    locale: ja,
+  });
 }
 
 interface MonthPickerProps {
@@ -48,6 +62,10 @@ interface MonthPickerProps {
   min?: string; // YYYY/MM — months before this are disabled
   placeholder?: string;
   hasError?: boolean;
+  /** 前後の月へ送る矢印を表示するか（既定: true） */
+  showArrows?: boolean;
+  /** Overrides the default fixed width — pass `w-full` when the picker sits in a grid/flex column */
+  className?: string;
 }
 
 export function MonthPicker({
@@ -56,6 +74,8 @@ export function MonthPicker({
   min,
   placeholder = '年月を選択',
   hasError,
+  showArrows = false,
+  className,
 }: Readonly<MonthPickerProps>) {
   const now = new Date();
   const [open, setOpen] = useState(false);
@@ -77,71 +97,115 @@ export function MonthPicker({
     }
   }
 
+  function handleStep(delta: number) {
+    const parsed = toYearMonth(value) ?? {
+      year: now.getFullYear(),
+      month: now.getMonth() + 1,
+    };
+    const { year, month } = shiftYearMonth(parsed.year, parsed.month, delta);
+    if (!isDisabled(year, month)) {
+      onChange(formatYearMonth(year, month));
+    }
+  }
+
   const selected = toYearMonth(value);
+  const prev = selected && shiftYearMonth(selected.year, selected.month, -1);
+  const next = selected && shiftYearMonth(selected.year, selected.month, 1);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button
-            variant="outline"
-            className={cn(
-              'w-44 justify-between gap-2 font-normal',
-              !value && 'text-muted-foreground',
-              hasError && 'border-destructive focus-visible:ring-destructive/20',
-            )}
-          />
-        }
+    <div className="flex items-center gap-1">
+      {showArrows && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          disabled={!!prev && isDisabled(prev.year, prev.month)}
+          onClick={() => handleStep(-1)}
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+      )}
+      <Popover
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (o && selected) setViewYear(selected.year);
+        }}
       >
-        {value ? formatDisplay(value) : placeholder}
-        <CalendarIcon className="size-3.5 shrink-0" />
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-3" align="start">
-        {/* Year navigation */}
-        <div className="mb-3 flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={() => setViewYear((y) => y - 1)}
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <span className="text-sm font-semibold">{viewYear}年</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={() => setViewYear((y) => y + 1)}
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
-        {/* Month grid */}
-        <div className="grid grid-cols-3 gap-1">
-          {MONTHS_JA.map((label, idx) => {
-            const month = idx + 1;
-            const disabled = isDisabled(viewYear, month);
-            const isSelected = selected?.year === viewYear && selected?.month === month;
-            return (
-              <button
-                key={month}
-                onClick={() => handleSelect(month)}
-                disabled={disabled}
-                className={cn(
-                  'rounded-md py-1.5 text-sm transition-colors',
-                  isSelected
-                    ? 'bg-primary text-primary-foreground font-semibold'
-                    : 'hover:bg-accent hover:text-accent-foreground',
-                  disabled && 'text-muted-foreground pointer-events-none opacity-40',
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
+        <PopoverTrigger
+          render={
+            <Button
+              variant="outline"
+              className={cn(
+                'justify-between gap-2 font-normal',
+                className ?? 'w-44',
+                !value && 'text-muted-foreground',
+                hasError && 'border-destructive focus-visible:ring-destructive/20',
+              )}
+            />
+          }
+        >
+          {value ? formatDisplay(value) : placeholder}
+          <CalendarIcon className="size-3.5 shrink-0" />
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-3" align="start">
+          {/* Year navigation */}
+          <div className="mb-3 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={() => setViewYear((y) => y - 1)}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="text-sm font-semibold">{viewYear}年</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={() => setViewYear((y) => y + 1)}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          {/* Month grid */}
+          <div className="grid grid-cols-3 gap-1">
+            {MONTHS_JA.map((label, idx) => {
+              const month = idx + 1;
+              const disabled = isDisabled(viewYear, month);
+              const isSelected = selected?.year === viewYear && selected?.month === month;
+              return (
+                <button
+                  key={month}
+                  onClick={() => handleSelect(month)}
+                  disabled={disabled}
+                  className={cn(
+                    'rounded-md py-1.5 text-sm transition-colors',
+                    isSelected
+                      ? 'bg-primary text-primary-foreground font-semibold'
+                      : 'hover:bg-accent hover:text-accent-foreground',
+                    disabled && 'text-muted-foreground pointer-events-none opacity-40',
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {showArrows && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          disabled={!!next && isDisabled(next.year, next.month)}
+          onClick={() => handleStep(1)}
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+      )}
+    </div>
   );
 }

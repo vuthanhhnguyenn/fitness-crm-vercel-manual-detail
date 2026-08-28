@@ -31,8 +31,12 @@ import {
   AreaKpiSkeleton,
   LessonScheduleKpiSkeleton,
   LessonSchedulePageSkeleton,
+  LessonScheduleTableSkeleton,
+  LessonScheduleTimelineSkeleton,
+  LessonScheduleWeeklyCalendarSkeleton,
 } from './_components/lesson-schedule-skeletons';
 import { LessonScheduleToolbar } from './_components/lesson-schedule-toolbar';
+import { ManualReservationModal } from './_components/manual-reservation-modal';
 import { ScheduleChangeModal } from './_components/schedule-change-modal';
 import { ScheduleListView } from './_components/schedule-list-view';
 import { TimelineView } from './_components/timeline-view';
@@ -79,11 +83,14 @@ function LessonSchedulePageInner() {
   });
 
   const storeSummaryQuery = useQuery({
-    ...getCrmLessonSchedulesStoresSummaryOptions({ query: storeSummaryQueryParams }),
+    ...getCrmLessonSchedulesStoresSummaryOptions({
+      query: storeSummaryQueryParams,
+    }),
     enabled: isAllStore && effectiveAxis === 'store',
   });
 
   const [changeTarget, setChangeTarget] = useState<LessonScheduleListItem | null>(null);
+  const [manualReservationOpen, setManualReservationOpen] = useState(false);
 
   const handleScheduleClick = (schedule: LessonScheduleListItem) => {
     router.push(navigate('/lesson-schedules/[id]/reservations', schedule.id));
@@ -100,11 +107,16 @@ function LessonSchedulePageInner() {
     new Set(schedules.map((s) => s.studio_name).filter(Boolean) as string[]),
   );
   const storeList =
-    storeSummaryQuery.data?.stores?.map((s) => ({ id: s.store_id, name: s.store_name })) ?? [];
+    storeSummaryQuery.data?.stores?.map((s) => ({
+      id: s.store_id,
+      name: s.store_name,
+    })) ?? [];
 
-  // All-store summary mode: only when HQ/Sys/Mgr, store axis, no focused store filter
-  const isAllStoreSummaryMode =
-    isAllStore && effectiveAxis === 'store' && !filters.focused_store_id;
+  // All-store summary mode: only when HQ/Sys/Mgr, store axis, and the screen-level
+  // store filter is still "全店舗" (FR-018). Focusing a store row (focused_store_id)
+  // narrows the KPI/toolbar/schedule view below but does not by itself exit summary
+  // mode — the Area KPI + Area Summary table remain visible so the user can refocus.
+  const isAllStoreSummaryMode = isAllStore && effectiveAxis === 'store' && !filters.store_id;
 
   if (isUserLoading) {
     return <LessonSchedulePageSkeleton />;
@@ -115,14 +127,26 @@ function LessonSchedulePageInner() {
       <PageHeader
         title="予約管理"
         actions={
-          <RoleGatedButton
-            requiredPermission={Permission.LessonsScheduleManage}
-            size="sm"
-            onClick={() => router.push(navigate('/lesson-schedules/create'))}
-          >
-            <Plus className="size-4" />
-            スケジュール登録
-          </RoleGatedButton>
+          <div className="flex items-center gap-2">
+            <RoleGatedButton
+              requiredPermission={Permission.LessonsReservationManage}
+              denyTooltip="予約手動入力の権限がありません"
+              variant="outline"
+              size="sm"
+              onClick={() => setManualReservationOpen(true)}
+            >
+              手動予約入力
+            </RoleGatedButton>
+            <RoleGatedButton
+              requiredPermission={Permission.LessonsScheduleManage}
+              denyTooltip="スケジュール登録の権限がありません"
+              size="sm"
+              onClick={() => router.push(navigate('/lesson-schedules/create'))}
+            >
+              <Plus className="size-4" />
+              スケジュール登録
+            </RoleGatedButton>
+          </div>
         }
       />
 
@@ -132,7 +156,10 @@ function LessonSchedulePageInner() {
           value={effectiveAxis}
           onValueChange={(v) => {
             if (!isTrainer)
-              setFilters({ axis: v as 'store' | 'my_schedule', focused_store_id: null });
+              setFilters({
+                axis: v as 'store' | 'my_schedule',
+                focused_store_id: null,
+              });
           }}
           className="shrink-0 gap-0"
         >
@@ -148,38 +175,36 @@ function LessonSchedulePageInner() {
 
         {/* All-store summary mode: Area KPI + store summary table */}
         {isAllStoreSummaryMode && (
-          <>
-            <DataStateBoundary
-              isLoading={storeSummaryQuery.isLoading}
-              isError={storeSummaryQuery.isError}
-              isEmpty={!storeSummaryQuery.data?.areas?.length}
-              onRetry={() => storeSummaryQuery.refetch()}
-              skeleton={<AreaKpiSkeleton />}
-              emptyTitle="エリアデータがありません"
-            >
-              {storeSummaryQuery.data && (
-                <div className="space-y-4">
-                  <AreaKpiSummary
-                    areas={storeSummaryQuery.data.areas}
-                    stores={storeSummaryQuery.data.stores}
-                  />
-                  <AreaSummaryTable
-                    stores={storeSummaryQuery.data.stores}
-                    focusedStoreId={filters.focused_store_id}
-                    onStoreClick={(id) =>
-                      setFilters({
-                        focused_store_id: id === filters.focused_store_id ? null : id,
-                      })
-                    }
-                  />
-                </div>
-              )}
-            </DataStateBoundary>
-          </>
+          <DataStateBoundary
+            isLoading={storeSummaryQuery.isLoading}
+            isError={storeSummaryQuery.isError}
+            isEmpty={!storeSummaryQuery.data?.areas?.length}
+            onRetry={() => storeSummaryQuery.refetch()}
+            skeleton={<AreaKpiSkeleton />}
+            emptyTitle="エリアデータがありません"
+          >
+            {storeSummaryQuery.data && (
+              <div className="space-y-4">
+                <AreaKpiSummary
+                  areas={storeSummaryQuery.data.areas}
+                  stores={storeSummaryQuery.data.stores}
+                />
+                <AreaSummaryTable
+                  stores={storeSummaryQuery.data.stores}
+                  focusedStoreId={filters.focused_store_id}
+                  onStoreClick={(id) =>
+                    setFilters({
+                      focused_store_id: id === filters.focused_store_id ? null : id,
+                    })
+                  }
+                />
+              </div>
+            )}
+          </DataStateBoundary>
         )}
 
-        {/* Focused store header (all-store mode + store selected) */}
-        {isAllStore && effectiveAxis === 'store' && filters.focused_store_id && (
+        {/* Focused store header (all-store summary mode + a store row focused) */}
+        {isAllStoreSummaryMode && filters.focused_store_id && (
           <div className="flex shrink-0 items-center gap-2">
             <span className="text-muted-foreground text-sm font-semibold">店舗詳細:</span>
             <span className="text-sm font-bold">
@@ -219,6 +244,15 @@ function LessonSchedulePageInner() {
           isError={schedulesQuery.isError}
           isEmpty={schedules.length === 0 && !schedulesQuery.isLoading}
           onRetry={() => schedulesQuery.refetch()}
+          skeleton={
+            filters.view === 'week' ? (
+              <LessonScheduleWeeklyCalendarSkeleton />
+            ) : filters.view === 'list' ? (
+              <LessonScheduleTableSkeleton />
+            ) : (
+              <LessonScheduleTimelineSkeleton />
+            )
+          }
           emptyTitle="レッスンが見つかりません"
           emptyDescription="条件を変更して再検索してください"
         >
@@ -259,6 +293,12 @@ function LessonSchedulePageInner() {
         onOpenChange={(open) => {
           if (!open) setChangeTarget(null);
         }}
+      />
+
+      {/* Manual reservation modal */}
+      <ManualReservationModal
+        open={manualReservationOpen}
+        onOpenChange={setManualReservationOpen}
       />
     </div>
   );

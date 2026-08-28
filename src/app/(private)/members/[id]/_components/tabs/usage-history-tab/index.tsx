@@ -1,8 +1,9 @@
 'use client';
 
-import { AccessSettingsCard } from './access-settings-card';
 import { EntryExitTable } from './entry-exit-table';
 import { LessonTable } from './lesson-table';
+import { OptionUsageCard } from './option-usage-card';
+import { UsageStatusCard } from './usage-status-card';
 
 interface UsageHistoryTabProps {
   readonly memberId: string;
@@ -11,17 +12,21 @@ interface UsageHistoryTabProps {
 export function UsageHistoryTab(props: UsageHistoryTabProps) {
   const { memberId } = props;
   return (
-    <div className="flex gap-4">
-      {/* Left Column: Entry/Exit & Lesson Tables */}
-      <div className="flex w-[60%] flex-col gap-4">
+    <div className="flex flex-col gap-4 md:flex-row">
+      {/* Left Column (60%): Entry/Exit, Lesson & Option Usage Tables */}
+      <div className="flex w-full flex-col gap-4 md:w-[60%]">
         <EntryExitTable memberId={memberId} />
 
         <LessonTable memberId={memberId} />
+
+        <OptionUsageCard memberId={memberId} />
       </div>
 
-      {/* Right Column: Access Settings Card */}
-      <div className="w-[40%]">
-        <AccessSettingsCard memberId={memberId} />
+      {/* Right Column (40%): Usage Status */}
+      <div className="w-full md:w-[40%]">
+        <div className="sticky top-0 flex flex-col gap-4">
+          <UsageStatusCard memberId={memberId} />
+        </div>
       </div>
     </div>
   );

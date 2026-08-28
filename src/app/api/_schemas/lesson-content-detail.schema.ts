@@ -53,7 +53,7 @@ export const RestrictionSetSchema = z
       .number()
       .nullable()
       .optional()
-      .openapi({ example: null, description: 'Non-null only when pricing_type === paid' }),
+      .openapi({ example: null, description: "Non-null only when pricing_type === 'per_use'" }),
   })
   .openapi({ title: 'RestrictionSet', description: 'Reservation restriction + per-use fee' });
 
@@ -75,7 +75,7 @@ export const LessonContentDetailSchema = z
       .number()
       .nullable()
       .optional()
-      .openapi({ example: null, description: 'Yen; non-null only for pricing_type === paid' }),
+      .openapi({ example: null, description: "Yen; non-null only for pricing_type === 'per_use'" }),
     images: z.array(LessonImageSchema).openapi({ description: 'Gallery images' }),
     description: z.string().max(1000).nullable().optional().openapi({ example: '初心者向け…' }),
     internal_memo: z
@@ -104,6 +104,65 @@ export const GetLessonContentDetailResponseSchema = z
     title: 'GetLessonContentDetailResponse',
     description: 'Lesson content detail response',
   });
+
+// ─── Status update (activate / deactivate) ─────────────────────────────────
+
+export const UpdateLessonContentStatusRequestSchema = z
+  .object({
+    status: LessonContentStatusSchema.openapi({
+      example: 'inactive',
+      description: '更新後ステータス',
+    }),
+    reason: z
+      .string()
+      .trim()
+      .max(1000)
+      .nullable()
+      .optional()
+      .openapi({ example: '提供休止のため無効化', description: '変更理由（無効化時は必須）' }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status === 'inactive' && !data.reason?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['reason'],
+        message: '無効化する理由を入力してください',
+      });
+    }
+  })
+  .openapi({
+    title: 'UpdateLessonContentStatusRequest',
+    description: 'レッスンステータス更新（有効化/無効化）リクエスト',
+  });
+
+export const UpdateLessonContentStatusResponseSchema = z
+  .object({
+    message: z.string().openapi({ example: 'レッスンを無効化しました' }),
+    data: LessonContentDetailSchema,
+  })
+  .openapi({
+    title: 'UpdateLessonContentStatusResponse',
+    description: 'レッスンステータス更新レスポンス',
+  });
+
+// ─── Delete ─────────────────────────────────────────────────────────────────
+
+export const DeleteLessonContentRequestSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(1, '削除理由は必須です')
+      .max(1000)
+      .openapi({ example: '提供終了のため削除', description: '削除理由' }),
+  })
+  .openapi({ title: 'DeleteLessonContentRequest', description: 'レッスン削除リクエスト' });
+
+export const DeleteLessonContentResponseSchema = z
+  .object({
+    message: z.string().openapi({ example: 'レッスンを削除しました' }),
+  })
+  .openapi({ title: 'DeleteLessonContentResponse', description: 'レッスン削除レスポンス' });
 
 // ─── Schedules ──────────────────────────────────────────────────────────────
 
@@ -196,6 +255,14 @@ export type LessonImage = z.infer<typeof LessonImageSchema>;
 export type RestrictionSet = z.infer<typeof RestrictionSetSchema>;
 export type LessonContentDetail = z.infer<typeof LessonContentDetailSchema>;
 export type GetLessonContentDetailResponse = z.infer<typeof GetLessonContentDetailResponseSchema>;
+export type UpdateLessonContentStatusRequest = z.infer<
+  typeof UpdateLessonContentStatusRequestSchema
+>;
+export type UpdateLessonContentStatusResponse = z.infer<
+  typeof UpdateLessonContentStatusResponseSchema
+>;
+export type DeleteLessonContentRequest = z.infer<typeof DeleteLessonContentRequestSchema>;
+export type DeleteLessonContentResponse = z.infer<typeof DeleteLessonContentResponseSchema>;
 export type InstructorRef = z.infer<typeof InstructorRefSchema>;
 export type RecurringPattern = z.infer<typeof RecurringPatternSchema>;
 export type ScheduleSession = z.infer<typeof ScheduleSessionSchema>;

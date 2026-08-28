@@ -1,3 +1,4 @@
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import { AlertTriangle, CheckCircle, User } from 'lucide-react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -28,11 +29,11 @@ export function PersonalInfoCard({ record }: PersonalInfoCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">個人情報</CardTitle>
+        <CardTitle className="text-base font-semibold">個人情報</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 px-4">
         {hasMissingInfo && (
-          <Alert className="border-warning/50 bg-warning/10 py-2">
+          <Alert className="border-warning/50 bg-warning/15 py-2">
             <AlertTriangle className="text-warning size-4" />
             <AlertDescription className="text-warning text-xs">
               一部の個人情報が未登録です
@@ -45,7 +46,7 @@ export function PersonalInfoCard({ record }: PersonalInfoCardProps) {
           <div className="flex shrink-0 flex-col gap-2">
             <div
               className={`bg-muted/30 flex size-24 items-center justify-center rounded-full border ${
-                !facePhotoRegistered ? 'border-warning/60 bg-warning/10' : 'border-success/40'
+                !facePhotoRegistered ? 'border-warning/60 bg-warning/15' : 'border-success/40'
               }`}
             >
               <div
@@ -63,13 +64,18 @@ export function PersonalInfoCard({ record }: PersonalInfoCardProps) {
             </div>
 
             {facePhotoRegistered ? (
-              <Badge
-                variant="outline"
-                className="border-success/20 bg-success/15 text-success w-full justify-center gap-1 text-[10px]"
-              >
-                <CheckCircle className="size-3" />
-                登録済み
-              </Badge>
+              <>
+                <Badge
+                  variant="outline"
+                  className="border-success/20 bg-success/15 text-success w-full justify-center gap-1 text-[10px]"
+                >
+                  <CheckCircle className="size-3" />
+                  登録済み
+                </Badge>
+                <span className="text-muted-foreground text-center text-[10px]">
+                  {formatDateYYYYMMDD_HHMM(record.reserved_at)}
+                </span>
+              </>
             ) : (
               <Badge
                 variant="outline"

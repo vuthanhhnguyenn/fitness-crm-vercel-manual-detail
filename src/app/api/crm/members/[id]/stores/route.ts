@@ -51,7 +51,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    const memberBrand = member.profile.brand;
+    const memberBrand = member.primaryStore.brandEnum;
     const allStores = db.stores.getList();
 
     const stores = allStores

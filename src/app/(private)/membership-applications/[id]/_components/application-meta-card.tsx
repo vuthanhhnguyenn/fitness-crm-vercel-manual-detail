@@ -1,10 +1,14 @@
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 
+import { ENROLLMENT_ROUTE_LABELS } from '../../_constants/constants';
 import { formatApplicationDate } from './membership-application.utils';
+import type { ApplicationDetail } from './membership-application.utils';
 
 interface ApplicationMetaCardProps {
-  app: any;
+  app: ApplicationDetail;
 }
 
 function Field({ label, value, mono }: Readonly<{ label: string; value: string; mono?: boolean }>) {
@@ -17,7 +21,7 @@ function Field({ label, value, mono }: Readonly<{ label: string; value: string; 
 }
 
 export function ApplicationMetaCard({ app }: Readonly<ApplicationMetaCardProps>) {
-  const applicationDateFormatted = formatApplicationDate(app.application_date);
+  const isProxy = app.application_source === '管理画面';
 
   return (
     <Card>
@@ -27,14 +31,15 @@ export function ApplicationMetaCard({ app }: Readonly<ApplicationMetaCardProps>)
       <CardContent className="px-4">
         <div className="flex flex-col gap-3">
           <Field label="申請ID" value={app.id} mono />
-          <Field label="申請日時" value={applicationDateFormatted} />
-          <Field label="申請元" value={app.application_source ?? 'アプリ'} />
-          <Field label="更新日時" value={app.updated_at ?? '—'} />
-          {app.is_proxy && app.proxy_applicant && (
-            <Field label="代理申請者" value={app.proxy_applicant} />
+          <Field label="申請日時" value={formatApplicationDate(app.application_date)} />
+          <Field label="申請元" value={app.application_source} />
+          <Field label="入会経路" value={ENROLLMENT_ROUTE_LABELS[app.enrollment_route]} />
+          <Field label="更新日時" value={formatDateYYYYMMDD_HHMM(app.updated_at, '—')} />
+          {isProxy && app.proxy_staff_name && (
+            <Field label="代理申請者" value={app.proxy_staff_name} />
           )}
-          {app.is_proxy && app.agreement_date && (
-            <Field label="合意日時" value={app.agreement_date} />
+          {isProxy && app.agreement_datetime && (
+            <Field label="合意日時" value={formatDateYYYYMMDD_HHMM(app.agreement_datetime, '—')} />
           )}
         </div>
       </CardContent>

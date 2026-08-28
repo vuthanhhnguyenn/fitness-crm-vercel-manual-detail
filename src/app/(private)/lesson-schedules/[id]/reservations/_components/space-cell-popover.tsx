@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { memo, useState } from 'react';
 
 import { Users, X } from 'lucide-react';
 
@@ -11,6 +11,8 @@ import type { StudioSpace } from '@/lib/api/types.gen';
 
 interface SpaceCellPopoverProps {
   space: StudioSpace;
+  /** Continuous 1..N seat number in reading order (bookable seats only) */
+  seatNumber?: number;
   cellClass: string;
   /** FR-008 — whether the current role may cancel this reservation */
   canCancel: boolean;
@@ -18,70 +20,30 @@ interface SpaceCellPopoverProps {
   onNavigateToMember?: (memberId: string) => void;
 }
 
-export function SpaceCellPopover({
+function SpaceCellPopoverComponent({
   space,
+  seatNumber,
   cellClass,
   canCancel,
   onCancelReservation,
   onNavigateToMember,
-}: SpaceCellPopoverProps) {
+}: Readonly<SpaceCellPopoverProps>) {
+  // Controlled only so cancel/navigate can close the popover programmatically.
+  // Hover open/close (and the safe trigger→popup transition) is handled natively
+  // by base-ui, so the cursor can travel to the action buttons without it closing.
   const [open, setOpen] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleMouseEnter = () => {
-    if (pinned) return;
-    hoverTimeout.current = setTimeout(() => setOpen(true), 200);
-  };
-
-  const handleMouseLeave = () => {
-    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
-    if (!pinned) setOpen(false);
-  };
-
-  const handleClick = () => {
-    if (pinned) {
-      setPinned(false);
-      setOpen(false);
-    } else {
-      setPinned(true);
-      setOpen(true);
-    }
-  };
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) {
-          setPinned(false);
-          setOpen(false);
-        }
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={
-          <div
-            className={cellClass}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            onClick={handleClick}
-          />
-        }
+        openOnHover
+        delay={200}
+        closeDelay={150}
+        render={<div className={cellClass} />}
       >
-        {space.space_number}
+        {seatNumber}
       </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        className="w-auto p-3"
-        align="center"
-        onMouseEnter={() => {
-          if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
-        }}
-        onMouseLeave={() => {
-          if (!pinned) setOpen(false);
-        }}
-      >
+      <PopoverContent side="top" className="w-auto p-3" align="center">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="bg-muted flex size-6 items-center justify-center rounded-full text-[10px] font-medium">
@@ -89,7 +51,7 @@ export function SpaceCellPopover({
             </div>
             <div>
               <p className="text-sm font-medium">{space.member_name}</p>
-              <p className="text-muted-foreground text-[10px]">スペース {space.space_number}</p>
+              <p className="text-muted-foreground text-[10px]">スペース {seatNumber}</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -97,7 +59,10 @@ export function SpaceCellPopover({
               variant="outline"
               size="sm"
               className="h-7 flex-1 text-xs"
-              onClick={() => space.reservation_id && onNavigateToMember?.(space.reservation_id)}
+              onClick={() => {
+                if (space.member_id) onNavigateToMember?.(space.member_id);
+                setOpen(false);
+              }}
             >
               <Users className="mr-1 size-3" />
               会員詳細
@@ -109,7 +74,6 @@ export function SpaceCellPopover({
                 className="text-destructive border-destructive/30 hover:bg-destructive/10 h-7 flex-1 text-xs"
                 onClick={() => {
                   onCancelReservation(space);
-                  setPinned(false);
                   setOpen(false);
                 }}
               >
@@ -123,3 +87,5 @@ export function SpaceCellPopover({
     </Popover>
   );
 }
+
+export const SpaceCellPopover = memo(SpaceCellPopoverComponent);

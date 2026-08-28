@@ -19,8 +19,8 @@ type LockerContractSlotGridProps = {
 const SLOT_CELL_CLASSES: Record<string, string> = {
   available: 'bg-success/15 text-success border-success/20 hover:bg-success/25 cursor-pointer',
   in_use: 'bg-muted text-muted-foreground cursor-not-allowed',
-  pending_release:
-    'bg-warning/20 text-warning border-warning/30 hover:bg-warning/30 cursor-pointer',
+  // FR-005: 開放待ち is not assignable until cleaning is done — shown but not clickable.
+  pending_release: 'bg-warning/20 text-warning border-warning/30 cursor-not-allowed',
 };
 
 export function LockerContractSlotGrid({
@@ -51,7 +51,7 @@ export function LockerContractSlotGrid({
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs font-medium">スロット空き状況</p>
         <p className="text-muted-foreground text-xs">
-          利用可能: {summary.available} / {summary.total}
+          利用可: {summary.available} / {summary.total}
         </p>
       </div>
 
@@ -88,9 +88,11 @@ export function LockerContractSlotGrid({
                   {rowSlots.map((slot) => {
                     const isCurrent = slot.slot_number === currentSlotNumber;
                     const isSelected = slot.slot_number === selectedSlotNumber;
-                    const isUsed = slot.status === LockerContractStatus.IN_USE && !isCurrent;
+                    // FR-005: 「利用可」状態のスロットのみ選択可能とする — the contract's own
+                    // slot stays selectable so editing without moving it is possible.
                     const isSelectable =
-                      slot.status === 'available' || slot.status === 'pending_release' || isCurrent;
+                      slot.status === LockerContractStatus.AVAILABLE || isCurrent;
+                    const isUsed = !isSelectable;
 
                     return (
                       <div
@@ -128,11 +130,11 @@ export function LockerContractSlotGrid({
       <div className="mt-3 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-1">
           <span className="bg-success/30 size-2.5 rounded-sm" />
-          <span className="text-muted-foreground text-[10px]">利用可能</span>
+          <span className="text-muted-foreground text-[10px]">利用可</span>
         </div>
         <div className="flex items-center gap-1">
           <span className="bg-muted size-2.5 rounded-sm" />
-          <span className="text-muted-foreground text-[10px]">利用中</span>
+          <span className="text-muted-foreground text-[10px]">使用中</span>
         </div>
         <div className="flex items-center gap-1">
           <span className="bg-warning/30 size-2.5 rounded-sm" />

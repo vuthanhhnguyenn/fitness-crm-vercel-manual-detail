@@ -6,6 +6,20 @@ import {
   GetContractSummaryResponseSchema,
 } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { formatISODateLocal } from '@/utils/date.util';
+import { addMonths, getDaysInMonth, setDate } from 'date-fns';
+
+/**
+ * Next occurrence of `billingDay`: this month while the day is still ahead, otherwise next month.
+ * Days past the end of the target month are clamped to its last day (e.g. 31 → 2月28日).
+ */
+function resolveNextBillingDate(billingDay: number | null): string | null {
+  if (billingDay == null) return null;
+  const today = new Date();
+  const target = billingDay >= today.getDate() ? today : addMonths(today, 1);
+  const clampedDay = Math.min(billingDay, getDaysInMonth(target));
+  return formatISODateLocal(setDate(target, clampedDay));
+}
 
 registerRoute({
   method: 'get',
@@ -56,12 +70,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const optionsMonthlyFee =
       contracts?.option_contracts?.reduce((sum, opt) => sum + opt.monthly_fee, 0) ?? 0;
 
+    const billingDay = contracts?.payment_info?.billing_day ?? null;
+
     const summary = {
-      plan_name: contracts?.main_contract?.plan_name ?? null,
-      total_monthly_fee: mainMonthlyFee + optionsMonthlyFee,
-      billing_day: contracts?.payment_info?.billing_day ?? null,
-      payment_method: contracts?.payment_info?.method ?? null,
-      unpaid_amount: contracts?.unpaid_info?.amount ?? 0,
+      planName: contracts?.main_contract?.plan_name ?? null,
+      totalMonthlyFee: mainMonthlyFee + optionsMonthlyFee,
+      billingDay,
+      nextBillingDate: resolveNextBillingDate(billingDay),
+      paymentMethod: contracts?.payment_info?.method ?? null,
+      // The seeded contract rows are shared per plan and carry no per-member unpaid data
+      // (`unpaid_info` is always null), so fall back to the member's own balance — the same
+      // source the member detail and transfer screens read — instead of reporting every
+      // member as debt-free.
+      unpaidAmount: contracts?.unpaid_info?.amount ?? member.unpaidAmount,
     };
 
     return NextResponse.json(summary);

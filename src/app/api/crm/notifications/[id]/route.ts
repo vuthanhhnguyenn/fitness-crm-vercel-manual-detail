@@ -4,7 +4,6 @@ import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth'
 import { db } from '@/app/api/_mock-db';
 import {
   GetManualNotificationDetailResponseSchema,
-  type ManualNotificationErrorResponse,
   ManualNotificationErrorResponseSchema,
   ManualNotificationUpsertBodySchema,
   ManualNotificationUpsertResponseSchema,
@@ -19,6 +18,7 @@ import {
   canReadManualNotification,
   canWriteManualNotification,
 } from '../_lib/manual-notification-access.util';
+import { manualNotificationErrorResponse } from '../_lib/manual-notification-error.util';
 import {
   buildManualNotificationRow,
   manualNotificationRequiresApproval,
@@ -44,28 +44,6 @@ registerRoute({
   ],
 });
 
-function errorResponse(
-  status: 400 | 401 | 403 | 404,
-  userMessage: string,
-  code: ManualNotificationErrorResponse['code'] = status === 401
-    ? 'E-AUTH-001'
-    : status === 403
-      ? 'E-AUTH-006'
-      : status === 404
-        ? 'E-NOTIFICATION-404'
-        : 'E-VAL-001',
-) {
-  return NextResponse.json(
-    {
-      code,
-      message: userMessage,
-      userMessage,
-      traceId: crypto.randomUUID(),
-    },
-    { status },
-  );
-}
-
 registerRoute({
   method: 'patch',
   path: '/crm/notifications/{id}',
@@ -89,40 +67,16 @@ registerRoute({
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = getAuthUserFromRequest(request);
   if (!auth.ok) {
-    return NextResponse.json(
-      {
-        code: auth.status === 401 ? 'E-AUTH-001' : 'E-AUTH-006',
-        message: auth.error,
-        userMessage: 'Authentication or authorization failed',
-        traceId: crypto.randomUUID(),
-      },
-      { status: auth.status },
-    );
+    return manualNotificationErrorResponse(auth.status, 'この操作を実行する権限がありません');
   }
 
   const { id } = await params;
   const row = db.manualNotifications.getById(id);
   if (!row || row.deletedAt !== null) {
-    return NextResponse.json(
-      {
-        code: 'E-NOTIFICATION-404',
-        message: 'Notification not found',
-        userMessage: '通知が見つかりません',
-        traceId: crypto.randomUUID(),
-      },
-      { status: 404 },
-    );
+    return manualNotificationErrorResponse(404, '通知が見つかりません', 'E-NOTIFICATION-404');
   }
   if (!canReadManualNotification(auth.user, row)) {
-    return NextResponse.json(
-      {
-        code: 'E-AUTH-006',
-        message: 'Insufficient permissions',
-        userMessage: 'この通知を閲覧する権限がありません',
-        traceId: crypto.randomUUID(),
-      },
-      { status: 403 },
-    );
+    return manualNotificationErrorResponse(403, 'この通知を閲覧する権限がありません');
   }
 
   const creator = db.users.getById(row.createdByUserId);
@@ -138,60 +92,59 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = getAuthUserFromRequest(request);
   if (!auth.ok) {
-    return errorResponse(auth.status, auth.error);
+    return manualNotificationErrorResponse(auth.status, 'この操作を実行する権限がありません');
   }
   if (!hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsEdit])) {
-    return errorResponse(403, 'この操作を実行する権限がありません');
+    return manualNotificationErrorResponse(403, 'この操作を実行する権限がありません');
   }
 
   const { id } = await params;
   const existing = db.manualNotifications.getById(id);
   if (!existing || existing.deletedAt !== null) {
-    return errorResponse(404, '通知が見つかりません');
+    return manualNotificationErrorResponse(404, '通知が見つかりません', 'E-NOTIFICATION-404');
   }
   const creator = db.users.getById(existing.createdByUserId);
-  const creatorStaff = creator?.staff_id
-    ? db.staffs.getList().find((s) => s.staff_id === creator.staff_id)
-    : undefined;
-  const creatorStoreId = creatorStaff?.linked_store_id ?? null;
-  if (!canWriteManualNotification(auth.user, existing, creatorStoreId)) {
-    return errorResponse(403, 'この通知を編集する権限がありません');
+  if (!canWriteManualNotification(auth.user, existing)) {
+    return manualNotificationErrorResponse(403, 'この通知を編集する権限がありません');
   }
   if (!['draft', 'returned', 'pending_approval'].includes(existing.status)) {
-    return errorResponse(400, 'このステータスの通知は編集できません');
+    return manualNotificationErrorResponse(400, 'このステータスの通知は編集できません');
   }
   const parsed = ManualNotificationUpsertBodySchema.safeParse(
     await request.json().catch(() => null),
   );
   if (parsed.success && existing.status === 'pending_approval' && parsed.data.intent === 'save') {
-    return errorResponse(400, '承認待ちの通知は下書き保存できません');
+    return manualNotificationErrorResponse(400, '承認待ちの通知は下書き保存できません');
   }
   if (parsed.success && existing.status === 'pending_approval' && parsed.data.intent === 'submit') {
     const newRequiresApproval = manualNotificationRequiresApproval(parsed.data.target);
     if (!newRequiresApproval) {
-      return errorResponse(400, '承認待ちの通知の配信対象（承認不要な対象へ）は変更できません');
+      return manualNotificationErrorResponse(
+        400,
+        '承認待ちの通知の配信対象（承認不要な対象へ）は変更できません',
+      );
     }
   }
   if (!parsed.success) {
-    return errorResponse(400, '通知内容が不正です');
+    return manualNotificationErrorResponse(400, '通知内容が不正です');
   }
   const body = parsed.data;
   const allowedStoreIds = getAllowedStoreIds(auth.user);
   const targetValidationError = validateManualNotificationTarget(body.target, allowedStoreIds);
   if (targetValidationError === 'not_found') {
-    return errorResponse(400, '配信対象が存在しません');
+    return manualNotificationErrorResponse(400, '配信対象が存在しません');
   }
   if (targetValidationError === 'out_of_scope') {
-    return errorResponse(403, '所属店舗以外の会員には配信できません');
+    return manualNotificationErrorResponse(403, '所属店舗以外の会員には配信できません');
   }
   const timingError =
     body.intent === 'submit' ? validateManualNotificationTiming(body.timing) : undefined;
   if (timingError) {
-    return errorResponse(400, timingError);
+    return manualNotificationErrorResponse(400, timingError);
   }
   const targetCount = db.manualNotifications.estimateTargetCount(body.target);
   if (body.intent === 'submit' && targetCount === 0) {
-    return errorResponse(400, '配信対象の会員が存在しません');
+    return manualNotificationErrorResponse(400, '配信対象の会員が存在しません');
   }
 
   const next = buildManualNotificationRow({
@@ -202,7 +155,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   });
   const updated = db.manualNotifications.update(id, next);
   if (!updated) {
-    return errorResponse(404, '通知が見つかりません');
+    return manualNotificationErrorResponse(404, '通知が見つかりません', 'E-NOTIFICATION-404');
   }
   return NextResponse.json(
     ManualNotificationUpsertResponseSchema.parse({

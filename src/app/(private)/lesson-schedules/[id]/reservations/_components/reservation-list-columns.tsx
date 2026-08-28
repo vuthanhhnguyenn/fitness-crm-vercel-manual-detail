@@ -72,6 +72,7 @@ interface ReservationListColumnsOptions {
   canManageAttendance: boolean;
   /** FR-008 — whether the current role may cancel a reservation */
   canManageReservation: boolean;
+  isCancelled: boolean;
 }
 
 function AttendanceLabel({ status }: { status: Reservation['attendance_status'] }) {
@@ -99,6 +100,7 @@ export function getReservationListColumns({
   onCancelReservation,
   canManageAttendance,
   canManageReservation,
+  isCancelled,
 }: ReservationListColumnsOptions): ColumnDef<Reservation>[] {
   return [
     {
@@ -130,9 +132,9 @@ export function getReservationListColumns({
       cell: ({ row }) => {
         const reservation = row.original;
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-40 items-center gap-2">
             <MemberLimitedProfilePopover reservation={reservation}>
-              <button className="cursor-pointer text-left text-sm font-medium hover:underline">
+              <button className="max-w-28 cursor-pointer truncate text-left text-sm font-medium hover:underline">
                 {reservation.member_name}
               </button>
             </MemberLimitedProfilePopover>
@@ -233,7 +235,7 @@ export function getReservationListColumns({
       header: () => <span className="text-xs font-semibold">出席</span>,
       cell: ({ row }) => {
         const r = row.original;
-        if (!canManageAttendance) {
+        if (!canManageAttendance || isCancelled) {
           return (
             <span className="inline-flex h-6 items-center px-2">
               <AttendanceLabel status={r.attendance_status} />
@@ -269,6 +271,7 @@ export function getReservationListColumns({
             variant="ghost"
             size="sm"
             className="text-destructive h-7 text-xs"
+            disabled={isCancelled}
             onClick={(e) => {
               e.stopPropagation();
               onCancelReservation(row.original);

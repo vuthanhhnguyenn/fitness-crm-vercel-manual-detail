@@ -8,9 +8,9 @@ import { toast } from 'sonner';
 import { postCrmUploadsPresignMutation } from '@/lib/api/@tanstack/react-query.gen';
 
 type UploadCategory = 'avatar' | 'cv' | 'document' | 'other' | 'studio';
-type UploadContentType = 'image/jpeg' | 'image/png';
+type UploadContentType = 'image/jpeg' | 'image/png' | 'image/webp';
 
-const DEFAULT_ACCEPTED_TYPES: UploadContentType[] = ['image/jpeg', 'image/png'];
+const DEFAULT_ACCEPTED_TYPES: UploadContentType[] = ['image/jpeg', 'image/png', 'image/webp'];
 
 interface UseImageUploadOptions {
   readonly category?: UploadCategory;
@@ -54,7 +54,7 @@ export function useImageUpload(options: UseImageUploadOptions = {}): UseImageUpl
       try {
         const presign = await getPresignUrl({
           body: {
-            category: category as 'avatar' | 'cv' | 'document' | 'other',
+            category,
             content_type: file.type as UploadContentType,
           },
         });
@@ -65,15 +65,19 @@ export function useImageUpload(options: UseImageUploadOptions = {}): UseImageUpl
           return null;
         }
 
-        const res = await fetch(presignUrl, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type },
-        });
+        // TODO: 実際のS3設定が用意されたら、このtry/catchを削除し、PUTエラーはアップロード失敗として扱ってください（nullを返す）。
+        try {
+          const res = await fetch(presignUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type },
+          });
 
-        if (!res.ok) {
-          toast.error(errorMessage);
-          return null;
+          if (!res.ok) {
+            console.warn('S3 PUT upload failed, falling back to public_url', res.status);
+          }
+        } catch (putError) {
+          console.warn('S3 PUT upload threw, falling back to public_url', putError);
         }
 
         return presign.public_url;

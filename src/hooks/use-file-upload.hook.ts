@@ -22,16 +22,23 @@ export type FileUploadOutcome =
 interface UseFileUploadOptions {
   readonly category?: UploadCategory;
   readonly maxSizeMB?: number;
+  /** Nếu bỏ trống thì mọi content type đều được chấp nhận. */
   readonly acceptedTypes?: readonly UploadContentType[];
 }
 
 interface UseFileUploadResult {
+  /** Upload một file lên S3 qua presigned URL, trả về outcome (ok kèm url, hoặc lỗi kèm reason). */
   readonly uploadFile: (file: File) => Promise<FileUploadOutcome>;
   readonly isUploading: boolean;
 }
 
+/**
+ * Common presign+PUT upload flow dùng chung cho mọi loại file (ảnh, PDF, ...).
+ * Không tự toast lỗi — caller tự quyết định hiển thị lỗi (toast, inline message, ...).
+ */
 export function useFileUpload(options: UseFileUploadOptions = {}): UseFileUploadResult {
   const { category = 'other', maxSizeMB = 5, acceptedTypes } = options;
+
   const { mutateAsync: getPresignUrl } = useMutation(postCrmUploadsPresignMutation());
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -50,16 +57,19 @@ export function useFileUpload(options: UseFileUploadOptions = {}): UseFileUpload
         const presign = await getPresignUrl({
           body: { category, content_type: file.type as UploadContentType },
         });
-        if (!presign?.presign_url) {
+
+        const presignUrl = presign?.presign_url;
+        if (!presignUrl) {
           return { ok: false, reason: 'upload_failed' };
         }
 
-        const response = await fetch(presign.presign_url, {
+        const res = await fetch(presignUrl, {
           method: 'PUT',
           body: file,
           headers: { 'Content-Type': file.type },
         });
-        if (!response.ok) {
+
+        if (!res.ok) {
           return { ok: false, reason: 'upload_failed' };
         }
 

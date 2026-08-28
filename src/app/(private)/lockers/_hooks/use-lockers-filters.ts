@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-
-import { PAGE_SIZE } from '@/constants/app.constants';
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import {
   type GetCrmLockersData,
@@ -10,12 +9,15 @@ import {
   type PostCrmLockersExportData,
 } from '@/lib/api/types.gen';
 
+import { LOCKER_LIST_DEFAULT_PAGE_SIZE } from '../_constants/constants';
+
 type LockerSortBy = NonNullable<GetCrmLockersData['query']>['sort_by'];
 
 export function useLockersFilters() {
   const [filters, setFilters] = useQueryStates(
     {
       lockers_page: parseAsInteger.withDefault(1),
+      lockers_limit: parseAsInteger.withDefault(LOCKER_LIST_DEFAULT_PAGE_SIZE),
       lockers_search: parseAsString.withDefault(''),
       lockers_shape: parseAsStringEnum<LockerShapeValue>(Object.values(LockerShape)),
       lockers_sort_by: parseAsString.withDefault('locker_id'),
@@ -27,22 +29,15 @@ export function useLockersFilters() {
     },
   );
 
-  const [searchInput, setSearchInput] = useState(() => filters.lockers_search);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput !== filters.lockers_search) {
-        setFilters({ lockers_search: searchInput || null, lockers_page: 1 });
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [filters.lockers_search, searchInput, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(filters.lockers_search, (value) =>
+    setFilters({ lockers_search: value || null, lockers_page: 1 }),
+  );
 
   const clearFilters = () => {
     setSearchInput('');
     setFilters({
       lockers_page: 1,
+      lockers_limit: LOCKER_LIST_DEFAULT_PAGE_SIZE,
       lockers_search: null,
       lockers_shape: null,
       lockers_sort_by: 'locker_id',
@@ -52,7 +47,7 @@ export function useLockersFilters() {
 
   const queryParams: NonNullable<GetCrmLockersData['query']> = {
     page: filters.lockers_page,
-    limit: PAGE_SIZE,
+    limit: filters.lockers_limit,
     search: filters.lockers_search || undefined,
     shape: filters.lockers_shape || undefined,
     sort_by: filters.lockers_sort_by as LockerSortBy,
@@ -76,7 +71,8 @@ export function useLockersFilters() {
     clearFilters,
     currentPage: filters.lockers_page,
     setCurrentPage: (page: number) => setFilters({ lockers_page: page }),
-    pageSize: PAGE_SIZE,
+    pageSize: filters.lockers_limit,
+    setPageSize: (limit: number) => setFilters({ lockers_limit: limit, lockers_page: 1 }),
     hasActiveFilters: filters.lockers_shape !== null || filters.lockers_search.length > 0,
     activeFilterCount: [filters.lockers_shape !== null].filter(Boolean).length,
   };

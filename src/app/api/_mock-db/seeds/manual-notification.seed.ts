@@ -1,7 +1,4 @@
-import type {
-  ManualNotificationChannel,
-  ManualNotificationTargetInput,
-} from '@/app/api/_schemas/manual-notification.schema';
+import type { ManualNotificationChannel } from '@/app/api/_schemas/manual-notification.schema';
 
 import type { ManualNotificationRow } from '../types/manual-notifications.type';
 
@@ -13,6 +10,16 @@ const STAFF_IDS = {
 
 const CHANNEL_ORDER = { sms: 0, push: 1, email: 2, in_app: 3 } as const;
 
+/**
+ * Static form-config payload: notification templates only.
+ *
+ * The targetPreviewCounts are computed live by
+ * `getManualNotificationFormPreviewCounts` in
+ * `src/app/api/crm/notifications/_lib/manual-notification-target-count.util.ts`
+ * (a count of active members per store / brand / contract type, derived from
+ * the shared mock-DB member roster) so that previews reflect the real roster
+ * instead of static guesses (FR-008「本実装では選択条件に連動した動的計算」).
+ */
 export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
   templates: [
     {
@@ -36,56 +43,7 @@ export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
       body: '{会員名}様、{店舗名}にてメンテナンスを実施します。期間中はご不便をおかけします。',
     },
   ],
-  targetPreviewCounts: {
-    allMembers: 42_580,
-    brands: {
-      joyfit_all: 7_831,
-      joyfit: 3_789,
-      joyfit24: 2_947,
-      joyfit_yoga: 674,
-      joyfit_plus: 421,
-      fit365: 3_368,
-    },
-    stores: 1_240,
-    contractType: {
-      regular: 5_640,
-      premium: 1_692,
-      visitor: 564,
-      corporate: 846,
-    },
-    membershipDuration: 3_180,
-    dynamicAttributes: {
-      unpaid: 128,
-      dormant: 1_840,
-      withdrawal_pending: 32,
-      birthday_month: 3_420,
-      trial: 260,
-    },
-  },
 } as const;
-
-export function getManualNotificationTargetPreviewCount(
-  target: ManualNotificationTargetInput,
-): number {
-  const { targetPreviewCounts } = MANUAL_NOTIFICATION_FORM_CONFIG_SEED;
-
-  switch (target.type) {
-    case 'all_members':
-      return targetPreviewCounts.allMembers;
-    case 'brands':
-      return target.brands.reduce((sum, b) => sum + (targetPreviewCounts.brands[b] ?? 0), 0);
-    case 'stores':
-      return targetPreviewCounts.stores * new Set(target.storeIds).size;
-    case 'contract_type':
-      return targetPreviewCounts.contractType[target.contractType] ?? 0;
-    case 'membership_duration':
-      return targetPreviewCounts.membershipDuration;
-    case 'dynamic_attribute':
-      return targetPreviewCounts.dynamicAttributes[target.attribute];
-    case 'members':
-      return new Set(target.memberIds).size;
-  }
-}
 
 type SeedInput = Omit<ManualNotificationRow, 'targetStoreIds' | 'contents'> & {
   targetStoreIds?: string[];
@@ -173,10 +131,8 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     timing: { type: 'scheduled', scheduledAt: '2026-09-20T08:00:00+09:00' },
     targetCount: 2947,
     status: 'scheduled',
-    requiresApproval: true,
+    requiresApproval: false,
     createdByUserId: STAFF_IDS.manager,
-    approvedBy: 'Headquarter',
-    approvedAt: '2026-05-10T11:10:00+09:00',
     createdAt: '2026-05-10T11:00:00+09:00',
     updatedAt: '2026-08-01T09:00:00+09:00',
     deletedAt: null,
@@ -221,11 +177,9 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
       maxOccurrences: 12,
     },
     targetCount: 3180,
-    status: 'sending',
-    requiresApproval: true,
+    status: 'scheduled',
+    requiresApproval: false,
     createdByUserId: STAFF_IDS.staff,
-    approvedBy: 'Headquarter',
-    approvedAt: '2026-05-01T08:30:00+09:00',
     createdAt: '2026-05-01T09:00:00+09:00',
     updatedAt: '2026-07-30T09:00:00+09:00',
     deletedAt: null,
@@ -235,13 +189,15 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     title: '会員様限定イベントご案内',
     target: {
       type: 'contract_type',
-      contractType: 'premium',
+      contractType: 'regular',
     },
     channels: ['email', 'in_app'],
     timing: { type: 'scheduled', scheduledAt: '2026-09-15T12:00:00+09:00' },
-    targetCount: 1692,
+    // Placeholder; the real live count of `contract_type: regular` members is computed
+    // at seed time in `manual-notification.table.ts:_seed()`.
+    targetCount: 0,
     status: 'draft',
-    requiresApproval: true,
+    requiresApproval: false,
     createdByUserId: STAFF_IDS.manager,
     createdAt: '2026-06-01T10:00:00+09:00',
     updatedAt: '2026-07-29T09:00:00+09:00',
@@ -284,10 +240,8 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     timing: { type: 'immediate' },
     targetCount: 128,
     status: 'sent',
-    requiresApproval: true,
+    requiresApproval: false,
     createdByUserId: STAFF_IDS.headquarter,
-    approvedBy: 'Headquarter',
-    approvedAt: '2026-07-15T10:00:00+09:00',
     deliveryResult: {
       deliveredCount: 120,
       reachedCount: 118,

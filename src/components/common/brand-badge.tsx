@@ -27,9 +27,10 @@ export function BrandBadge({ brand, className = '' }: BrandBadgeProps) {
   const badgeClass = token
     ? `bg-${token}/15 text-${token} border-${token}/20`
     : 'bg-muted text-muted-foreground border-border';
+  const label = BRAND_LABELS[brand] || 'JOYFIT全体';
   return (
     <Badge variant="outline" className={`text-[10px] ${badgeClass} ${className}`}>
-      {BRAND_LABELS[brand]}
+      {label}
     </Badge>
   );
 }

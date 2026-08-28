@@ -68,6 +68,7 @@ export function LessonStatusCard({ detail }: LessonStatusCardProps) {
       />
 
       <LessonDeactivateDialog
+        lessonId={detail.id}
         lessonName={detail.name}
         isReactivation={!isActive}
         open={dialogOpen}

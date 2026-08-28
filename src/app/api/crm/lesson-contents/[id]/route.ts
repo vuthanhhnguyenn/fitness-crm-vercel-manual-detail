@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { db } from '@/app/api/_mock-db';
 import {
+  DeleteLessonContentRequestSchema,
+  DeleteLessonContentResponseSchema,
   type GetLessonContentDetailResponse,
   GetLessonContentDetailResponseSchema,
 } from '@/app/api/_schemas/lesson-content-detail.schema';
@@ -33,6 +35,42 @@ registerRoute({
       status: 200,
       schema: GetLessonContentDetailResponseSchema,
       description: 'Lesson content detail',
+    },
+    { status: 404, schema: ErrorResponseSchema, description: 'Lesson content not found' },
+    { status: 500, schema: ErrorResponseSchema, description: 'Internal server error' },
+  ],
+});
+
+registerRoute({
+  method: 'delete',
+  path: '/crm/lesson-contents/{id}',
+  summary: 'Delete lesson content master',
+  description:
+    'Delete a lesson content master (studio / body care / personal) when it has no linked schedules',
+  tags: ['LessonContents'],
+  parameters: [
+    {
+      name: 'id',
+      in: 'path',
+      required: true,
+      schema: { type: 'string' },
+      description: 'Master ID (LSN-* / BDC-* / PLN-*)',
+    },
+  ],
+  requestBody: {
+    schema: DeleteLessonContentRequestSchema,
+    description: '削除理由',
+  },
+  responses: [
+    {
+      status: 200,
+      schema: DeleteLessonContentResponseSchema,
+      description: 'Lesson content deleted',
+    },
+    {
+      status: 400,
+      schema: ErrorResponseSchema,
+      description: 'Deletion blocked or validation error',
     },
     { status: 404, schema: ErrorResponseSchema, description: 'Lesson content not found' },
     { status: 500, schema: ErrorResponseSchema, description: 'Internal server error' },
@@ -84,6 +122,44 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     console.error('Error fetching lesson content detail:', error);
     return NextResponse.json({ error: 'Failed to fetch lesson content detail' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params;
+
+    const detail = db.lessonContentDetails.getDetail(id);
+    if (!detail) {
+      return NextResponse.json({ error: 'Lesson content not found' }, { status: 404 });
+    }
+
+    const body = await request.json();
+    const validationResult = DeleteLessonContentRequestSchema.safeParse(body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.issues.map((issue) => issue.message).join(', ');
+      return NextResponse.json({ error: errors }, { status: 400 });
+    }
+
+    if (detail.usage_count > 0) {
+      return NextResponse.json(
+        { error: `スケジュールで使用中（${detail.usage_count}件）のため削除できません` },
+        { status: 400 },
+      );
+    }
+
+    const deleted = db.lessonContentDetails.delete(id, validationResult.data.reason);
+    if (!deleted) {
+      return NextResponse.json({ error: 'Lesson content not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: 'レッスンを削除しました' });
+  } catch (error) {
+    console.error('Error deleting lesson content:', error);
+    return NextResponse.json({ error: 'Failed to delete lesson content' }, { status: 500 });
   }
 }
 

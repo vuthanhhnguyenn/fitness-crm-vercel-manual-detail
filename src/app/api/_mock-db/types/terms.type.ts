@@ -1,56 +1,26 @@
 import type {
-  ActiveTermsItem,
-  BrandLabel,
   CreateTermsBody,
-  CreateTermsVersionBody,
-  GetActiveTermsQuery,
-  InternalTermsType,
-  RecordTermsConsentBody,
-  TermsConsentRecord,
-  TermsDetail,
-  TermsListQuery,
-  TermsListResponse,
+  GetTermsQuery,
+  Terms,
   UpdateTermsBody,
 } from '@/app/api/_schemas/terms.schema';
 
-export type TermsRow = {
-  id: string;
-  parentTermsId: string | null;
-  prevTermsId: string | null;
-  termsType: InternalTermsType;
-  brandEnum: BrandLabel;
-  title: string;
-  version: string;
-  effectiveFrom: string;
-  effectiveTo: string | null;
-  displayOrder: string | null;
-  requiresConsent: boolean;
-  remarks: string | null;
-  bodyText: string;
-  pdfS3Key: string;
-  pdfUrl: string | null;
-  pdfFileName: string | null;
-  createdAt: string;
-  createdBy: string | null;
-  updatedAt: string;
-  updatedBy: string;
-  deletedAt: string | null;
-};
+export type TermsRow = Terms;
 
-export type TermsConsentRow = TermsConsentRecord;
+export type TermsCreateResult = TermsRow | 'invalid_lineage_ref';
+export type TermsUpdateResult = TermsRow | 'not_found';
+export type TermsDeleteResult = 'not_found' | true;
 
 export type TermsType = {
   _rows: TermsRow[];
-  _consents: TermsConsentRow[];
   _seeded: boolean;
   _seed(): void;
-  list(query: TermsListQuery): TermsListResponse;
-  getById(id: string): TermsRow | undefined;
-  getDetail(id: string): TermsDetail | undefined;
-  createOriginal(input: CreateTermsBody): TermsRow;
-  createVersion(id: string, input: CreateTermsVersionBody): TermsRow | undefined;
-  update(id: string, input: UpdateTermsBody): TermsRow | undefined;
-  logicalDelete(id: string): TermsRow | undefined;
-  recordConsents(input: RecordTermsConsentBody): number;
-  getActive(query: GetActiveTermsQuery): ActiveTermsItem[];
+  list(
+    query: GetTermsQuery,
+    brandScope: TermsRow['brand_enum'] | null,
+  ): { rows: TermsRow[]; total: number; totalAllItems: number };
+  getById(id: string, brandScope: TermsRow['brand_enum'] | null): TermsRow | undefined | null;
+  create(data: CreateTermsBody, createdBy: string): TermsCreateResult;
+  update(id: string, patch: UpdateTermsBody, updatedBy: string): TermsUpdateResult;
+  delete(id: string): TermsDeleteResult;
 };

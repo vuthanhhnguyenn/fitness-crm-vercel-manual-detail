@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { db } from '@/app/api/_mock-db';
+import { db, joinJapaneseName } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
   GetFamilyRegistrationsDashboardQuerySchema,
@@ -75,11 +75,9 @@ export async function GET(request: NextRequest) {
   ).length;
 
   // ── サマリカード: family_member_ratio ────────────────────────
-  const activeMembers = db.members._members.filter((m) => m.profile.status === 'active');
+  const activeMembers = db.members._members.filter((m) => m.memberStatus === 'active');
   const totalActiveMembers = activeMembers.length;
-  const familyActiveMembers = activeMembers.filter(
-    (m) => m.profile.member_type === 'family',
-  ).length;
+  const familyActiveMembers = activeMembers.filter((m) => m.memberType === 'family').length;
   const family_member_ratio =
     totalActiveMembers > 0
       ? Math.round((familyActiveMembers / totalActiveMembers) * 1000) / 1000
@@ -125,7 +123,7 @@ export async function GET(request: NextRequest) {
   for (const [primaryId, rels] of db.family._relationships) {
     if (rels.length === 0) continue;
     const primary = db.members.get(primaryId);
-    const mt = primary?.profile.member_type ?? 'regular';
+    const mt = primary?.memberType ?? 'regular';
     memberTypeCounts[mt] = (memberTypeCounts[mt] ?? 0) + rels.length;
   }
   const totalTyped = Object.values(memberTypeCounts).reduce((s, v) => s + v, 0);
@@ -175,7 +173,9 @@ export async function GET(request: NextRequest) {
       const member = db.members.get(id);
       return {
         primary_member_id: id,
-        primary_member_name: member?.basic_info.name_kanji ?? `会員 ${id}`,
+        primary_member_name: member
+          ? joinJapaneseName(member.personalInfo.lastName, member.personalInfo.firstName)
+          : `会員 ${id}`,
         family_count: count,
       };
     });

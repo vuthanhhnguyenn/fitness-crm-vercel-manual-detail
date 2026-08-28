@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { toCampaignsResponse } from '@/app/api/_lib/member-contract';
 import { db } from '@/app/api/_mock-db';
 import { ErrorResponseSchema, GetCampaignsResponseSchema } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const contracts = db.contracts.getByMemberId(id);
     const campaigns = contracts?.campaigns ?? { active: [], history: [] };
 
-    return NextResponse.json(campaigns);
+    return NextResponse.json(toCampaignsResponse(campaigns));
   } catch {
     return NextResponse.json({ error: 'Failed to fetch campaigns' }, { status: 500 });
   }

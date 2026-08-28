@@ -1,7 +1,10 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 
+import { useRouter } from 'next/navigation';
+
+import { useAuthUser } from '@/contexts/auth-user.context';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -21,6 +24,8 @@ import {
 } from '@/lib/api/@tanstack/react-query.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
+import { UserRole } from '@/types/permission.type';
+
 import { ReservationPageActions } from './_components/reservation-page-actions';
 import { ReservationPageLayout } from './_components/reservation-page-layout';
 import {
@@ -29,6 +34,7 @@ import {
   ReservationStatsSkeleton,
   SpaceGridSkeleton,
 } from './_components/reservation-page-skeletons';
+import { isOwnSessionScope } from './_utils/session-scope.util';
 
 function formatScheduleDate(iso: string): string {
   try {
@@ -49,11 +55,25 @@ function formatScheduleTimeRange(start: string, end: string): string {
 export default function LessonReservationsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: scheduleId } = use(params);
   const [page] = useQueryState('page', parseAsInteger.withDefault(1));
+  const router = useRouter();
+  const { user } = useAuthUser();
 
   const scheduleQuery = useQuery({
     ...getCrmLessonSchedulesOptions(),
     select: (data) => data.schedules.find((s) => s.id === scheduleId),
   });
+
+  // FR-006/007/008/009/011 D-01 permission matrix — Trainer is scoped to their own
+  // sessions; direct-URL access to a non-owned session must not show the page content.
+  const isBlockedForTrainer =
+    !!user &&
+    user.role === UserRole.Trainer &&
+    !!scheduleQuery.data &&
+    !isOwnSessionScope(user, scheduleQuery.data);
+
+  useEffect(() => {
+    if (isBlockedForTrainer) router.replace(navigate('/403'));
+  }, [isBlockedForTrainer, router]);
 
   const reservationsQuery = useQuery({
     ...getCrmLessonSchedulesByScheduleIdReservationsOptions({
@@ -103,6 +123,8 @@ export default function LessonReservationsPage({ params }: { params: Promise<{ i
   const isAllReady =
     schedule && reservationsQuery.data && statsQuery.data && spacesQuery.data && memosQuery.data;
 
+  if (isBlockedForTrainer) return null;
+
   return (
     <>
       <PageHeader
@@ -114,6 +136,7 @@ export default function LessonReservationsPage({ params }: { params: Promise<{ i
                 `${formatScheduleDate(schedule.start_time)} ${formatScheduleTimeRange(schedule.start_time, schedule.end_time)}`,
                 schedule.studio_name,
                 schedule.instructor_name ? `担当: ${schedule.instructor_name}` : null,
+                isCancelled ? '(中止済み)' : null,
               ]
                 .filter(Boolean)
                 .join(' | ')

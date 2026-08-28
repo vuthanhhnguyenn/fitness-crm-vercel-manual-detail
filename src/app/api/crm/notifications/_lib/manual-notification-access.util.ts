@@ -23,6 +23,8 @@ export function canReadManualNotification(
     return false;
   }
 
+  if (user.role === 'Observer' || user.role === 'Manager') return true;
+
   const allowedStoreIds = getAllowedStoreIds(user);
   if (allowedStoreIds === null) return true;
   if (allowedStoreIds.length === 0) return false;
@@ -36,17 +38,12 @@ export function canReadManualNotification(
 export function canWriteManualNotification(
   user: AuthenticatedUser,
   notification: ManualNotificationReadScope,
-  creatorStoreId?: string | null,
 ): boolean {
   if (!canReadManualNotification(user, notification)) return false;
   if (user.role === 'Headquarter' || user.role === 'System') return true;
   if (user.id === notification.createdByUserId) return true;
 
-  if (user.role === 'Manager') {
-    const managerStoreIds = getAllowedStoreIds(user);
-    if (!managerStoreIds || !creatorStoreId) return false;
-    return managerStoreIds.includes(creatorStoreId);
-  }
+  if (user.role === 'Manager') return true; // I-03: Manager scope is all stores/brands
 
   return false;
 }

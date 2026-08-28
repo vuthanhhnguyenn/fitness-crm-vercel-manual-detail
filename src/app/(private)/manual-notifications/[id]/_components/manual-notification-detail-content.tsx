@@ -359,7 +359,7 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                     {(
                       [
                         ['配信数', item.deliveryResult.deliveredCount, '件'],
-                        ['到達数', item.deliveryResult.reachedCount, '件'],
+                        ['到達数', item.deliveryResult.reachedCount ?? '—', '件'],
                         [
                           '到達率',
                           item.deliveryResult.reachedCount != null &&
@@ -369,10 +369,10 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                                   item.deliveryResult.deliveredCount) *
                                 100
                               ).toFixed(1)
-                            : undefined,
+                            : '—',
                           '%',
                         ],
-                        ['開封数', item.deliveryResult.openedCount, '件'],
+                        ['開封数', item.deliveryResult.openedCount ?? '—', '件'],
                         [
                           '開封率',
                           item.deliveryResult.openedCount != null &&
@@ -382,24 +382,21 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
                                   item.deliveryResult.deliveredCount) *
                                 100
                               ).toFixed(1)
-                            : undefined,
+                            : '—',
                           '%',
                         ],
                       ] as const
-                    ).map(
-                      ([label, value, unit]) =>
-                        value !== undefined && (
-                          <div key={label}>
-                            <p className="text-muted-foreground text-[10px]">{label}</p>
-                            <p className="text-xl font-semibold tabular-nums">
-                              {typeof value === 'number' ? value.toLocaleString('ja-JP') : value}
-                              <span className="text-muted-foreground ml-1 text-sm font-normal">
-                                {unit}
-                              </span>
-                            </p>
-                          </div>
-                        ),
-                    )}
+                    ).map(([label, value, unit]) => (
+                      <div key={label}>
+                        <p className="text-muted-foreground text-[10px]">{label}</p>
+                        <p className="text-xl font-semibold tabular-nums">
+                          {typeof value === 'number' ? value.toLocaleString('ja-JP') : value}
+                          <span className="text-muted-foreground ml-1 text-sm font-normal">
+                            {unit}
+                          </span>
+                        </p>
+                      </div>
+                    ))}
                   </div>
                   {item.deliveryResult.channelResults?.map((result) => {
                     const Icon = CHANNEL_ICONS[result.channel];

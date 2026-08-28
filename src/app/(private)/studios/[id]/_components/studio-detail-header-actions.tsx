@@ -39,7 +39,7 @@ export function StudioDetailHeaderActions({ studioId, onDelete }: StudioDetailHe
         size="sm"
         variant="outline"
         className="gap-1"
-        denyTooltip="編集権限がありません"
+        denyTooltip="スタジオの編集権限がありません"
         onClick={handleEditClick}
       >
         <Edit2 className="size-4" />
@@ -50,7 +50,7 @@ export function StudioDetailHeaderActions({ studioId, onDelete }: StudioDetailHe
         size="sm"
         variant="destructive"
         className="gap-1"
-        denyTooltip="削除権限がありません"
+        denyTooltip="スタジオの削除権限がありません"
         onClick={handleDeleteClick}
       >
         <Trash2 className="size-4" />

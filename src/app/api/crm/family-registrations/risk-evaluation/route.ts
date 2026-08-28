@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   // very rough "blacklist" heuristic: match primary email/phone partially
   if (
     applicant.email &&
-    (applicant.email === primary.basic_info.email || applicant.email.includes('@blacklist'))
+    (applicant.email === primary.personalInfo.email || applicant.email.includes('@blacklist'))
   ) {
     reasons.push('blacklist_match_email');
   }

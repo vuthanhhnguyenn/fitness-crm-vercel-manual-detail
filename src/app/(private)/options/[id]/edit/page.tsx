@@ -53,7 +53,7 @@ function OptionEditForm({ id, defaultValues }: Readonly<OptionEditFormProps>) {
     ...patchCrmOptionsByIdMutation(),
     onSuccess: (res) => {
       toast.success(res.message || 'オプションを更新しました');
-      queryClient.invalidateQueries({ queryKey: getCrmOptionsQueryKey(), refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: getCrmOptionsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getCrmOptionsByIdQueryKey({ path: { id } }) });
       router.push(`/options/${id}`);
     },

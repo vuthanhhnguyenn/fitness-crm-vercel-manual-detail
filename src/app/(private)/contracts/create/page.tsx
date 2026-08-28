@@ -66,7 +66,6 @@ export default function ContractCreatePage() {
       toast.success('主契約を作成しました');
       queryClient.invalidateQueries({
         queryKey: getCrmMainContractsQueryKey(),
-        refetchType: 'all',
       });
       router.push(navigate('/contracts/[id]', res.main_contract.id));
     },

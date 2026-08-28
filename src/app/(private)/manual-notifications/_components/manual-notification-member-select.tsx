@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { Search, X } from 'lucide-react';
 
 import { useDebounce } from '@/hooks/use-debounce.hook';
-import { useInfiniteScroll } from '@/hooks/use-scroll-end.hook';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll.hook';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,20 +33,30 @@ import type { GetCrmMembersResponse } from '@/lib/api/types.gen';
 
 import {
   MANUAL_NOTIFICATION_BRAND_LABELS,
-  MANUAL_NOTIFICATION_BRAND_OPTIONS,
+  MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS,
+  MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS,
+  type ManualNotificationContractType,
 } from '../_constants/manual-notification.constants';
 import type { ManualNotificationFormValues } from '../_schemas/manual-notification-form.schema';
 
-const MEMBER_BRAND_OPTIONS = [
-  'joyfit',
-  'joyfit24',
-  'joyfit_yoga',
-  'joyfit_plus',
-  'fit365',
-] as const satisfies ReadonlyArray<(typeof MANUAL_NOTIFICATION_BRAND_OPTIONS)[number]>;
+/**
+ * The /crm/members list API only filters by brand GROUP (joyfit | fit365) — it has no
+ * sub-brand query param — so the dialog offers exactly those three choices.
+ */
+type MemberBrandFilter = 'joyfit' | 'fit365';
+
+const MEMBER_BRAND_FILTER_OPTIONS: ReadonlyArray<{
+  value: MemberBrandFilter;
+  label: string;
+}> = [
+  { value: 'joyfit', label: MANUAL_NOTIFICATION_BRAND_LABELS.joyfit },
+  { value: 'fit365', label: MANUAL_NOTIFICATION_BRAND_LABELS.fit365 },
+];
+
+const MEMBER_CONTRACT_TYPE_OPTIONS = MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS;
+type MemberContractType = ManualNotificationContractType;
 
 type Member = GetCrmMembersResponse['members'][number];
-type MemberBrand = (typeof MEMBER_BRAND_OPTIONS)[number];
 type SelectedMember = Extract<
   ManualNotificationFormValues['target'],
   { type: 'members' }
@@ -73,8 +83,10 @@ export function ManualNotificationMemberSelect({
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(value);
   const [search, setSearch] = useState('');
-  const [brand, setBrand] = useState<MemberBrand | 'all'>('all');
+  const [brand, setBrand] = useState<MemberBrandFilter | 'all'>('all');
+  const [contractType, setContractType] = useState<MemberContractType | 'all'>('all');
   const debouncedSearch = useDebounce(search, 300);
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
   const query = useInfiniteQuery({
     ...getCrmMembersInfiniteOptions({
       query: {
@@ -82,7 +94,8 @@ export function ManualNotificationMemberSelect({
         limit: 15,
         search: debouncedSearch || undefined,
         status: ['active'],
-        brand: brand === 'all' ? undefined : [brand],
+        brand_group: brand === 'all' ? undefined : [brand],
+        contract_type: contractType === 'all' ? undefined : [contractType],
       },
     }),
     enabled: open,
@@ -95,10 +108,14 @@ export function ManualNotificationMemberSelect({
   });
   const loadedMembers = query.data?.pages.flatMap((page) => page.members) ?? [];
   const total = query.data?.pages[0]?.pagination.total ?? loadedMembers.length;
-  const handleMemberListScroll = useInfiniteScroll({
-    hasNextPage: Boolean(query.hasNextPage),
-    isFetchingNextPage: query.isFetchingNextPage,
-    fetchNextPage: query.fetchNextPage,
+  const sentinelRef = useInfiniteScroll({
+    hasMore: Boolean(query.hasNextPage),
+    isLoading: query.isFetchingNextPage,
+    onLoadMore: () => {
+      void query.fetchNextPage();
+    },
+    rootRef: listContainerRef,
+    enabled: open,
   });
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -174,20 +191,53 @@ export function ManualNotificationMemberSelect({
                         setBrand('all');
                         return;
                       }
-                      const value = MEMBER_BRAND_OPTIONS.find((option) => option === nextValue);
+                      const value = MEMBER_BRAND_FILTER_OPTIONS.find(
+                        (option) => option.value === nextValue,
+                      )?.value;
                       if (value) setBrand(value);
                     }}
                   >
                     <SelectTrigger className="bg-background h-8 w-[120px] text-xs">
                       <SelectValue>
-                        {brand === 'all' ? '全ブランド' : MANUAL_NOTIFICATION_BRAND_LABELS[brand]}
+                        {brand === 'all'
+                          ? '全ブランド'
+                          : MANUAL_NOTIFICATION_BRAND_LABELS[brand]}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">全ブランド</SelectItem>
-                      {MEMBER_BRAND_OPTIONS.map((option) => (
+                      {MEMBER_BRAND_FILTER_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={contractType}
+                    onValueChange={(nextValue) => {
+                      if (nextValue === 'all') {
+                        setContractType('all');
+                        return;
+                      }
+                      const value = MEMBER_CONTRACT_TYPE_OPTIONS.find(
+                        (option) => option === nextValue,
+                      );
+                      if (value) setContractType(value);
+                    }}
+                  >
+                    <SelectTrigger className="bg-background h-8 w-[120px] text-xs">
+                      <SelectValue>
+                        {contractType === 'all'
+                          ? '全契約種別'
+                          : MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[contractType]}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全契約種別</SelectItem>
+                      {MEMBER_CONTRACT_TYPE_OPTIONS.map((option) => (
                         <SelectItem key={option} value={option}>
-                          {MANUAL_NOTIFICATION_BRAND_LABELS[option]}
+                          {MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[option]}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -195,8 +245,8 @@ export function ManualNotificationMemberSelect({
                 </div>
               </div>
               <div
+                ref={listContainerRef}
                 className="h-full min-h-0 space-y-1 overflow-y-auto p-2"
-                onScroll={handleMemberListScroll}
               >
                 {query.isLoading ? (
                   <p className="text-muted-foreground p-4 text-center text-xs">
@@ -230,6 +280,11 @@ export function ManualNotificationMemberSelect({
                     </span>
                   </label>
                 ))}
+                {(query.hasNextPage || query.isFetchingNextPage) && (
+                  <div ref={sentinelRef} className="py-2 text-center text-xs text-muted-foreground">
+                    {query.isFetchingNextPage ? '読み込み中...' : null}
+                  </div>
+                )}
               </div>
               <p className="text-muted-foreground border-t px-3 py-2 text-xs">
                 全{total}件中{loadedMembers.length}件表示

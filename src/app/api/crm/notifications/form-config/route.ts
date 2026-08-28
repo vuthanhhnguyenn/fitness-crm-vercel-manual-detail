@@ -11,6 +11,9 @@ import { hasPermissions } from '@/utils/permission.util';
 
 import { Permission, type UserRole } from '@/types/permission.type';
 
+import { manualNotificationErrorResponse } from '../_lib/manual-notification-error.util';
+import { getManualNotificationFormPreviewCounts } from '../_lib/manual-notification-target-count.util';
+
 registerRoute({
   method: 'get',
   path: '/crm/notifications/form-config',
@@ -28,38 +31,30 @@ registerRoute({
   ],
 });
 
-function errorResponse(status: 401 | 403, message: string) {
-  return NextResponse.json(
-    {
-      code: status === 401 ? 'E-AUTH-001' : 'E-AUTH-006',
-      message,
-      userMessage: 'この操作を実行する権限がありません',
-      traceId: crypto.randomUUID(),
-    },
-    { status },
-  );
+function errorResponse(status: 401 | 403, userMessage: string) {
+  return manualNotificationErrorResponse(status, userMessage);
 }
 
 export async function GET(request: NextRequest) {
   const auth = getAuthUserFromRequest(request);
-  if (!auth.ok) return errorResponse(auth.status, auth.error);
+  if (!auth.ok) return errorResponse(auth.status, 'この操作を実行する権限がありません');
 
   const canCreate = hasPermissions(auth.user.role as UserRole, [
     Permission.ManualNotificationsCreate,
   ]);
   const canEdit = hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsEdit]);
   if (!canCreate && !canEdit) {
-    return errorResponse(403, 'Manual notification form access capability is required');
+    return errorResponse(403, 'この操作を実行する権限がありません');
   }
   const allowedStoreIds = getAllowedStoreIds(auth.user);
   if (allowedStoreIds !== null && allowedStoreIds.length === 0) {
-    return errorResponse(403, 'A store scope is required to access the notification form');
+    return errorResponse(403, 'この操作を実行する権限がありません');
   }
 
   return NextResponse.json(
     GetManualNotificationFormConfigResponseSchema.parse({
       templates: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.templates,
-      targetPreviewCounts: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.targetPreviewCounts,
+      targetPreviewCounts: getManualNotificationFormPreviewCounts(),
     }),
   );
 }

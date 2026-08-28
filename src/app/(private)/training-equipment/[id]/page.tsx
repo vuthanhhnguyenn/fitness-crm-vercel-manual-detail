@@ -4,35 +4,36 @@ import { Suspense, use, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
-import { useAuthUser } from '@/contexts/auth-user.context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2 } from 'lucide-react';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 
 import { BackLink } from '@/components/common/back-link';
+import { DataStateBoundary } from '@/components/common/data-state-boundary';
 import { Loading } from '@/components/common/data-state-boundary/loading';
 import { PageHeader } from '@/components/common/page-header';
 import { RoleGatedButton } from '@/components/common/role-gated-button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import { getApiErrorStatus } from '@/lib/api-error.util';
 import {
   deleteCrmTrainingEquipmentByEquipmentIdMutation,
-  getCrmTrainingEquipmentByEquipmentIdHistoryQueryKey,
   getCrmTrainingEquipmentByEquipmentIdOptions,
   getCrmTrainingEquipmentByEquipmentIdQueryKey,
+  getCrmTrainingEquipmentByEquipmentIdStatusHistoryQueryKey,
   getCrmTrainingEquipmentQueryKey,
-  patchCrmTrainingEquipmentByEquipmentIdStatusMutation,
+  patchCrmTrainingEquipmentByEquipmentIdInstallationStatusMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
-import { Permission, UserRole } from '@/types/permission.type';
+import { Permission } from '@/types/permission.type';
 
 import {
-  getTrainingEquipmentStatusBadgeClass,
-  getTrainingEquipmentStatusDotClass,
-  getTrainingEquipmentStatusLabel,
+  getInstallationStatusBadgeClass,
+  getInstallationStatusDotClass,
+  getInstallationStatusLabel,
 } from '../_utils/training-equipment-display.util';
 import { TrainingEquipmentBasicInfoTab } from './_components/training-equipment-basic-info-tab';
 import { TrainingEquipmentDeleteDialog } from './_components/training-equipment-delete-dialog';
@@ -58,40 +59,49 @@ function TrainingEquipmentDetailPageContent({ params }: TrainingEquipmentDetailP
   const { id } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { hasPermission, hasRole } = useAuthUser();
-  const canManageExerciseLinks = hasPermission(Permission.TrainingEquipmentExerciseLinks);
-  const canViewHistory = hasRole([UserRole.System, UserRole.Headquarter]);
-  const [rawTab, setActiveTab] = useQueryState(
+  const [activeTab, setActiveTab] = useQueryState(
     'tab',
     parseAsStringEnum([...DETAIL_TABS]).withDefault('basic'),
   );
-  const activeTab =
-    (rawTab === 'exercises' && !canManageExerciseLinks) || (rawTab === 'history' && !canViewHistory)
-      ? 'basic'
-      : rawTab;
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const { data: detailRes, isLoading } = useQuery({
+  const {
+    data: equipment,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     ...getCrmTrainingEquipmentByEquipmentIdOptions({ path: { equipmentId: id } }),
   });
 
+  // The failure itself is reported by the global error handler. What this screen still owes the
+  // user is recovery: a `404` means the record was deleted elsewhere and is no longer there to act
+  // on, so the dialogs are closed, the list is refreshed and the user is taken back to it.
+  const handleMutationError = (error: unknown) => {
+    if (getApiErrorStatus(error) !== 404) return;
+    setStatusDialogOpen(false);
+    setDeleteDialogOpen(false);
+    queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
+    router.push(navigate('/training-equipment'));
+  };
+
   const statusMutation = useMutation({
-    ...patchCrmTrainingEquipmentByEquipmentIdStatusMutation(),
+    ...patchCrmTrainingEquipmentByEquipmentIdInstallationStatusMutation(),
     onSuccess: () => {
-      toast.success('ステータスを変更しました');
+      toast.success('設置状態を変更しました');
       setStatusDialogOpen(false);
       queryClient.invalidateQueries({
         queryKey: getCrmTrainingEquipmentByEquipmentIdQueryKey({ path: { equipmentId: id } }),
       });
       queryClient.invalidateQueries({
-        queryKey: getCrmTrainingEquipmentByEquipmentIdHistoryQueryKey({
+        queryKey: getCrmTrainingEquipmentByEquipmentIdStatusHistoryQueryKey({
           path: { equipmentId: id },
         }),
       });
       queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
     },
-    onError: () => toast.error('ステータスの変更に失敗しました'),
+    onError: handleMutationError,
   });
 
   const deleteMutation = useMutation({
@@ -101,23 +111,24 @@ function TrainingEquipmentDetailPageContent({ params }: TrainingEquipmentDetailP
       queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
       router.push(navigate('/training-equipment'));
     },
-    onError: () => toast.error('削除に失敗しました'),
+    onError: handleMutationError,
   });
 
-  const handleTabChange = (value: string) => {
-    void setActiveTab(value as (typeof DETAIL_TABS)[number]);
-  };
-
-  if (isLoading) return <Loading />;
-
-  const equipment = detailRes?.equipment;
-  if (!equipment) {
+  // Distinguish a fetch failure (network / permission error) from "not found" and render each differently.
+  if (isLoading || isError || !equipment) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
-        <p className="text-muted-foreground text-sm">機材が見つかりませんでした</p>
-      </div>
+      <DataStateBoundary
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={!equipment}
+        onRetry={() => refetch()}
+        errorTitle="トレーニング機材の取得に失敗しました"
+        emptyTitle="機材が見つかりませんでした"
+      />
     );
   }
+
+  const linkedExerciseCount = equipment.linkedExercises.length;
 
   return (
     <>
@@ -130,12 +141,12 @@ function TrainingEquipmentDetailPageContent({ params }: TrainingEquipmentDetailP
         badge={
           <Badge
             variant="outline"
-            className={`gap-1 text-xs font-medium ${getTrainingEquipmentStatusBadgeClass(equipment.status)}`}
+            className={`gap-1 text-xs font-medium ${getInstallationStatusBadgeClass(equipment.installationStatus)}`}
           >
             <span
-              className={`size-1.5 rounded-full ${getTrainingEquipmentStatusDotClass(equipment.status)}`}
+              className={`size-1.5 rounded-full ${getInstallationStatusDotClass(equipment.installationStatus)}`}
             />
-            {getTrainingEquipmentStatusLabel(equipment.status)}
+            {getInstallationStatusLabel(equipment.installationStatus)}
           </Badge>
         }
         actions={
@@ -166,24 +177,29 @@ function TrainingEquipmentDetailPageContent({ params }: TrainingEquipmentDetailP
         }
       />
 
-      <div className="bg-background flex-1 overflow-auto px-6 py-4">
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="gap-4">
+      {/* No scroll container of its own: the page already scrolls in the layout's `main`, and an
+          extra (non-scrolling) overflow box here becomes the scrollport for the sticky status card,
+          which then never sticks. */}
+      <div className="bg-background flex-1 px-6 py-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => void setActiveTab(value as (typeof DETAIL_TABS)[number])}
+          className="gap-4"
+        >
           <TabsList variant="line">
             <TabsTrigger value="basic">基本情報</TabsTrigger>
-            {canManageExerciseLinks && (
-              <TabsTrigger value="exercises">
-                エクササイズ紐づけ
-                {equipment.linked_exercise_count > 0 && (
-                  <Badge
-                    variant="outline"
-                    className="bg-muted-foreground/15 text-muted-foreground ml-1 min-w-5 border-transparent px-1 font-medium tabular-nums"
-                  >
-                    {equipment.linked_exercise_count}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            )}
-            {canViewHistory && <TabsTrigger value="history">変更履歴</TabsTrigger>}
+            <TabsTrigger value="exercises">
+              エクササイズ紐づけ
+              {linkedExerciseCount > 0 && (
+                <Badge
+                  variant="outline"
+                  className="bg-muted-foreground/15 text-muted-foreground ml-1 min-w-5 border-transparent px-1 font-medium tabular-nums"
+                >
+                  {linkedExerciseCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="history">変更履歴</TabsTrigger>
           </TabsList>
 
           <TabsContent value="basic">
@@ -193,21 +209,17 @@ function TrainingEquipmentDetailPageContent({ params }: TrainingEquipmentDetailP
             />
           </TabsContent>
 
-          {canManageExerciseLinks && (
-            <TabsContent value="exercises">
-              <TrainingEquipmentExerciseLinkSection
-                equipmentId={id}
-                equipment={equipment}
-                enabled={activeTab === 'exercises'}
-              />
-            </TabsContent>
-          )}
+          <TabsContent value="exercises">
+            <TrainingEquipmentExerciseLinkSection
+              equipmentId={id}
+              equipment={equipment}
+              enabled={activeTab === 'exercises'}
+            />
+          </TabsContent>
 
-          {canViewHistory && (
-            <TabsContent value="history">
-              <TrainingEquipmentHistoryTab equipmentId={id} enabled={activeTab === 'history'} />
-            </TabsContent>
-          )}
+          <TabsContent value="history">
+            <TrainingEquipmentHistoryTab equipmentId={id} enabled={activeTab === 'history'} />
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -216,12 +228,8 @@ function TrainingEquipmentDetailPageContent({ params }: TrainingEquipmentDetailP
         onOpenChange={setStatusDialogOpen}
         equipment={equipment}
         isSubmitting={statusMutation.isPending}
-        onSubmit={(payload) =>
-          statusMutation.mutate({
-            path: { equipmentId: id },
-            body: payload,
-          })
-        }
+        isSubmitError={statusMutation.isError}
+        onSubmit={(payload) => statusMutation.mutate({ path: { equipmentId: id }, body: payload })}
       />
 
       <TrainingEquipmentDeleteDialog
@@ -229,6 +237,7 @@ function TrainingEquipmentDetailPageContent({ params }: TrainingEquipmentDetailP
         onOpenChange={setDeleteDialogOpen}
         equipment={equipment}
         isSubmitting={deleteMutation.isPending}
+        isSubmitError={deleteMutation.isError}
         onConfirm={() => deleteMutation.mutate({ path: { equipmentId: id } })}
       />
     </>

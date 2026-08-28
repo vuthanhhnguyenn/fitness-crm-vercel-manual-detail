@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 
 import { useRouter } from 'next/navigation';
 
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,11 +21,29 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 
+import {
+  deleteCrmLessonContentsByIdMutation,
+  getCrmLessonContentsQueryKey,
+} from '@/lib/api/@tanstack/react-query.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
+import {
+  type LessonDeleteReasonValues,
+  lessonDeleteReasonSchema,
+} from '../../_schemas/lesson-delete-dialog.schema';
+
 interface LessonDeleteDialogProps {
+  lessonId: string;
   lessonName: string;
   usageCount: number;
   open: boolean;
@@ -31,41 +51,55 @@ interface LessonDeleteDialogProps {
 }
 
 /**
- * Delete confirmation (FR-003-P1-15/16 / research D5). Phase 1 is UI-only.
+ * Delete confirmation (FR-003-P1-15/16 / research D5).
  * - usage_count > 0  → blocking alert, disabled confirm, link to in-use schedules.
- * - usage_count === 0 → required delete reason, enabled confirm → toast → close.
+ * - usage_count === 0 → required delete reason, enabled confirm → API call → redirect to list.
  */
 export function LessonDeleteDialog({
+  lessonId,
   lessonName,
   usageCount,
   open,
   onOpenChange,
 }: LessonDeleteDialogProps) {
   const router = useRouter();
-  const [reason, setReason] = useState('');
-  const [showError, setShowError] = useState(false);
+  const queryClient = useQueryClient();
 
   const inUse = usageCount > 0;
 
-  const reasonInvalid = reason.trim().length === 0;
+  const form = useForm<LessonDeleteReasonValues>({
+    resolver: zodResolver(lessonDeleteReasonSchema),
+    mode: 'onSubmit',
+    defaultValues: { reason: '' },
+  });
+
+  const deleteMutation = useMutation({
+    ...deleteCrmLessonContentsByIdMutation(),
+    onSuccess: (response) => {
+      toast.success(response.message ?? 'レッスンを削除しました');
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonContentsQueryKey(),
+      });
+      handleOpenChange(false);
+      router.push(navigate('/lessons'));
+    },
+    onError: () => {
+      toast.error('レッスンの削除に失敗しました');
+    },
+  });
 
   const handleOpenChange = (next: boolean) => {
-    if (!next) {
-      setReason('');
-      setShowError(false);
-    }
+    if (!next) form.reset();
     onOpenChange(next);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = form.handleSubmit((values) => {
     if (inUse) return;
-    if (reasonInvalid) {
-      setShowError(true);
-      return;
-    }
-    toast.success('レッスンを削除しました');
-    handleOpenChange(false);
-  };
+    deleteMutation.mutate({
+      path: { id: lessonId },
+      body: { reason: values.reason.trim() },
+    });
+  });
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
@@ -100,34 +134,38 @@ export function LessonDeleteDialog({
             </Button>
           </div>
         ) : (
-          <div className="px-1">
-            <p className="mb-1 text-xs font-medium">
-              削除理由 <span className="text-destructive">*</span>
-            </p>
-            <Textarea
-              value={reason}
-              maxLength={1000}
-              className="min-h-[80px] text-sm"
-              placeholder="削除する理由を入力してください（変更履歴に記録されます）"
-              onChange={(e) => {
-                setReason(e.target.value);
-                if (showError) setShowError(false);
-              }}
+          <Form {...form}>
+            <FormField
+              control={form.control}
+              name="reason"
+              render={({ field }) => (
+                <FormItem className="px-1">
+                  <FormLabel className="text-xs font-medium">
+                    削除理由 <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      className="min-h-20 text-sm"
+                      placeholder="削除する理由を入力してください（変更履歴に記録されます）"
+                      disabled={deleteMutation.isPending}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-            {showError && reasonInvalid && (
-              <p className="text-destructive mt-1 text-xs">理由を入力してください</p>
-            )}
-          </div>
+          </Form>
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel>キャンセル</AlertDialogCancel>
+          <AlertDialogCancel disabled={deleteMutation.isPending}>キャンセル</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            disabled={inUse}
+            disabled={inUse || deleteMutation.isPending}
             onClick={(e) => {
               e.preventDefault();
-              handleConfirm();
+              void handleConfirm();
             }}
           >
             削除する

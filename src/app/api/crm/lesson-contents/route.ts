@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { normalizeSearchTerm } from '@/app/api/_lib/search';
 import { db } from '@/app/api/_mock-db';
 import {
   CreateLessonContentResponseSchema,
@@ -118,9 +119,11 @@ export async function GET(request: NextRequest) {
 
     // 3. Search (partial match on name or id, case-insensitive)
     if (search) {
-      const term = search.toLowerCase().trim();
+      const term = normalizeSearchTerm(search);
       rows = rows.filter(
-        (row) => row.name.toLowerCase().includes(term) || row.id.toLowerCase().includes(term),
+        (row) =>
+          normalizeSearchTerm(row.name).includes(term) ||
+          normalizeSearchTerm(row.id).includes(term),
       );
     }
 

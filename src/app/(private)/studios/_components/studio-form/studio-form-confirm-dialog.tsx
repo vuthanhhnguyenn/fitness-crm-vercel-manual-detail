@@ -34,9 +34,9 @@ const MODE_LABELS: Record<StudioFormMode, { title: string; confirmLabel: string 
 };
 
 const STUDIO_TYPE_LABELS: Record<string, string> = {
-  normal: 'ノーマル',
-  hot_yoga: 'ホットヨガ',
-  virtual: 'バーチャル',
+  'studio-lesson': 'スタジオレッスン用',
+  pt: 'PT用',
+  'body-care': 'ボディケア用',
 };
 
 export function StudioFormConfirmDialog({

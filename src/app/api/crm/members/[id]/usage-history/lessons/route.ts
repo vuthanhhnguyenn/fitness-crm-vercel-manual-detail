@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { MOCK_LESSON_RESERVATIONS } from '@/app/api/_mock-db';
+import { getLessonReservationsForMember } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
   GetUsageHistoryLessonsResponseSchema,
@@ -20,6 +20,20 @@ registerRoute({
       in: 'path',
       required: true,
       description: 'Member ID',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'from',
+      in: 'query',
+      required: false,
+      description: 'Start date (inclusive, YYYY-MM-DD)',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'to',
+      in: 'query',
+      required: false,
+      description: 'End date (inclusive, YYYY-MM-DD)',
       schema: { type: 'string' },
     },
     {
@@ -57,13 +71,15 @@ registerRoute({
 });
 
 const LessonsQuerySchema = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await params;
+    const { id } = await params;
 
     const queryResult = LessonsQuerySchema.safeParse(
       Object.fromEntries(request.nextUrl.searchParams),
@@ -72,10 +88,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Invalid query parameters' }, { status: 400 });
     }
 
-    const { page, limit } = queryResult.data;
-    const total = MOCK_LESSON_RESERVATIONS.length;
+    const { from, to, page, limit } = queryResult.data;
+    // `to` is inclusive of the whole day
+    const fromTime = from ? new Date(`${from}T00:00:00`).getTime() : null;
+    const toTime = to ? new Date(`${to}T23:59:59`).getTime() : null;
+
+    const filtered = getLessonReservationsForMember(id).filter((record) => {
+      const lessonTime = new Date(`${record.lessonDate}T00:00:00`).getTime();
+      const afterFrom = fromTime === null || lessonTime >= fromTime;
+      const beforeTo = toTime === null || lessonTime <= toTime;
+      return afterFrom && beforeTo;
+    });
+
+    const total = filtered.length;
     const startIdx = (page - 1) * limit;
-    const items = MOCK_LESSON_RESERVATIONS.slice(startIdx, startIdx + limit);
+    const items = filtered.slice(startIdx, startIdx + limit);
 
     return NextResponse.json({ items, total, page, limit });
   } catch (error) {

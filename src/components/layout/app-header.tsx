@@ -2,8 +2,6 @@
 
 import { useCallback, useState } from 'react';
 
-import Image from 'next/image';
-
 import { useAuthUser } from '@/contexts/auth-user.context';
 import { handleLogout } from '@/utils/global.util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,6 +39,8 @@ import type { GetCrmUsersResponse } from '@/lib/api/types.gen';
 
 import { CookieNames } from '@/types/global.enum';
 import { UserRole } from '@/types/permission.type';
+
+import { StoreSelector } from './store-selector';
 
 // ─── Role display helpers ─────────────────────────────────────────────────────
 
@@ -102,19 +102,7 @@ export function AppHeader() {
   return (
     <header className="bg-sidebar border-sidebar-border sticky top-0 z-30 flex h-14 w-full shrink-0 items-center justify-between gap-4 border-b px-4">
       {/* Left: Store selector */}
-      <div className="border-sidebar-border/60 bg-sidebar-accent/40 hover:border-sidebar-border hover:bg-sidebar-accent flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition-colors">
-        <div className="relative h-7 w-7">
-          <Image
-            src={'/fitness.jpeg'}
-            alt="申込写真"
-            className="size-full rounded object-cover"
-            fill
-            sizes="(max-width: 768px) 100vw, 48px"
-          />
-        </div>
-        <span className="text-sidebar-foreground/90 text-sm font-medium">Fit365八潮店</span>
-        <ChevronDown className="text-sidebar-foreground/70 size-4 shrink-0" />
-      </div>
+      <StoreSelector />
 
       {/* Right: User dropdown */}
       <DropdownMenu>

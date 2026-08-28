@@ -1,4 +1,5 @@
 import { exportCsv } from '@/utils/csv.util';
+import { formatDateYYYYMMDD } from '@/utils/date.util';
 
 import type {
   LockerPendingSlotListItem,
@@ -31,7 +32,7 @@ function toCsvRows(pendingSlots: LockerPendingSlotListItem[]): string[][] {
     slot.locker_name,
     slot.member_name,
     slot.member_id,
-    slot.cancel_date,
+    formatDateYYYYMMDD(slot.cancel_date),
     `${slot.pending_days}日`,
     slot.size,
     LOCKER_LOCK_TYPE_LABELS[slot.lock_type],

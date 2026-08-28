@@ -4,72 +4,102 @@ import { Suspense, useMemo, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
-import { useQuery } from '@tanstack/react-query';
+import { BRAND_LABELS } from '@/app/(private)/brands/_constants/brand.constants';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SortingState } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
+import { toast } from 'sonner';
 
+import { DataStateBoundary } from '@/components/common/data-state-boundary';
 import { Loading } from '@/components/common/data-state-boundary/loading';
 import { DataTable } from '@/components/common/data-table';
+import { FilterResultBanner } from '@/components/common/filter-result-banner';
 import { PageHeader } from '@/components/common/page-header';
 import { RoleGatedButton } from '@/components/common/role-gated-button';
 import { TablePaginationWithSize } from '@/components/common/table-pagination-with-size';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 
-import { getCrmCampaignsOptions } from '@/lib/api/@tanstack/react-query.gen';
+import {
+  deleteCrmCampaignsByIdMutation,
+  getCrmCampaignsOptions,
+  getCrmCampaignsQueryKey,
+} from '@/lib/api/@tanstack/react-query.gen';
+import type { CampaignListItemResponse } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import { Permission } from '@/types/permission.type';
 
+import { CampaignDeleteDialog } from './_components/campaign-delete-dialog';
 import { CampaignsFilters } from './_components/campaigns-filters';
 import { CampaignsTableColumns } from './_components/campaigns-table-columns';
+import {
+  CAMPAIGN_ACCEPT_STATE_LABELS,
+  getCampaignTableMaxHeightClass,
+} from './_constants/constants';
 import { CampaignsFiltersProvider } from './_contexts/campaigns-filters-context';
 import { useCampaignsFilters } from './_hooks/use-campaigns-filters';
 
 function CampaignsPageContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CampaignListItemResponse | null>(null);
+
   const filtersHook = useCampaignsFilters();
   const { filters, setFilters, queryParams, currentPage, setCurrentPage, pageSize, setPageSize } =
     filtersHook;
 
-  const { data, isLoading } = useQuery({
-    ...getCrmCampaignsOptions({
-      query: queryParams,
-    }),
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
+    ...getCrmCampaignsOptions({ query: queryParams }),
+    placeholderData: keepPreviousData,
   });
 
-  const campaigns = data?.campaigns ?? [];
+  const campaigns = data?.items ?? [];
   const pagination = data?.pagination;
-  const totalCampaigns = pagination?.total ?? 0;
+  const totalCampaigns = pagination?.totalItems ?? 0;
+  const totalAllCampaigns = pagination?.totalAllItems ?? 0;
   const page = pagination?.page ?? currentPage;
   const limit = pagination?.limit ?? pageSize;
 
-  const sorting: SortingState = filters.sort_by
-    ? [{ id: filters.sort_by, desc: filters.sort_order === 'desc' }]
-    : [];
+  const deleteMutation = useMutation({
+    ...deleteCrmCampaignsByIdMutation(),
+    onSuccess: (response) => {
+      toast.success(response.message || 'キャンペーンを削除しました');
+      queryClient.invalidateQueries({ queryKey: getCrmCampaignsQueryKey() });
+      setDeleteTarget(null);
+    },
+    onError: () => {
+      toast.error('適用中の会員または申請があるため削除できません');
+    },
+  });
+
+  const sorting: SortingState = [{ id: filters.sort, desc: filters.order === 'desc' }];
 
   const handleSortingChange = (updater: SortingState | ((prev: SortingState) => SortingState)) => {
     const next = typeof updater === 'function' ? updater(sorting) : updater;
     if (next.length === 0) {
-      setFilters({ sort_by: 'id', sort_order: 'asc' });
+      setFilters({ sort: 'createdAt', order: 'desc' });
       return;
     }
     setFilters({
-      sort_by: next[0].id as typeof filters.sort_by,
-      sort_order: next[0].desc ? 'desc' : 'asc',
+      sort: next[0].id as typeof filters.sort,
+      order: next[0].desc ? 'desc' : 'asc',
     });
   };
 
-  const columns = useMemo(() => CampaignsTableColumns(), []);
+  const columns = useMemo(() => CampaignsTableColumns({ onDeleteClick: setDeleteTarget }), []);
 
   return (
     <>
       <PageHeader
         title="キャンペーン管理"
         badge={
-          <Badge variant="outline" className="text-xs">
-            {totalCampaigns}件
+          <Badge
+            variant="outline"
+            className="text-muted-foreground text-xs font-normal tabular-nums"
+          >
+            {totalAllCampaigns.toLocaleString()}件
           </Badge>
         }
         actions={
@@ -83,46 +113,101 @@ function CampaignsPageContent() {
         }
       />
 
-      <div className="flex flex-1 flex-col gap-4 p-6 pt-4">
-        <Card className="gap-3 overflow-hidden rounded-xl border p-0">
-          <div className="p-3 pb-0">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-6 py-4">
+        <Card className="gap-0 overflow-hidden rounded-xl border p-0">
+          <div className="px-4 py-3">
             <CampaignsFiltersProvider value={filtersHook}>
               <CampaignsFilters isFilterOpen={isFilterOpen} onFilterOpenChange={setIsFilterOpen} />
             </CampaignsFiltersProvider>
           </div>
 
-          <DataTable
-            columns={columns}
-            data={campaigns}
-            isLoading={isLoading}
-            variant="simple"
-            onRowClick={(row) => {
-              router.push(navigate('/campaigns/[id]', row.id));
-            }}
-            className="rounded-none border-x-0 border-b-0 text-xs [&_table]:text-xs [&_td]:text-xs [&_td]:leading-4 [&_th]:text-xs [&_th]:leading-4 [&_th]:font-semibold [&_thead_tr]:h-10 [&_thead_tr]:bg-neutral-100"
-            containerClassName={
-              isFilterOpen ? 'max-h-[calc(100vh-330px)]' : 'max-h-[calc(100vh-286px)]'
-            }
-            tableOptions={{
-              onSortingChange: handleSortingChange,
-              manualSorting: true,
-              state: {
-                sorting,
-              },
-            }}
+          {/* 抽出結果は検索行の直下に固定する。条件クリアはこのバナーと、絞り込み0件時の
+              空状態（PAR046）の2箇所から実行できる（他の一覧画面と同じ挙動）。 */}
+          <FilterResultBanner
+            show={filtersHook.hasActiveFilters}
+            totalCount={totalAllCampaigns}
+            filteredCount={totalCampaigns}
+            filterSummary={[
+              filters.nameQuery ? `"${filters.nameQuery}"` : '',
+              filters.brandEnum ? (BRAND_LABELS[filters.brandEnum] ?? filters.brandEnum) : '',
+              filters.acceptState ? CAMPAIGN_ACCEPT_STATE_LABELS[filters.acceptState] : '',
+              filters.recruitmentFrom ? `募集開始: ${filters.recruitmentFrom}以降` : '',
+              filters.recruitmentTo ? `募集終了: ${filters.recruitmentTo}以前` : '',
+            ]}
+            onClear={filtersHook.clearFilters}
           />
 
-          {totalCampaigns > 0 && (
+          <DataStateBoundary
+            isLoading={isLoading}
+            isError={isError}
+            isEmpty={!isLoading && campaigns.length === 0}
+            onRetry={() => refetch()}
+            errorTitle="キャンペーン一覧の取得に失敗しました"
+            emptyState={{
+              variant: filtersHook.hasActiveFilters ? 'filtered' : 'empty',
+              entityLabel: 'キャンペーン',
+              onAction: filtersHook.hasActiveFilters ? filtersHook.clearFilters : undefined,
+            }}
+            skeleton={
+              <DataTable
+                tableSize="md"
+                columns={columns}
+                data={[]}
+                isLoading
+                variant="simple"
+                className="rounded-none border-x-0 border-b-0"
+                containerClassName={getCampaignTableMaxHeightClass(
+                  isFilterOpen,
+                  filtersHook.hasActiveFilters,
+                )}
+              />
+            }
+          >
+            <DataTable
+              tableSize="md"
+              columns={columns}
+              data={campaigns}
+              variant="simple"
+              className={`rounded-none border-x-0 border-b-0 ${isFetching ? 'opacity-80' : ''}`}
+              containerClassName={getCampaignTableMaxHeightClass(
+                isFilterOpen,
+                filtersHook.hasActiveFilters,
+              )}
+              onRowClick={(row) => {
+                router.push(navigate('/campaigns/[id]', row.id));
+              }}
+              tableOptions={{
+                onSortingChange: handleSortingChange,
+                manualSorting: true,
+                state: { sorting },
+              }}
+            />
+          </DataStateBoundary>
+
+          {totalCampaigns > 0 && !isError && (
             <TablePaginationWithSize
               currentPage={page}
               total={totalCampaigns}
-              onPageChange={setCurrentPage}
               pageSize={limit}
+              onPageChange={setCurrentPage}
               onPageSizeChange={setPageSize}
             />
           )}
         </Card>
       </div>
+
+      <CampaignDeleteDialog
+        campaign={deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate({ path: { id: deleteTarget.id } });
+          }
+        }}
+        isPending={deleteMutation.isPending}
+      />
     </>
   );
 }

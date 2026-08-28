@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Permission } from '@/types/permission.type';
 
 import {
+  FRANCHISE_COMPANY_AUTH_METHOD_LABELS,
   FRANCHISE_COMPANY_STATUS_LABELS,
   FRANCHISE_COMPANY_TYPE_FORM_LABELS,
 } from '../_constants/constants';
@@ -34,6 +35,7 @@ import type {
 } from '../_schemas/franchise-company-form.schema';
 
 interface FranchiseCompanyFormProps {
+  mode: 'create' | 'edit';
   isSubmitting?: boolean;
   onCancel: () => void;
   onSubmit: (values: FranchiseCompanyFormSubmitValues) => void;
@@ -42,6 +44,7 @@ interface FranchiseCompanyFormProps {
 }
 
 export function FranchiseCompanyForm({
+  mode,
   isSubmitting = false,
   onCancel,
   onSubmit,
@@ -51,12 +54,14 @@ export function FranchiseCompanyForm({
   const form = useFormContext<FranchiseCompanyFormValues>();
   const contractStartDate = useWatch({ control: form.control, name: 'fc_contract_start_date' });
   const parsedContractStartDate = contractStartDate ? new Date(contractStartDate) : undefined;
+  const hasSubmitErrors =
+    form.formState.submitCount > 0 && Object.keys(form.formState.errors).length > 0;
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">基本情報</CardTitle>
+          <CardTitle className="text-base">法人基本情報</CardTitle>
         </CardHeader>
         <CardContent className="px-4">
           <div className="flex flex-col gap-6">
@@ -107,7 +112,7 @@ export function FranchiseCompanyForm({
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="区分を選択">
+                          <SelectValue placeholder="選択してください">
                             {field.value
                               ? FRANCHISE_COMPANY_TYPE_FORM_LABELS[field.value]
                               : undefined}
@@ -165,6 +170,43 @@ export function FranchiseCompanyForm({
                       旧システムとの互換性のために保持
                     </span>
                   </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {/*TODO Spec Y-03 added this field on 07/30; not in the prototype yet, may change if the prototype implements it differently */}
+            <FormField
+              control={form.control}
+              name="auth_method"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    認証方式<span className="text-destructive ml-1">*</span>
+                  </FormLabel>
+                  <Select
+                    key={`franchise-company-auth-method-${field.value ?? 'empty'}`}
+                    value={field.value ?? undefined}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="認証方式を選択">
+                          {field.value
+                            ? FRANCHISE_COMPANY_AUTH_METHOD_LABELS[field.value]
+                            : undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {Object.entries(FRANCHISE_COMPANY_AUTH_METHOD_LABELS).map(
+                        ([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -368,7 +410,7 @@ export function FranchiseCompanyForm({
                   <div className="flex flex-col gap-1">
                     <FormLabel className="text-sm">FC企業の有効/無効</FormLabel>
                     <p className="text-muted-foreground text-xs">
-                      新規登録時は有効で作成されます。後で一覧表示対象として利用されます。
+                      有効にすると、店舗との紐づけ候補に表示されます
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -392,6 +434,9 @@ export function FranchiseCompanyForm({
       </Card>
 
       <div className="flex items-center justify-end gap-2 border-t p-4">
+        {hasSubmitErrors && (
+          <p className="text-destructive mr-auto text-xs">未入力の項目があります</p>
+        )}
         <Button
           type="button"
           size="lg"
@@ -411,7 +456,13 @@ export function FranchiseCompanyForm({
             onError,
           )}
         >
-          {isSubmitting ? '登録中...' : '登録する'}
+          {mode === 'edit'
+            ? isSubmitting
+              ? '保存中...'
+              : '保存する'
+            : isSubmitting
+              ? '登録中...'
+              : '登録する'}
         </RoleGatedButton>
       </div>
     </div>

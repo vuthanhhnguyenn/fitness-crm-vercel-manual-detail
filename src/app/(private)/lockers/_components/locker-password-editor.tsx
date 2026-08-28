@@ -10,8 +10,14 @@ import { Input } from '@/components/ui/input';
 
 interface LockerPasswordEditorProps {
   currentPassword: string | null;
+  /** FR-009: date the PIN was last changed (operational aid). Hidden when `undefined` is passed */
   updatedAt?: string | null;
   isSaving?: boolean;
+  /**
+   * Absorbs the terminology difference between screens.
+   * The slot sheet on locker detail says 「パスワード」, while locker contract detail says 「暗証番号」.
+   */
+  term?: 'パスワード' | '暗証番号';
   onSave: (password: string) => Promise<unknown> | unknown;
 }
 
@@ -19,6 +25,7 @@ export function LockerPasswordEditor({
   currentPassword,
   updatedAt,
   isSaving = false,
+  term = 'パスワード',
   onSave,
 }: LockerPasswordEditorProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -36,16 +43,22 @@ export function LockerPasswordEditor({
 
   const handleSave = () => {
     if (newPassword.length !== 4) return;
-    Promise.resolve(onSave(newPassword)).then(() => {
-      resetEditor();
-    });
+    // `onSave` is backed by `mutateAsync`, which rejects on failure. The caller's `onError`
+    // already toasts, so catch here to avoid an unhandled rejection and keep the editor open.
+    Promise.resolve(onSave(newPassword))
+      .then(() => {
+        resetEditor();
+      })
+      .catch(() => {
+        // keep the entered PIN so the user can retry
+      });
   };
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-x-8 gap-y-4">
         <div>
-          <p className="text-muted-foreground mb-1 text-xs">現在のパスワード</p>
+          <p className="text-muted-foreground mb-1 text-xs">現在の{term}</p>
           <div className="flex items-center gap-2">
             <p className="font-mono text-sm font-medium tracking-widest">
               {currentPassword ? (isVisible ? currentPassword : '••••') : '―'}
@@ -64,7 +77,10 @@ export function LockerPasswordEditor({
         </div>
 
         {updatedAt !== undefined && (
-          <p className="text-sm">最終変更日: {updatedAt ? formatDateYYYYMMDD(updatedAt) : '―'}</p>
+          <div>
+            <p className="text-muted-foreground mb-1 text-xs">最終変更日</p>
+            <p className="text-sm font-medium">{updatedAt ? formatDateYYYYMMDD(updatedAt) : '―'}</p>
+          </div>
         )}
       </div>
 
@@ -76,19 +92,20 @@ export function LockerPasswordEditor({
             className="text-xs"
             onClick={() => setIsEditing(true)}
           >
-            パスワードを変更
+            {term}を変更
           </Button>
         </div>
       ) : (
         <div className="space-y-4">
           <div>
-            <p className="text-muted-foreground mb-1 text-xs">新しいパスワード</p>
+            <p className="text-muted-foreground mb-1 text-xs">新しい{term}（4桁の数字）</p>
             <div className="flex items-center gap-2">
               <Input
                 className="max-w-50 font-mono text-sm"
                 placeholder="4桁の数字"
                 maxLength={4}
                 value={newPassword}
+                inputMode="numeric"
                 onChange={(e) => setNewPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
               />
               <Button
@@ -102,6 +119,9 @@ export function LockerPasswordEditor({
                 ランダム生成
               </Button>
             </div>
+            {newPassword.length > 0 && newPassword.length < 4 && (
+              <p className="text-destructive mt-2 text-xs">4桁の数字を入力してください</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -110,7 +130,7 @@ export function LockerPasswordEditor({
               disabled={newPassword.length !== 4 || isSaving}
               onClick={handleSave}
             >
-              保存
+              変更を保存
             </Button>
             <Button variant="ghost" size="sm" className="text-xs" onClick={resetEditor}>
               キャンセル

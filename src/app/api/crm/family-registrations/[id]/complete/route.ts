@@ -62,7 +62,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   db.family.updateRegistrationStatus(id, 'completed', {
     staff_id: staff,
-    child_member_id: member.basic_info.id,
+    child_member_id: member.memberId,
   });
 
   return NextResponse.json({
@@ -70,6 +70,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     id,
     status: 'completed',
     completed_at: new Date().toISOString(),
-    member_id: member.basic_info.id,
+    member_id: member.memberId,
   });
 }

@@ -1,12 +1,13 @@
 'use client';
 
+import { useRef } from 'react';
+
 import { useRouter } from 'next/navigation';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
-import { useUnsavedChanges } from '@/hooks/use-unsaved-changes.hook';
 
 import { BackLink } from '@/components/common/back-link';
 import { PageHeader } from '@/components/common/page-header';
@@ -31,6 +32,7 @@ import { navigate } from '@/lib/routes/routes.util';
 
 import { LessonScheduleCreateForm } from './_components/lesson-schedule-create-form';
 import { useLessonScheduleForm } from './_hooks/use-lesson-schedule-form.hook';
+import { useUnsavedChanges } from './_hooks/use-unsaved-changes.hook';
 import { lessonScheduleFormValuesToRequestBody } from './_schemas/lesson-schedule-form.mapper';
 import type { LessonScheduleFormSubmitValues } from './_schemas/lesson-schedule-form.schema';
 
@@ -40,6 +42,7 @@ export default function LessonScheduleCreatePage() {
   const scrollToFirstError = useScrollToFirstError();
 
   const form = useLessonScheduleForm();
+  const isSubmittingRef = useRef(false);
 
   const createMutation = useMutation({
     ...postCrmLessonSchedulesCreateMutation(),
@@ -55,6 +58,9 @@ export default function LessonScheduleCreatePage() {
           : 'スケジュールの作成に失敗しました';
       toast.error(message);
     },
+    onSettled: () => {
+      isSubmittingRef.current = false;
+    },
   });
 
   const { confirmDiscard, discardDialogOpen, handleDiscardConfirm, handleDiscardCancel } =
@@ -68,6 +74,17 @@ export default function LessonScheduleCreatePage() {
     scrollToFirstError();
   };
 
+  function handleFormSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
+    void form.handleSubmit(onSubmit, () => {
+      isSubmittingRef.current = false;
+      onInvalid();
+    })();
+  }
+
   const handleCancel = () => {
     confirmDiscard(() => router.push(navigate('/lesson-schedules')));
   };
@@ -75,14 +92,12 @@ export default function LessonScheduleCreatePage() {
   return (
     <>
       <PageHeader
-        breadcrumb={
-          <BackLink label="スケジュール管理に戻る" href={navigate('/lesson-schedules')} />
-        }
-        title="スケジュール 新規登録"
+        breadcrumb={<BackLink label="予約管理に戻る" onClick={handleCancel} />}
+        title="スケジュール登録"
       />
       <div className="px-6 py-4">
         <Form {...form}>
-          <form className="mx-auto max-w-[960px]" onSubmit={form.handleSubmit(onSubmit, onInvalid)}>
+          <form className="mx-auto max-w-[960px]" onSubmit={handleFormSubmit}>
             <LessonScheduleCreateForm
               isSubmitting={createMutation.isPending}
               hasSubmitError={!form?.formState?.isValid && form?.formState?.isSubmitted}

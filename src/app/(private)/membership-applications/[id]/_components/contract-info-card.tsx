@@ -1,9 +1,14 @@
+import { formatDateYYYYMMDD } from '@/utils/date.util';
+import { formatYen } from '@/utils/format.util';
+
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 
+import type { ApplicationDetail } from './membership-application.utils';
+
 interface ContractInfoCardProps {
-  app: any;
+  app: ApplicationDetail;
 }
 
 function Field({ label, value }: Readonly<{ label: string; value: React.ReactNode }>) {
@@ -13,10 +18,6 @@ function Field({ label, value }: Readonly<{ label: string; value: React.ReactNod
       <span className="text-sm">{value}</span>
     </div>
   );
-}
-
-function formatPrice(price: number) {
-  return `¥${price.toLocaleString()}`;
 }
 
 export function ContractInfoCard({ app }: Readonly<ContractInfoCardProps>) {
@@ -37,13 +38,21 @@ export function ContractInfoCard({ app }: Readonly<ContractInfoCardProps>) {
           />
           <Field label="入会店舗" value={app.store_name} />
           <Field label="プラン名" value={app.plan_name} />
-          <Field label="月額料金" value={formatPrice(app.monthly_fee ?? 0)} />
-          <Field label="契約開始日" value={app.start_date.replaceAll('-', '/')} />
+          <Field label="月額料金" value={formatYen(app.monthly_fee)} />
           <Field
-            label="利用開始日"
-            value={app.usage_start_date ?? app.start_date.replaceAll('-', '/')}
+            label="先払い期間"
+            value={
+              <span>
+                {app.prepayment_months}ヶ月
+                <span className="text-muted-foreground ml-2 text-xs">
+                  （{app.prepayment_rule_label}）
+                </span>
+              </span>
+            }
           />
-          {app.campaign && app.campaign !== 'なし' && (
+          <Field label="契約開始日" value={formatDateYYYYMMDD(app.contract_start_date)} />
+          <Field label="利用開始日" value={formatDateYYYYMMDD(app.usage_start_date)} />
+          {app.campaign_name && (
             <Field
               label="適用キャンペーン"
               value={
@@ -51,7 +60,7 @@ export function ContractInfoCard({ app }: Readonly<ContractInfoCardProps>) {
                   variant="outline"
                   className="bg-info/15 text-info border-info/20 text-[10px]"
                 >
-                  {app.campaign}
+                  {app.campaign_name}
                 </Badge>
               }
             />
@@ -61,8 +70,8 @@ export function ContractInfoCard({ app }: Readonly<ContractInfoCardProps>) {
               label="選択オプション"
               value={
                 <div className="mt-0.5 flex flex-wrap gap-1">
-                  {(app.options ?? []).length > 0 ? (
-                    (app.options ?? []).map((opt: string) => (
+                  {app.options.length > 0 ? (
+                    app.options.map((opt) => (
                       <Badge key={opt} variant="outline" className="text-[10px]">
                         {opt}
                       </Badge>

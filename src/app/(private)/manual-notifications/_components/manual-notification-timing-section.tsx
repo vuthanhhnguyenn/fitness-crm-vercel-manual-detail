@@ -38,6 +38,10 @@ const TIMING_OPTIONS = [
 ] as const;
 type TimingType = ManualNotificationFormValues['timing']['type'];
 
+function RequiredMark() {
+  return <span className="text-destructive ml-0.5">*</span>;
+}
+
 function createTiming(type: TimingType): ManualNotificationFormValues['timing'] {
   if (type === 'immediate') return { type };
 
@@ -50,7 +54,7 @@ function createTiming(type: TimingType): ManualNotificationFormValues['timing'] 
     startAt,
     endDate: undefined,
     maxOccurrences: undefined,
-    endMode: 'count',
+    endMode: 'none',
   };
 }
 
@@ -70,7 +74,7 @@ export function ManualNotificationTimingSection() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                配信タイミング <span className="text-destructive">*</span>
+                配信タイミング <RequiredMark />
               </FormLabel>
               <FormControl>
                 <RadioGroup
@@ -104,7 +108,9 @@ export function ManualNotificationTimingSection() {
             name="timing.scheduledAt"
             render={({ field, fieldState }) => (
               <FormItem className="max-w-sm">
-                <FormLabel>配信日時</FormLabel>
+                <FormLabel>
+                  配信日時 <RequiredMark />
+                </FormLabel>
                 <FormControl>
                   <DateTimePicker
                     value={field.value}
@@ -127,7 +133,9 @@ export function ManualNotificationTimingSection() {
                 name="timing.frequency"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>繰り返し頻度</FormLabel>
+                    <FormLabel>
+                      繰り返し頻度 <RequiredMark />
+                    </FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger className="w-full">
@@ -160,7 +168,9 @@ export function ManualNotificationTimingSection() {
                 name="timing.startAt"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>開始日時</FormLabel>
+                    <FormLabel>
+                      開始日時 <RequiredMark />
+                    </FormLabel>
                     <FormControl>
                       <DateTimePicker
                         value={field.value}
@@ -181,7 +191,9 @@ export function ManualNotificationTimingSection() {
                   name="timing.intervalValue"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>間隔の数値</FormLabel>
+                      <FormLabel>
+                        間隔の数値 <RequiredMark />
+                      </FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -205,7 +217,9 @@ export function ManualNotificationTimingSection() {
                   name="timing.intervalUnit"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>間隔の単位</FormLabel>
+                      <FormLabel>
+                        間隔の単位 <RequiredMark />
+                      </FormLabel>
                       <Select value={field.value ?? ''} onValueChange={field.onChange}>
                         <FormControl>
                           <SelectTrigger className="w-full">
@@ -240,13 +254,19 @@ export function ManualNotificationTimingSection() {
               name="timing.endMode"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>終了条件</FormLabel>
+                  <FormLabel>
+                    終了条件 <RequiredMark />
+                  </FormLabel>
                   <FormControl>
                     <RadioGroup
                       value={field.value}
                       onValueChange={field.onChange}
                       className="flex flex-wrap gap-4"
                     >
+                      <label className="flex items-center gap-2 text-sm">
+                        <RadioGroupItem value="none" />
+                        終了日なし
+                      </label>
                       <label className="flex items-center gap-2 text-sm">
                         <RadioGroupItem value="date" />
                         指定日に終了
@@ -269,7 +289,9 @@ export function ManualNotificationTimingSection() {
                   name="timing.endDate"
                   render={({ field, fieldState }) => (
                     <FormItem>
-                      <FormLabel>終了日</FormLabel>
+                      <FormLabel>
+                        終了日 <RequiredMark />
+                      </FormLabel>
                       <FormControl>
                         <DatePicker
                           date={field.value}
@@ -291,7 +313,9 @@ export function ManualNotificationTimingSection() {
                   name="timing.maxOccurrences"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>配信回数</FormLabel>
+                      <FormLabel>
+                        配信回数 <RequiredMark />
+                      </FormLabel>
                       <FormControl>
                         <Input
                           type="number"

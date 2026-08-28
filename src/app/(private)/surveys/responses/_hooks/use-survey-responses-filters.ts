@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-
 import { PAGE_SIZE } from '@/constants/app.constants';
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import { MemberType, StoreListBrand, SurveyTemplateType } from '@/lib/api/types.gen';
 import type { GetCrmSurveysResponsesData } from '@/lib/api/types.gen';
@@ -39,17 +39,9 @@ export function useSurveyResponsesFilters() {
     },
   );
 
-  const [searchInput, setSearchInput] = useState(() => filters.search);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput !== filters.search) {
-        setFilters({ search: searchInput || null, page: 1 });
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [filters.search, searchInput, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(filters.search, (value) =>
+    setFilters({ search: value || null, page: 1 }),
+  );
 
   const updateFilter = <K extends keyof SurveyResponsesFiltersState>(
     key: K,

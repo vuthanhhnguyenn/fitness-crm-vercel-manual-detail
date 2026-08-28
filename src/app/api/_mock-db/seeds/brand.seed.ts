@@ -32,6 +32,16 @@ export const SEED_BRAND_ROWS: BrandDetail[] = [
   },
 ];
 
+/**
+ * Per-brand point names (A-01 FR-011).
+ * The real backend keeps this inside the brands master and returns it resolved as
+ * pointName in the Member Financial History points response (not exposed on the Y-07 admin API).
+ */
+export const BRAND_POINT_NAMES: Record<string, string> = {
+  joyfit: 'ENJOYポイント',
+  fit365: 'ベアレージポイント',
+};
+
 export const SEED_BRAND_FEE_GROUPS: BrandFeeGroup[] = [
   {
     parent_brand_code: 'joyfit',
@@ -120,7 +130,7 @@ export const SEED_BRAND_FEE_GROUPS: BrandFeeGroup[] = [
     parent_brand_name: 'JOYFIT',
     sub_brand_code: 'joyfit_plus',
     sub_brand_id: 'joyfit_plus',
-    display_name: 'JOYFIT+',
+    display_name: 'JOYFIT＋',
     status: 'active',
     fee_master_id: 'EF004',
     fee_items: [
@@ -236,7 +246,7 @@ export function staffBrandDisplayName(code: string): string {
     all: '全ブランド',
     joyfit24: 'JOYFIT24',
     joyfit_yoga: 'JOYFIT YOGA',
-    joyfit_plus: 'JOYFIT+',
+    joyfit_plus: 'JOYFIT＋',
   };
   return fallbacks[code] ?? code;
 }

@@ -1,5 +1,3 @@
-'use client';
-
 import { Grid3X3 } from 'lucide-react';
 
 import type { LockerNumberingPattern, LockerShape } from '@/lib/api/types.gen';

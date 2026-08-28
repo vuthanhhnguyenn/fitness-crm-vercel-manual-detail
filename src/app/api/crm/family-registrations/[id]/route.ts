@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { db } from '@/app/api/_mock-db';
+import { db, joinJapaneseName } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
   GetFamilyRegistrationDetailResponseSchema,
@@ -32,10 +32,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { settings, members: familyMembers } = db.family.getFamilyMembers(row.primary_member_id);
 
   // 在籍期間（月数）
-  const tenureMonths = primary?.profile.joined_at
-    ? Math.floor(
-        (Date.now() - new Date(primary.profile.joined_at).getTime()) / (1000 * 60 * 60 * 24 * 30),
-      )
+  const tenureMonths = primary?.enrolledAt
+    ? Math.floor((Date.now() - new Date(primary.enrolledAt).getTime()) / (1000 * 60 * 60 * 24 * 30))
     : undefined;
 
   // 主会員IDの末尾数字でモック値を決定論的に生成
@@ -47,12 +45,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       created_at: row.created_at,
       status: row.status,
       primary_member_id: row.primary_member_id,
-      primary_member_name: primary?.basic_info.name_kanji ?? '—',
+      primary_member_name: primary
+        ? joinJapaneseName(primary.personalInfo.lastName, primary.personalInfo.firstName)
+        : '—',
       applicant_name: row.applicant_name,
       relationship: row.relationship,
       invite_expires_at: row.invite_expires_at,
-      store_id: primary?.profile.store_id ?? '—',
-      store_name: primary?.profile.store_name ?? '—',
+      store_id: primary?.primaryStore.storeId ?? '—',
+      store_name: primary?.primaryStore.name ?? '—',
       monthly_fee: settings.family_member_fee,
       risk_score: row.risk_score,
       risk_reason: row.risk_reason,
@@ -69,10 +69,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       applicant: row.applicant,
       primary_member: primary
         ? {
-            member_number: primary.basic_info.member_number,
-            status: primary.profile.status,
-            member_type: primary.profile.member_type,
-            joined_at: primary.profile.joined_at,
+            member_number: primary.memberNumber,
+            status: primary.memberStatus,
+            member_type: primary.memberType,
+            joined_at: primary.enrolledAt,
             tenure_months: tenureMonths,
             family_member_count: familyMembers.length,
             family_member_limit: settings.family_member_limit,

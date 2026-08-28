@@ -1,9 +1,9 @@
 import Image from 'next/image';
 
-import type { StudioImage } from '@/app/api/_schemas/studio-detail.schema';
-
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+
+import { StudioImage } from '@/lib/api';
 
 interface StudioImagesCardProps {
   images: StudioImage[];

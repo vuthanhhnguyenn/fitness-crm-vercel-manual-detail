@@ -12,7 +12,7 @@ import {
   formatBookingLabel,
   formatTimeRange,
   getOccupancyColor,
-} from './lesson-schedule-display.util';
+} from '../_utils/lesson-schedule-display.util';
 
 const EVENT_TYPE_BADGE: Record<string, { cls: string; label: string }> = {
   studio: { cls: 'bg-info/15 text-info', label: 'スタジオ' },
@@ -31,7 +31,7 @@ export function WeeklyLessonCard({
   onScheduleClick,
   onEditClick,
   canEdit = false,
-}: WeeklyLessonCardProps) {
+}: Readonly<WeeklyLessonCardProps>) {
   const typeBadge = EVENT_TYPE_BADGE[item.lesson_type] ?? EVENT_TYPE_BADGE.studio;
   const timeLabel = formatTimeRange(item.start_time, item.end_time);
 
@@ -44,7 +44,7 @@ export function WeeklyLessonCard({
   })();
 
   const resColor = getOccupancyColor(item.booked_count, item.capacity);
-  const isInternalOnly = false; // no is_public field in API yet
+  const isInternalOnly = !item.is_public;
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();

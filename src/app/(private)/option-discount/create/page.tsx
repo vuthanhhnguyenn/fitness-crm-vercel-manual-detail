@@ -57,7 +57,6 @@ export default function OptionDiscountCreatePage() {
       toast.success(res.message || 'セット割を作成しました');
       queryClient.invalidateQueries({
         queryKey: getCrmOptionDiscountsQueryKey(),
-        refetchType: 'all',
       });
       router.push(navigate('/option-discount/[id]', res.option_discount.id));
     },

@@ -4,6 +4,8 @@ import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
 
@@ -21,32 +23,61 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 
+import {
+  getCrmBrandsByIdQueryKey,
+  getCrmBrandsQueryKey,
+  patchCrmBrandsByIdMutation,
+} from '@/lib/api/@tanstack/react-query.gen';
+
 import { type BrandFormValues, brandFormSchema } from '../_schemas/brand-form.schema';
+import type { BrandListItem } from './brand-table-columns';
+
+const EMPTY_FORM_VALUES: BrandFormValues = {
+  brandId: '',
+  displayName: '',
+};
+
+function buildInitialValues(brand: BrandListItem | null): BrandFormValues {
+  if (!brand) return EMPTY_FORM_VALUES;
+
+  return {
+    brandId: brand.brand_id,
+    displayName: brand.display_name,
+  };
+}
 
 interface BrandFormSheetProps {
   open: boolean;
   mode: 'create' | 'edit';
-  initialValues: BrandFormValues;
-  isSubmitting: boolean;
+  brand: BrandListItem | null;
   onOpenChange: (open: boolean) => void;
-  onSave: (values: BrandFormValues, onError: (message: string) => void) => void;
 }
 
-export function BrandFormSheet({
-  open,
-  mode,
-  initialValues,
-  isSubmitting,
-  onOpenChange,
-  onSave,
-}: BrandFormSheetProps) {
+export function BrandFormSheet({ open, mode, brand, onOpenChange }: BrandFormSheetProps) {
   const scrollToFirstError = useScrollToFirstError();
   const lastResetBrandIdRef = useRef<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const initialValues = buildInitialValues(brand);
 
   const form = useForm<BrandFormValues>({
     resolver: zodResolver(brandFormSchema) as never,
     mode: 'onChange',
     defaultValues: initialValues,
+  });
+
+  const updateMutation = useMutation({
+    ...patchCrmBrandsByIdMutation(),
+    onSuccess: (response) => {
+      toast.success(response.message || 'ブランド設定を保存しました');
+      queryClient.invalidateQueries({
+        queryKey: getCrmBrandsQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getCrmBrandsByIdQueryKey({ path: { id: response.brand.code } }),
+      });
+      onOpenChange(false);
+    },
   });
 
   useEffect(() => {
@@ -66,15 +97,38 @@ export function BrandFormSheet({
   }, [open]);
 
   const title = mode === 'create' ? 'ブランド新規登録' : 'ブランド編集';
+
+  // Derive from `errors`, not `formState.isValid`: the sheet is always mounted and gets
+  // its record via a nullable prop, so it first mounts with the empty form values, which
+  // fail the schema and latch `isValid` to false — RHF's `reset()`/`handleSubmit()` never
+  // recompute it. `errors` is always rewritten from the full schema on submit.
+  const hasFieldErrors = !!form.formState.errors.displayName || !!form.formState.errors.brandId;
+
   const handleSubmit = (values: BrandFormValues) => {
-    form.clearErrors('brandId');
-    onSave(values, (message) => {
-      form.setError('brandId', {
-        type: 'manual',
-        message,
-      });
-      scrollToFirstError();
-    });
+    // Defensive only: the sheet is opened exclusively from the row edit action, which
+    // always sets both `mode='edit'` and `brand`. Not a field-level problem, so it is
+    // surfaced as a toast rather than an error on `brandId`.
+    if (mode !== 'edit' || !brand) {
+      toast.error('ブランド設定の更新に失敗しました。後で再試行してください。');
+      return;
+    }
+
+    const normalizedBrandId = values.brandId.trim().toLowerCase();
+
+    updateMutation.mutate(
+      {
+        path: { id: brand.code },
+        body: {
+          display_name: values.displayName.trim(),
+          brand_id: normalizedBrandId,
+        },
+      },
+      {
+        onError: () => {
+          toast.error('ブランド設定の更新に失敗しました。後で再試行してください。');
+        },
+      },
+    );
   };
 
   return (
@@ -120,19 +174,12 @@ export function BrandFormSheet({
                         <span className="text-destructive ml-1">*</span>
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          {...field}
-                          placeholder="例: joyfit"
-                          onChange={(event) => {
-                            if (form.formState.errors.brandId?.type === 'manual') {
-                              form.clearErrors('brandId');
-                            }
-                            field.onChange(event.target.value);
-                          }}
-                        />
+                        <Input {...field} placeholder="例: joyfit" disabled={mode === 'edit'} />
                       </FormControl>
                       <FormDescription className="text-xs">
-                        英数字のみ。システム内部で使用されます。
+                        {mode === 'edit'
+                          ? 'システム内部キーのため変更できません。'
+                          : '英数字のみ。システム内部で使用されます。'}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -163,7 +210,7 @@ export function BrandFormSheet({
               <Button
                 type="submit"
                 className="bg-foreground text-background hover:bg-foreground/90 h-8 w-full rounded-md text-sm"
-                disabled={!form.formState.isValid || isSubmitting}
+                disabled={hasFieldErrors || updateMutation.isPending}
               >
                 保存する
               </Button>

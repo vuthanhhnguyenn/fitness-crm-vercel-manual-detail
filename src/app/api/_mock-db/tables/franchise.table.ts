@@ -2,7 +2,9 @@ import type {
   BrandChangeHistoryItem,
   BrandDetail,
   BrandFeeGroup,
+  BrandFeeItem,
   BrandListItem,
+  BrandScheduledFeeChange,
   CreateBrandRequest,
   UpdateBrandFeeGroupRequest,
   UpdateBrandRequest,
@@ -13,6 +15,8 @@ import type {
   FranchiseCompanyHistoryItem,
   UpdateFranchiseCompanyBody,
 } from '@/app/api/_schemas/franchise-company.schema';
+import { formatDateYYYYMMDD, formatDateYYYYMMDD_HHMMSS } from '@/utils/date.util';
+import { formatYen } from '@/utils/format.util';
 
 import {
   SEED_BRAND_CHANGE_HISTORIES,
@@ -33,6 +37,67 @@ import {
 import type { EnrollmentFeeMasterRow, FranchiseCompanyRow } from '../seeds/user.seed';
 import { SEED_USERS } from '../seeds/user.seed';
 import type { UserRow } from '../seeds/user.seed';
+
+const MOCK_ACTOR_FALLBACK = 'STF-001';
+
+type BrandFeeItemFieldChange = {
+  changed_field: string;
+  before_value: string;
+  after_value: string;
+};
+
+function scheduledChangesSignature(changes: BrandScheduledFeeChange[]): string {
+  return [...changes]
+    .map((change) => `${change.effective_start_date}:${change.value_including_tax_yen}`)
+    .sort()
+    .join('|');
+}
+
+function summarizeScheduledChanges(changes: BrandScheduledFeeChange[]): string {
+  if (changes.length === 0) return 'なし';
+  return changes
+    .map((change) => `${change.effective_start_date} ${formatYen(change.value_including_tax_yen)}`)
+    .join(', ');
+}
+
+function diffFeeItemFields(before: BrandFeeItem, after: BrandFeeItem): BrandFeeItemFieldChange[] {
+  const label = after.item_name;
+  const changes: BrandFeeItemFieldChange[] = [];
+
+  if (before.item_name !== after.item_name) {
+    changes.push({
+      changed_field: `${label} 項目名`,
+      before_value: before.item_name,
+      after_value: after.item_name,
+    });
+  }
+  if (before.current_value_including_tax_yen !== after.current_value_including_tax_yen) {
+    changes.push({
+      changed_field: `${label} 定価`,
+      before_value: formatYen(before.current_value_including_tax_yen),
+      after_value: formatYen(after.current_value_including_tax_yen),
+    });
+  }
+  if (before.effective_start_date !== after.effective_start_date) {
+    changes.push({
+      changed_field: `${label} 有効開始日`,
+      before_value: before.effective_start_date,
+      after_value: after.effective_start_date,
+    });
+  }
+  if (
+    scheduledChangesSignature(before.scheduled_changes) !==
+    scheduledChangesSignature(after.scheduled_changes)
+  ) {
+    changes.push({
+      changed_field: `${label} 予約中の改定`,
+      before_value: summarizeScheduledChanges(before.scheduled_changes),
+      after_value: summarizeScheduledChanges(after.scheduled_changes),
+    });
+  }
+
+  return changes;
+}
 
 export function createFranchiseTables() {
   return {
@@ -55,12 +120,23 @@ export function createFranchiseTables() {
       getByCode(code: string): BrandDetail | undefined {
         this._seed();
         const normalizedCode = normalizeBrandIdentifier(code);
-        return this._rows.find((row) => row.code === normalizedCode);
+        const found = this._rows.find((row) => row.code === normalizedCode);
+        return found ? this._withLiveCounts(found) : undefined;
       },
       getByBrandId(brandId: string): BrandDetail | undefined {
         this._seed();
         const normalizedBrandId = normalizeBrandIdentifier(brandId);
-        return this._rows.find((row) => row.brand_id === normalizedBrandId);
+        const found = this._rows.find((row) => row.brand_id === normalizedBrandId);
+        return found ? this._withLiveCounts(found) : undefined;
+      },
+      _withLiveCounts(row: BrandDetail): BrandDetail {
+        return {
+          ...row,
+          fee_group_count: this._feeGroups.filter((group) => group.parent_brand_code === row.code)
+            .length,
+          change_history_count: this._changeHistories.filter((item) => item.brand_code === row.code)
+            .length,
+        };
       },
       getFeesByCode(code: string): BrandFeeGroup[] {
         this._seed();
@@ -85,6 +161,7 @@ export function createFranchiseTables() {
         const normalizedCode = normalizeBrandIdentifier(code);
         return this._changeHistories
           .filter((item) => item.brand_code === normalizedCode)
+          .sort((a, b) => b.changed_at.localeCompare(a.changed_at))
           .map((item) => ({
             changed_at: item.changed_at,
             changed_by: item.changed_by,
@@ -119,14 +196,29 @@ export function createFranchiseTables() {
         const idx = this._rows.findIndex((row) => row.code === normalizedCode);
         if (idx === -1) return undefined;
         const row = this._rows[idx]!;
+        const nextDisplayName = patch.display_name?.trim() ?? row.display_name;
         const next: BrandDetail = {
           ...row,
-          display_name: patch.display_name?.trim() ?? row.display_name,
+          display_name: nextDisplayName,
           brand_id: patch.brand_id ? normalizeBrandIdentifier(patch.brand_id) : row.brand_id,
           updated_by: patch.updated_by ?? row.updated_by,
           updated_at: new Date().toISOString(),
         };
         this._rows[idx] = next;
+
+        if (nextDisplayName !== row.display_name) {
+          const changedBy = patch.updated_by ?? MOCK_ACTOR_FALLBACK;
+          this._changeHistories.push({
+            brand_code: normalizedCode,
+            changed_at: formatDateYYYYMMDD_HHMMSS(new Date()),
+            changed_by: changedBy,
+            target_display_name: nextDisplayName,
+            changed_field: 'ブランド名',
+            before_value: row.display_name,
+            after_value: nextDisplayName,
+          });
+        }
+
         return next;
       },
       updateFeeGroup(
@@ -145,20 +237,99 @@ export function createFranchiseTables() {
         if (groupIndex === -1) return undefined;
 
         const group = this._feeGroups[groupIndex]!;
+        const now = new Date();
+        const changedBy = patch.updated_by ?? MOCK_ACTOR_FALLBACK;
+        const historyRows: BrandFeeItemFieldChange[] = [];
+
         const nextFeeItems = group.fee_items.map((item) => {
           const patchItem = patch.fee_items.find((entry) => entry.item_code === item.item_code);
           if (!patchItem) return item;
-          return {
+
+          const nextScheduledChanges: BrandScheduledFeeChange[] = (
+            patchItem.scheduled_changes ?? []
+          ).map((entry) => {
+            const existing = item.scheduled_changes.find(
+              (change) => change.effective_start_date === entry.effective_start_date,
+            );
+            return {
+              effective_start_date: entry.effective_start_date,
+              value_including_tax_yen: entry.value_including_tax_yen,
+              registered_at: existing ? existing.registered_at : formatDateYYYYMMDD(now),
+              registered_by: existing ? existing.registered_by : changedBy,
+            };
+          });
+
+          const nextItem: BrandFeeItem = {
             ...item,
             item_name: patchItem.item_name.trim(),
             current_value_including_tax_yen: patchItem.current_value_including_tax_yen,
             effective_start_date: patchItem.effective_start_date,
+            scheduled_changes: nextScheduledChanges,
           };
+
+          historyRows.push(...diffFeeItemFields(item, nextItem));
+          return nextItem;
         });
 
         const nextGroup: BrandFeeGroup = { ...group, fee_items: nextFeeItems };
         this._feeGroups[groupIndex] = nextGroup;
+
+        if (historyRows.length > 0) {
+          const changedAt = formatDateYYYYMMDD_HHMMSS(now);
+          const targetDisplayName = `${group.parent_brand_name} / ${group.display_name}`;
+          this._changeHistories.push(
+            ...historyRows.map((row) => ({
+              brand_code: normalizedCode,
+              changed_at: changedAt,
+              changed_by: changedBy,
+              target_display_name: targetDisplayName,
+              ...row,
+            })),
+          );
+        }
+
         return cloneBrandFeeGroup(nextGroup);
+      },
+      disableFeeGroup(code: string, subBrandCode: string): BrandFeeGroup | undefined {
+        this._seed();
+        const normalizedCode = normalizeBrandIdentifier(code);
+        const normalizedSubBrandCode = normalizeBrandIdentifier(subBrandCode);
+        const groupIndex = this._feeGroups.findIndex(
+          (item) =>
+            item.parent_brand_code === normalizedCode &&
+            item.sub_brand_code === normalizedSubBrandCode,
+        );
+        if (groupIndex === -1) return undefined;
+
+        const group = this._feeGroups[groupIndex]!;
+        const nextGroup: BrandFeeGroup = { ...group, status: 'inactive' };
+        this._feeGroups[groupIndex] = nextGroup;
+
+        this._changeHistories.push({
+          brand_code: normalizedCode,
+          changed_at: formatDateYYYYMMDD_HHMMSS(new Date()),
+          changed_by: MOCK_ACTOR_FALLBACK,
+          target_display_name: `${group.parent_brand_name} / ${group.display_name}`,
+          changed_field: 'ステータス',
+          before_value: '有効',
+          after_value: '無効',
+        });
+
+        return cloneBrandFeeGroup(nextGroup);
+      },
+      deleteFeeGroup(code: string, subBrandCode: string): boolean {
+        this._seed();
+        const normalizedCode = normalizeBrandIdentifier(code);
+        const normalizedSubBrandCode = normalizeBrandIdentifier(subBrandCode);
+        const groupIndex = this._feeGroups.findIndex(
+          (item) =>
+            item.parent_brand_code === normalizedCode &&
+            item.sub_brand_code === normalizedSubBrandCode,
+        );
+        if (groupIndex === -1) return false;
+
+        this._feeGroups.splice(groupIndex, 1);
+        return true;
       },
     },
 
@@ -186,6 +357,19 @@ export function createFranchiseTables() {
         this._seed();
         return [...(this._historyById[id] ?? [])];
       },
+      appendHistoryEntry(
+        id: string,
+        entry: { changed_item: string; before: string | null; after: string | null },
+        operator: string,
+      ): void {
+        this._seed();
+        const item: FranchiseCompanyHistoryItem = {
+          updated_at: new Date().toISOString(),
+          operator,
+          ...entry,
+        };
+        this._historyById[id] = [item, ...(this._historyById[id] ?? [])];
+      },
       create(input: CreateFranchiseCompanyBody): FranchiseCompanyDetail {
         this._seed();
         const maxNumericId = this._rows.reduce((max, row) => {
@@ -210,6 +394,7 @@ export function createFranchiseTables() {
           fc_contract_renewal_date: input.fc_contract_renewal_date ?? null,
           royalty_rate: input.royalty_rate ?? null,
           note: input.note ?? null,
+          auth_method: input.auth_method,
           managed_store_count: 0,
           status: input.status,
           created_at: now,
@@ -219,7 +404,11 @@ export function createFranchiseTables() {
         this._historyById[row.id] = buildFranchiseCompanyHistory(row);
         return buildFranchiseCompanyDetail(row);
       },
-      update(id: string, input: UpdateFranchiseCompanyBody): FranchiseCompanyDetail | undefined {
+      update(
+        id: string,
+        input: UpdateFranchiseCompanyBody,
+        operator = 'システム',
+      ): FranchiseCompanyDetail | undefined {
         this._seed();
         const current = this._rows.find((row) => row.id === id);
         if (!current) return undefined;
@@ -259,6 +448,7 @@ export function createFranchiseTables() {
           royalty_rate:
             input.royalty_rate !== undefined ? input.royalty_rate : current.royalty_rate,
           note: input.note !== undefined ? input.note : current.note,
+          auth_method: input.auth_method ?? current.auth_method,
           status: input.status ?? current.status,
           updated_at: new Date().toISOString(),
         };
@@ -269,7 +459,7 @@ export function createFranchiseTables() {
         const now = next.updated_at;
         const pushChange = (changed_item: string, before: string | null, after: string | null) => {
           if (before === after) return;
-          changes.unshift({ updated_at: now, operator: 'システム', changed_item, before, after });
+          changes.unshift({ updated_at: now, operator, changed_item, before, after });
         };
         pushChange('法人名（正式名称）', current.formal_name, next.formal_name);
         pushChange('法人名（表示名）', current.display_name, next.display_name);
@@ -289,11 +479,41 @@ export function createFranchiseTables() {
           next.status === 'active' ? '有効' : '無効',
         );
         if (input.note !== undefined) pushChange('備考', current.note, next.note);
+        pushChange(
+          '認証方式',
+          current.auth_method === 'idaas' ? 'IDaaS' : 'Google SSO',
+          next.auth_method === 'idaas' ? 'IDaaS' : 'Google SSO',
+        );
+        if (input.corporate_number !== undefined)
+          pushChange('法人番号', current.corporate_number, next.corporate_number);
+        if (input.representative_name !== undefined)
+          pushChange('代表者名', current.representative_name, next.representative_name);
+        if (input.head_office_address !== undefined)
+          pushChange('本社所在地', current.head_office_address, next.head_office_address);
+        if (input.phone !== undefined) pushChange('電話番号', current.phone, next.phone);
+        if (input.contact_person !== undefined)
+          pushChange('担当者変更', current.contact_person, next.contact_person);
+        if (input.contact_phone !== undefined)
+          pushChange('担当者連絡先', current.contact_phone, next.contact_phone);
+        if (input.fc_contract_start_date !== undefined)
+          pushChange('FC契約開始日', current.fc_contract_start_date, next.fc_contract_start_date);
+        if (input.fc_contract_renewal_date !== undefined)
+          pushChange(
+            'FC契約更新日',
+            current.fc_contract_renewal_date,
+            next.fc_contract_renewal_date,
+          );
+        if (input.royalty_rate !== undefined)
+          pushChange(
+            'ロイヤリティ率',
+            current.royalty_rate === null ? null : String(current.royalty_rate),
+            next.royalty_rate === null ? null : String(next.royalty_rate),
+          );
         if (changes.length > 0)
           this._historyById[id] = [...changes, ...(this._historyById[id] ?? [])];
         return buildFranchiseCompanyDetail(next);
       },
-      delete(id: string): boolean {
+      delete(id: string, operator = 'システム'): boolean {
         this._seed();
         const currentIndex = this._rows.findIndex((row) => row.id === id);
         if (currentIndex === -1) return false;
@@ -301,7 +521,7 @@ export function createFranchiseTables() {
         this._historyById[id] = [
           {
             updated_at: new Date().toISOString(),
-            operator: 'システム',
+            operator,
             changed_item: '削除',
             before: current.display_name,
             after: null,

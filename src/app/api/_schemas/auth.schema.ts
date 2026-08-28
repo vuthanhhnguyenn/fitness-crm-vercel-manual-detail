@@ -139,6 +139,13 @@ export const MeResponseSchema = z
       .enum(['System', 'Headquarter', 'Manager', 'Staff', 'Trainer', 'Observer'])
       .openapi({ example: 'Headquarter' }),
     position: z.string().openapi({ example: '本部管理者' }),
+    staff_id: z.string().openapi({
+      example: '1',
+      description: "Caller's own StaffListItem.id (empty string if no linked staff record)",
+    }),
+    managed_store_ids: z.array(z.string()).optional().openapi({
+      description: 'Store IDs this Manager oversees; present only when role=Manager',
+    }),
   })
   .openapi({ title: 'MeResponse', description: 'Current authenticated user' });
 

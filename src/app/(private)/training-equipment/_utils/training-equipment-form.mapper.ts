@@ -1,62 +1,65 @@
-import type { TrainingEquipmentItem } from '@/lib/api/types.gen';
+import type { TrainingEquipmentDetail } from '@/lib/api/types.gen';
 
-import type { TrainingEquipmentFormSubmitValues } from '../_schemas/training-equipment-form.schema';
+import type {
+  TrainingEquipmentFormSubmitValues,
+  TrainingEquipmentFormValues,
+} from '../_schemas/training-equipment-form.schema';
 
 export function trainingEquipmentFormToCreatePayload(values: TrainingEquipmentFormSubmitValues) {
   return {
-    store_id: values.store_id,
-    store_name: values.store_name,
+    storeId: values.storeId,
     name: values.name,
-    tool_type: values.tool_type,
+    mstToolId: values.mstToolId,
     quantity: values.quantity,
-    installation_area: values.installation_area ?? null,
+    installationStatus: values.installationStatus,
+    locationInGym: values.locationInGym ?? null,
     manufacturer: values.manufacturer ?? null,
-    model_number: values.model_number ?? null,
-    installed_on: values.installed_on ?? null,
-    status: values.status,
-    notes: values.notes ?? null,
+    model: values.model ?? null,
+    installedOn: values.installedOn ?? null,
+    note: values.note ?? null,
   };
 }
 
+/** FR-005: store and installation status are not editable (status is changed from the detail page). */
 export function trainingEquipmentFormToUpdatePayload(values: TrainingEquipmentFormSubmitValues) {
   return {
     name: values.name,
-    tool_type: values.tool_type,
+    mstToolId: values.mstToolId,
     quantity: values.quantity,
-    installation_area: values.installation_area ?? null,
+    locationInGym: values.locationInGym ?? null,
     manufacturer: values.manufacturer ?? null,
-    model_number: values.model_number ?? null,
-    installed_on: values.installed_on ?? null,
-    notes: values.notes ?? null,
+    model: values.model ?? null,
+    installedOn: values.installedOn ?? null,
+    note: values.note ?? null,
   };
 }
 
-export function equipmentToFormDefaults(equipment: TrainingEquipmentItem) {
+export function equipmentToFormDefaults(
+  equipment: TrainingEquipmentDetail,
+): TrainingEquipmentFormValues {
   return {
-    store_id: equipment.store_id,
-    store_name: equipment.store_name,
+    storeId: equipment.storeId,
     name: equipment.name,
-    tool_type: equipment.tool_type,
+    mstToolId: equipment.mstToolId,
     quantity: equipment.quantity,
-    installation_area: equipment.installation_area,
+    locationInGym: equipment.locationInGym,
     manufacturer: equipment.manufacturer,
-    model_number: equipment.model_number,
-    installed_on: equipment.installed_on,
-    status: equipment.status,
-    notes: equipment.notes,
+    model: equipment.model,
+    installedOn: equipment.installedOn,
+    installationStatus: equipment.installationStatus,
+    note: equipment.note,
   };
 }
 
-export const emptyTrainingEquipmentFormDefaults = {
-  store_id: '',
-  store_name: '',
+export const emptyTrainingEquipmentFormDefaults: TrainingEquipmentFormValues = {
+  storeId: '',
   name: '',
-  tool_type: 'machine' as const,
+  mstToolId: '',
   quantity: 1,
-  installation_area: null,
+  locationInGym: null,
   manufacturer: null,
-  model_number: null,
-  installed_on: null,
-  status: 'installed' as const,
-  notes: null,
+  model: null,
+  installedOn: null,
+  installationStatus: 'installed',
+  note: null,
 };

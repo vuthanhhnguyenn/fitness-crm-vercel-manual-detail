@@ -1,9 +1,5 @@
 'use client';
 
-import { Suspense } from 'react';
-
-import { useSearchParams } from 'next/navigation';
-
 import { downloadCsv, getCsvFilenameFromContentDisposition } from '@/utils/csv.util';
 import { useMutation } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
@@ -11,43 +7,32 @@ import { toast } from 'sonner';
 
 import { RoleGatedButton } from '@/components/common/role-gated-button';
 
-import { TrainingEquipment } from '@/lib/api';
-import type { PostCrmTrainingEquipmentExportData } from '@/lib/api/types.gen';
+import { TrainingEquipmentManagement } from '@/lib/api';
+import type { GetCrmTrainingEquipmentExportData } from '@/lib/api/types.gen';
 
 import { Permission } from '@/types/permission.type';
 
-import { TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT } from '../_constants/training-equipment.constants';
-
-type SortOrder = 'asc' | 'desc';
+type ExportQuery = NonNullable<GetCrmTrainingEquipmentExportData['query']>;
 type CsvDownload = { blob: Blob; filename: string };
 
-function asSortOrder(value: string | null, fallback: SortOrder): SortOrder {
-  return value === 'asc' || value === 'desc' ? value : fallback;
-}
+type TrainingEquipmentCsvExportButtonProps = {
+  /**
+   * FR-010: same filters and ordering as the list, without pagination. Takes what the list's
+   * filter hook already built, so the URL is never parsed twice.
+   */
+  query: ExportQuery;
+  /** Blocks the export while the store scope is unsettled (the API returns 400 without `storeId`). */
+  disabled?: boolean;
+};
 
-function TrainingEquipmentCsvExportButtonContent() {
-  const searchParams = useSearchParams();
+export function TrainingEquipmentCsvExportButton({
+  query,
+  disabled = false,
+}: TrainingEquipmentCsvExportButtonProps) {
   const { mutate, isPending } = useMutation({
     mutationFn: async (): Promise<CsvDownload> => {
-      const body: NonNullable<PostCrmTrainingEquipmentExportData['body']> = {
-        keyword: searchParams.get('te_keyword') || undefined,
-        tool_type:
-          (searchParams.get('te_tool_type') as NonNullable<
-            PostCrmTrainingEquipmentExportData['body']
-          >['tool_type']) || undefined,
-        status:
-          (searchParams.get('te_status') as NonNullable<
-            PostCrmTrainingEquipmentExportData['body']
-          >['status']) || TRAINING_EQUIPMENT_STATUS_FILTER_DEFAULT,
-        sort_by:
-          (searchParams.get('te_sort_by') as NonNullable<
-            PostCrmTrainingEquipmentExportData['body']
-          >['sort_by']) || undefined,
-        sort_order: asSortOrder(searchParams.get('te_sort_order'), 'asc'),
-      };
-
-      const { data, response } = await TrainingEquipment.postCrmTrainingEquipmentExport({
-        body,
+      const { data, response } = await TrainingEquipmentManagement.getCrmTrainingEquipmentExport({
+        query,
         parseAs: 'blob',
         throwOnError: true,
       });
@@ -62,10 +47,7 @@ function TrainingEquipmentCsvExportButtonContent() {
     },
     onSuccess: ({ blob, filename }) => {
       downloadCsv(blob, filename);
-      toast.success('CSVを出力しました');
-    },
-    onError: () => {
-      toast.error('CSVの出力に失敗しました');
+      toast.success('機材台帳のCSVをダウンロードしました');
     },
   });
 
@@ -75,31 +57,11 @@ function TrainingEquipmentCsvExportButtonContent() {
       variant="outline"
       className="gap-1"
       denyTooltip="CSV出力の権限がありません"
-      disabled={isPending}
+      disabled={disabled || isPending}
       onClick={() => mutate()}
     >
       <Download className="size-4" />
       CSV出力
     </RoleGatedButton>
-  );
-}
-
-export function TrainingEquipmentCsvExportButton() {
-  return (
-    <Suspense
-      fallback={
-        <RoleGatedButton
-          requiredPermission={Permission.TrainingEquipmentExport}
-          variant="outline"
-          className="gap-1"
-          disabled
-        >
-          <Download className="size-4" />
-          CSV出力
-        </RoleGatedButton>
-      }
-    >
-      <TrainingEquipmentCsvExportButtonContent />
-    </Suspense>
   );
 }

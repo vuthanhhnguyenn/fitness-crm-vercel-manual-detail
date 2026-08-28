@@ -23,6 +23,8 @@ import type {
 } from '@/types/api/visit-experience.type';
 
 import {
+  BL_MATCH_OPTIONS,
+  BL_MATCH_SELECT_ITEMS,
   BRAND_OPTIONS,
   BRAND_SELECT_ITEMS,
   DATE_RANGE_OPTIONS,
@@ -38,14 +40,15 @@ interface VisitExperienceFiltersProps {
   status: string;
   brandName: string;
   storeName: string;
+  blMatch: string;
   dateRange: string;
+  showStoreFilter: boolean;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: VisitExperienceStatus | '') => void;
   onBrandChange: (value: string) => void;
   onStoreChange: (value: string) => void;
+  onBlMatchChange: (value: string) => void;
   onDateRangeChange: (value: VisitExperienceDateRangeFilter | '') => void;
-  onClearFilters: () => void;
-  hasActiveFilters: boolean;
   activeFilterCount: number;
 }
 
@@ -57,14 +60,15 @@ export function VisitExperienceFilters({
   status,
   brandName,
   storeName,
+  blMatch,
   dateRange,
+  showStoreFilter,
   onSearchChange,
   onStatusChange,
   onBrandChange,
   onStoreChange,
+  onBlMatchChange,
   onDateRangeChange,
-  onClearFilters,
-  hasActiveFilters,
   activeFilterCount,
 }: VisitExperienceFiltersProps) {
   const [showFilters, setShowFilters] = useState(false);
@@ -76,7 +80,7 @@ export function VisitExperienceFilters({
           <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
           <Input
             className="pl-9 text-xs"
-            placeholder="予約番号・氏名で検索"
+            placeholder="予約番号・氏名で検索..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />
@@ -142,28 +146,30 @@ export function VisitExperienceFilters({
             </SelectContent>
           </Select>
 
-          <Select
-            value={storeName || '全店舗'}
-            items={STORE_SELECT_ITEMS}
-            onValueChange={(v) => {
-              if (v == null) return;
-              onStoreChange(v === '全店舗' ? '' : v);
-            }}
-          >
-            <SelectTrigger
-              className={cn('h-8 w-[180px] text-xs', filterActiveClass(storeName, ''))}
+          {showStoreFilter && (
+            <Select
+              value={storeName || '全店舗'}
+              items={STORE_SELECT_ITEMS}
+              onValueChange={(v) => {
+                if (v == null) return;
+                onStoreChange(v === '全店舗' ? '' : v);
+              }}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="全店舗">全店舗</SelectItem>
-              {STORE_OPTIONS.map((store) => (
-                <SelectItem key={store} value={store} className="text-xs">
-                  {store}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <SelectTrigger
+                className={cn('h-8 w-[180px] text-xs', filterActiveClass(storeName, ''))}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="全店舗">全店舗</SelectItem>
+                {STORE_OPTIONS.map((store) => (
+                  <SelectItem key={store} value={store} className="text-xs">
+                    {store}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <Select
             value={dateRange || '全期間'}
@@ -185,16 +191,27 @@ export function VisitExperienceFilters({
             </SelectContent>
           </Select>
 
-          {hasActiveFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground ml-auto h-8 text-xs"
-              onClick={onClearFilters}
-            >
-              すべてクリア
-            </Button>
-          )}
+          <Select
+            value={blMatch || '全件'}
+            items={BL_MATCH_SELECT_ITEMS}
+            onValueChange={(v) => {
+              if (v == null) return;
+              onBlMatchChange(v === '全件' ? '' : v);
+            }}
+          >
+            <SelectTrigger className={cn('h-8 w-44 text-xs', filterActiveClass(blMatch, ''))}>
+              <SelectValue>
+                {`BL照合: ${BL_MATCH_OPTIONS.find((opt) => (opt.value || '全件') === (blMatch || '全件'))?.label ?? '全件'}`}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {BL_MATCH_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value || '全件'} value={opt.value || '全件'}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
     </div>

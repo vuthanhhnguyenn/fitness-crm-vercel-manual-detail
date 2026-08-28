@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-
-import { PAGE_SIZE } from '@/constants/app.constants';
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import type {
   FranchiseCompanyStatus,
@@ -10,6 +9,7 @@ import type {
 } from '@/lib/api/types.gen';
 
 import {
+  FRANCHISE_COMPANY_DEFAULT_PAGE_SIZE,
   FRANCHISE_COMPANY_STATUS_VALUES,
   FRANCHISE_COMPANY_TYPE_VALUES,
 } from '../_constants/constants';
@@ -28,7 +28,7 @@ export function useFranchiseCompaniesFilters() {
   const [filters, setFilters] = useQueryStates(
     {
       page: parseAsInteger.withDefault(1),
-      limit: parseAsInteger.withDefault(PAGE_SIZE),
+      limit: parseAsInteger.withDefault(FRANCHISE_COMPANY_DEFAULT_PAGE_SIZE),
       search: parseAsString.withDefault(''),
       company_type: parseAsStringEnum<FranchiseCompanyType>([...FRANCHISE_COMPANY_TYPE_VALUES]),
       status: parseAsStringEnum<FranchiseCompanyStatus>([...FRANCHISE_COMPANY_STATUS_VALUES]),
@@ -47,17 +47,9 @@ export function useFranchiseCompaniesFilters() {
     },
   );
 
-  const [searchInput, setSearchInput] = useState(filters.search);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput !== filters.search) {
-        setFilters({ search: searchInput || null, page: 1 });
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [searchInput, filters.search, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(filters.search, (value) =>
+    setFilters({ search: value || null, page: 1 }),
+  );
 
   const updateFilter = <K extends keyof FranchiseCompaniesFiltersState>(
     key: K,
@@ -70,7 +62,7 @@ export function useFranchiseCompaniesFilters() {
     setSearchInput('');
     setFilters({
       page: 1,
-      limit: PAGE_SIZE,
+      limit: FRANCHISE_COMPANY_DEFAULT_PAGE_SIZE,
       search: null,
       company_type: null,
       status: null,

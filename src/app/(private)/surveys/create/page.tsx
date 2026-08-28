@@ -56,7 +56,7 @@ export default function SurveyCreatePage() {
     ...postCrmSurveysMutation(),
     onSuccess: (response) => {
       toast.success(response.message || 'アンケートを登録しました');
-      queryClient.invalidateQueries({ queryKey: getCrmSurveysQueryKey(), refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: getCrmSurveysQueryKey() });
       router.push(navigate('/surveys/[id]', response.survey.id));
     },
     onError: (error: unknown) => {

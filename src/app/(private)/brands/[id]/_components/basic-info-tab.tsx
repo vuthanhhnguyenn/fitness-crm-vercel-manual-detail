@@ -1,4 +1,4 @@
-import { formatDate } from '@/utils/format.util';
+import { formatDateYYYYMMDD } from '@/utils/date.util';
 import { Tag } from 'lucide-react';
 
 import { StatusCard } from '@/components/common/status-card';
@@ -40,8 +40,8 @@ export function BasicInfoTab({ brand }: BasicInfoTabProps) {
             icon={Tag}
             label={brand.status === 'active' ? '有効' : '無効'}
             meta={[
-              `作成: ${formatDate(brand.created_at)}`,
-              `更新: ${formatDate(brand.updated_at)}`,
+              `作成: ${formatDateYYYYMMDD(brand.created_at)}`,
+              `更新: ${formatDateYYYYMMDD(brand.updated_at)}`,
             ]}
           />
         </div>

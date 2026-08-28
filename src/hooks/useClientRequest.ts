@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 
 import Cookies from 'universal-cookie';
 
+import { withApiErrorStatus } from '@/lib/api-error.util';
 import { ResolvedRequestOptions } from '@/lib/api/client';
 import { client } from '@/lib/api/client.gen';
 import ClientRequestService from '@/lib/services/ClientRequest.service';
@@ -58,8 +59,14 @@ export default function useClientRequest() {
     [clientRequest],
   );
 
-  const handleError = useCallback((error: unknown) => {
-    return Promise.reject(error);
+  /**
+   * The client throws the parsed response body, which carries no HTTP status of its own.
+   * Attaching it here is what lets a screen tell "not found" from "request failed"
+   * (read it with `getApiErrorStatus`). The rejection is kept — callers already rely on
+   * a failed request propagating out of `request()`.
+   */
+  const handleError = useCallback((error: unknown, response: Response) => {
+    return Promise.reject(withApiErrorStatus(error, response.status));
   }, []);
 
   const interceptorRequestId = useMemo(

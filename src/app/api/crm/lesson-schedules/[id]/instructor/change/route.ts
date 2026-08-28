@@ -45,13 +45,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'インストラクターIDが必要です' }, { status: 400 });
     }
 
-    const staff = db.staffs
-      .getList()
-      .find((s) => s.id === instructorId || s.staff_id === instructorId);
+    const instructor = db.instructors.getById(instructorId);
 
     db.lessonSchedules.update(scheduleId, {
       instructor_id: instructorId,
-      instructor_name: staff?.name ?? existing.instructor_name,
+      instructor_name: instructor?.instructor_name ?? existing.instructor_name,
     });
 
     const response: ChangeResponse = { message: 'インストラクターを変更しました' };

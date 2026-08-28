@@ -54,7 +54,6 @@ export function LockerContractTerminateDialog({
       });
       queryClient.invalidateQueries({
         queryKey: getCrmLockersContractsQueryKey(),
-        refetchType: 'all',
       });
       onSuccess?.();
     },

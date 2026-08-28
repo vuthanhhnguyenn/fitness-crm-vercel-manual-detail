@@ -24,12 +24,22 @@ export const DATE_RANGE_OPTIONS: { label: string; value: VisitExperienceDateRang
   { label: '直近7日', value: 'last_7_days' },
 ];
 
+export const BL_MATCH_OPTIONS: { label: string; value: string }[] = [
+  { label: '全件', value: '' },
+  { label: '要注意者のみ', value: 'true' },
+];
+
+export const BL_MATCH_SELECT_ITEMS = BL_MATCH_OPTIONS.map((opt) => ({
+  label: opt.label,
+  value: opt.value || '全件',
+}));
+
 export const STORE_OPTIONS = [
-  'JOYFIT渋谷店',
-  'JOYFIT新宿店',
-  'JOYFIT24池袋店',
-  'JOYFIT YOGA恵比寿店',
-  'JOYFIT+銀座店',
+  'Fit365八潮店',
+  'JOYFIT東十条店',
+  'JOYFIT24 新宿店',
+  'JOYFIT YOGA 心斎橋店',
+  'JOYFIT+ 名古屋駅前店',
 ];
 
 export const STATUS_SELECT_ITEMS = STATUS_OPTIONS.map((opt) => ({

@@ -20,6 +20,13 @@ import { useLockerPendingSlotsFilters } from '../pending/_hooks/use-locker-pendi
 
 type LockerListTab = 'lockers' | 'contracts' | 'pending';
 
+/** The CSV export button label follows the active tab (prototype: locker management header) */
+const CSV_EXPORT_LABELS: Record<LockerListTab, string> = {
+  lockers: 'ロッカー一覧をCSV出力',
+  contracts: '契約一覧をCSV出力',
+  pending: '開放待ち一覧をCSV出力',
+};
+
 type LockerListCsvExportButtonProps = {
   activeTab: LockerListTab;
   permission: Permission;
@@ -36,14 +43,14 @@ function LockersTabCsvExportButton({
   return (
     <RoleGatedButton
       variant="outline"
-      className="gap-1"
+      className="gap-1 whitespace-nowrap"
       requiredPermission={permission}
       denyTooltip={denyTooltip}
       onClick={() => exportCsv({ body: exportQueryParams })}
       disabled={isPending}
     >
       <Download className="size-4" />
-      CSV出力
+      {CSV_EXPORT_LABELS.lockers}
     </RoleGatedButton>
   );
 }
@@ -58,14 +65,14 @@ function ContractsTabCsvExportButton({
   return (
     <RoleGatedButton
       variant="outline"
-      className="gap-1"
+      className="gap-1 whitespace-nowrap"
       requiredPermission={permission}
       denyTooltip={denyTooltip}
       onClick={() => exportCsv({ body: exportQueryParams })}
       disabled={isPending}
     >
       <Download className="size-4" />
-      CSV出力
+      {CSV_EXPORT_LABELS.contracts}
     </RoleGatedButton>
   );
 }
@@ -80,14 +87,14 @@ function PendingTabCsvExportButton({
   return (
     <RoleGatedButton
       variant="outline"
-      className="gap-1"
+      className="gap-1 whitespace-nowrap"
       requiredPermission={permission}
       denyTooltip={denyTooltip}
       onClick={() => exportCsv({ body: exportQueryParams })}
       disabled={isPending}
     >
       <Download className="size-4" />
-      CSV出力
+      {CSV_EXPORT_LABELS.pending}
     </RoleGatedButton>
   );
 }
@@ -112,9 +119,9 @@ export function LockerListCsvExportButton(props: LockerListCsvExportButtonProps)
   return (
     <Suspense
       fallback={
-        <Button variant="outline" className="gap-1" disabled>
+        <Button variant="outline" className="gap-1 whitespace-nowrap" disabled>
           <Download className="size-4" />
-          CSV出力
+          {CSV_EXPORT_LABELS[props.activeTab]}
         </Button>
       }
     >

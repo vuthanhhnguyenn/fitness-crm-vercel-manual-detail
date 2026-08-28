@@ -72,7 +72,7 @@ const timingSchema = z.discriminatedUnion('type', [
     intervalUnit: z.enum(['day', 'week', 'month']).optional(),
     endDate: z.date().optional(),
     maxOccurrences: optionalNumber('1以上の配信回数を入力してください'),
-    endMode: z.enum(['date', 'count']).default('count'),
+    endMode: z.enum(['none', 'date', 'count']).default('none'),
   }),
 ]);
 
@@ -348,7 +348,7 @@ export function manualNotificationDetailToFormValues(detail: {
             intervalUnit: detail.timing.intervalUnit,
             endDate: detail.timing.endAt ? new Date(detail.timing.endAt) : undefined,
             maxOccurrences: detail.timing.maxOccurrences,
-            endMode: detail.timing.endAt ? 'date' : 'count',
+            endMode: detail.timing.endAt ? 'date' : detail.timing.maxOccurrences ? 'count' : 'none',
           };
 
   return {

@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,24 +13,36 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-import type { TrainingEquipmentItem } from '@/lib/api/types.gen';
+import type { TrainingEquipmentDetail } from '@/lib/api/types.gen';
+
+import { useSubmitGuard } from '../../_hooks/use-submit-guard.hook';
 
 type TrainingEquipmentDeleteDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  equipment: TrainingEquipmentItem;
+  equipment: TrainingEquipmentDetail;
   isSubmitting?: boolean;
+  /** Lets the double-submit guard reopen so a failed delete can be retried. */
+  isSubmitError?: boolean;
   onConfirm: () => void;
 };
 
+/** FR-006: equipment that still has exercise links cannot be deleted. */
 export function TrainingEquipmentDeleteDialog({
   open,
   onOpenChange,
   equipment,
   isSubmitting = false,
+  isSubmitError = false,
   onConfirm,
 }: TrainingEquipmentDeleteDialogProps) {
-  const hasLinkedExercises = equipment.linked_exercise_count > 0;
+  const hasLinkedExercises = equipment.linkedExercises.length > 0;
+  const { submitOnce, resetSubmitGuard } = useSubmitGuard(isSubmitting, isSubmitError);
+
+  // Reopening the dialog is a new attempt, so the guard must not stay closed from the previous one.
+  useEffect(() => {
+    if (open) resetSubmitGuard();
+  }, [open, resetSubmitGuard]);
 
   if (hasLinkedExercises) {
     return (
@@ -63,7 +77,9 @@ export function TrainingEquipmentDeleteDialog({
           <AlertDialogAction
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             disabled={isSubmitting}
-            onClick={onConfirm}
+            // Guarded: the losing requests of a rapid double click fail and toast 「削除に失敗しました」
+            // over an otherwise successful delete.
+            onClick={() => submitOnce(onConfirm)}
           >
             削除する
           </AlertDialogAction>

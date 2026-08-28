@@ -78,7 +78,6 @@ export function OptionDiscountDeleteDialog({
       toast.success('セット割を削除しました');
       queryClient.invalidateQueries({
         queryKey: getCrmOptionDiscountsQueryKey(),
-        refetchType: 'all',
       });
       onOpenChange(false);
       if (redirectOnSuccess) {

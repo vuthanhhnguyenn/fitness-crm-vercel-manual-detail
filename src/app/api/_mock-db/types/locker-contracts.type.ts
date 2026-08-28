@@ -1,5 +1,4 @@
 import type {
-  CreateLockerContractRequest,
   LockerContractChangeHistoryItem,
   LockerContractDetail,
   LockerContractListItem,
@@ -25,6 +24,7 @@ export type LockerContractsType = {
   getList(): LockerContractListItem[];
   getById(id: string): LockerContractDetail | undefined;
   getChangeHistory(id: string): LockerContractChangeHistoryItem[];
+  getTerminationDate(id: string): string | null;
   cancel(
     id: string,
     terminationDate: string,
@@ -32,9 +32,6 @@ export type LockerContractsType = {
   listByLockerId(lockerId: string): LockerContractListItem[];
   deleteByLockerId(lockerId: string): void;
   releaseByLockerNumber(lockerId: string, lockerNumber: string): boolean;
-  create(
-    input: CreateLockerContractRequest,
-  ): { ok: true; contract: LockerContractDetail } | { ok: false; error: string; status: number };
   update(
     id: string,
     patch: UpdateLockerContractRequest,

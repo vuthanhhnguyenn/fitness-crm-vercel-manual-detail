@@ -54,14 +54,11 @@ export function useLockerPendingSlotsCsvExport() {
   });
 }
 
-export function useLockerSlotsCsvExport(
-  lockerCode: string,
-  contractTypeMasters: { code: string; name: string }[],
-) {
+export function useLockerSlotsCsvExport(lockerCode: string) {
   return useMutation({
     ...postCrmLockersByIdSlotsExportMutation(),
     onSuccess: (data) => {
-      exportLockerSlotsCsv(data, lockerCode, contractTypeMasters);
+      exportLockerSlotsCsv(data, lockerCode);
       toast.success('CSVを出力しました');
     },
     onError: () => {

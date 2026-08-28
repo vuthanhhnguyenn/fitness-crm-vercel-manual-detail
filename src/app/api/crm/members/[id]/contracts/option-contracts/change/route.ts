@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { OPTION_CONTRACT_OPERATOR_ROLES, getAuthUserFromRequest } from '@/app/api/_lib/auth';
+import { toOptionContractResponse } from '@/app/api/_lib/member-contract';
 import { db } from '@/app/api/_mock-db';
 import {
   ChangeOptionContractRequest,
@@ -8,6 +10,7 @@ import {
   ErrorResponseSchema,
 } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { formatISODateLocal } from '@/utils/date.util';
 
 registerRoute({
   method: 'patch',
@@ -40,6 +43,16 @@ registerRoute({
       description: 'Bad request',
     },
     {
+      status: 401,
+      schema: ErrorResponseSchema,
+      description: 'Unauthorized',
+    },
+    {
+      status: 403,
+      schema: ErrorResponseSchema,
+      description: 'Role is not allowed to operate option contracts',
+    },
+    {
       status: 404,
       schema: ErrorResponseSchema,
       description: 'Member or contracts not found',
@@ -53,7 +66,7 @@ registerRoute({
 });
 
 function toDateOnly(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return formatISODateLocal(date);
 }
 
 function getFirstDayOfNextMonth(date: Date): Date {
@@ -62,6 +75,15 @@ function getFirstDayOfNextMonth(date: Date): Date {
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    // A-01 権限マトリクス「オプション操作」: Observer / Trainer は操作不可
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    if (!OPTION_CONTRACT_OPERATOR_ROLES.includes(authResult.user.role)) {
+      return NextResponse.json({ error: 'オプション操作の権限がありません' }, { status: 403 });
+    }
+
     const { id } = await params;
     const member = db.members.get(id);
     if (!member) {
@@ -118,7 +140,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
 
     db.contracts.create({
-      contract_id: member.profile.contract_id || `CONTRACT-${id}`,
+      contract_id: member.currentMainContract?.contractId || `CONTRACT-${id}`,
       member_id: id,
       data: {
         ...currentContracts,
@@ -142,8 +164,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     });
 
     return NextResponse.json({
-      removed_option_id: validatedBody.current_option_id,
-      added_option: nextOptionContract,
+      removedOptionId: validatedBody.current_option_id,
+      addedOption: toOptionContractResponse(nextOptionContract),
     });
   } catch {
     return NextResponse.json({ error: 'Failed to change option contract' }, { status: 500 });

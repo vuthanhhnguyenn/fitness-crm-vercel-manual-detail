@@ -1,11 +1,13 @@
 import { Suspense } from 'react';
 
-import { TermsPageContent } from './_components/terms-page-content';
+import { Loading } from '@/components/common/data-state-boundary/loading';
+
+import { TermsListSection } from './_components/terms-list-section';
 
 export default function TermsPage() {
   return (
-    <Suspense fallback={<div className="text-muted-foreground px-6 py-4 text-sm">Loading...</div>}>
-      <TermsPageContent />
+    <Suspense fallback={<Loading />}>
+      <TermsListSection />
     </Suspense>
   );
 }

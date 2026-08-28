@@ -10,9 +10,9 @@ export const staffEditableScopeSchema = z
     store_id: z.string().optional().or(z.literal('')),
     store_name: z.string().optional().or(z.literal('')),
     start_date: z.string().min(1, '必須です'),
-    end_date: z.string().min(1, '必須です'),
+    end_date: z.string().optional().or(z.literal('')),
   })
-  .refine((data) => new Date(data.start_date) < new Date(data.end_date), {
+  .refine((data) => !data.end_date || new Date(data.start_date) < new Date(data.end_date), {
     message: '開始日は終了日より前にしてください',
     path: ['end_date'],
   });
@@ -20,8 +20,14 @@ export const staffEditableScopeSchema = z
 // ─── Form Schema ───────────────────────────────────────────────────────────────
 export const staffEditFormSchema = z.object({
   // 個人情報
-  last_name: z.string().min(1, '必須です'),
-  first_name: z.string().min(1, '必須です'),
+  last_name: z
+    .string()
+    .max(255, '姓は255文字以内で入力してください')
+    .refine((v) => v.trim().length > 0, { message: '必須です' }),
+  first_name: z
+    .string()
+    .max(255, '名は255文字以内で入力してください')
+    .refine((v) => v.trim().length > 0, { message: '必須です' }),
   last_name_kana: z.string().optional().or(z.literal('')),
   first_name_kana: z.string().optional().or(z.literal('')),
   gender: z.enum(['male', 'female', 'other']).optional().or(z.literal('')),
@@ -51,6 +57,12 @@ export const staffEditFormSchema = z.object({
   transfer_request: z.boolean().default(false),
   // 編集可能情報
   editable_scopes: z.array(staffEditableScopeSchema),
+  // 所属設定 (パターンA: 店舗直接紐づき / パターンB: FC企業紐づき)
+  affiliation_type: z.enum(['direct_store', 'fc_company']),
+  affiliation_store_id: z.string().optional().or(z.literal('')),
+  affiliation_fc_company_id: z.string().optional().or(z.literal('')),
+  // 備考
+  note: z.string().max(1000, '備考は1000文字以内で入力してください').optional().or(z.literal('')),
 });
 
 export type StaffEditFormValues = z.infer<typeof staffEditFormSchema>;

@@ -76,7 +76,6 @@ export function ContractDeleteDialog({
       toast.success(data.message || '主契約を削除しました');
       queryClient.invalidateQueries({
         queryKey: getCrmMainContractsQueryKey(),
-        refetchType: 'all',
       });
       onOpenChange(false);
       router.push(navigate('/contracts'));

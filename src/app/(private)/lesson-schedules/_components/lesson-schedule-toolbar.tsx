@@ -42,7 +42,7 @@ export function LessonScheduleToolbar({
   instructors = [],
   studios = [],
   isTrainer = false,
-}: LessonScheduleToolbarProps) {
+}: Readonly<LessonScheduleToolbarProps>) {
   const { filters, setFilters, goToPrev, goToNext, goToToday } = useLessonScheduleFiltersContext();
 
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -126,7 +126,12 @@ export function LessonScheduleToolbar({
         {stores.length > 0 && (
           <Select
             value={filters.store_id ?? 'all'}
-            onValueChange={(v) => setFilters({ store_id: v === 'all' ? null : v })}
+            onValueChange={(v) =>
+              setFilters({
+                store_id: v === 'all' ? null : v,
+                focused_store_id: null,
+              })
+            }
             disabled={isTrainer}
           >
             <SelectTrigger className="h-8 w-[160px] text-xs">

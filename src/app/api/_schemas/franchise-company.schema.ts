@@ -1,3 +1,5 @@
+import { TEXTAREA_MAX_LENGTH, TEXT_MAX_LENGTH } from '@/constants/app.constants';
+import { isJapanesePhoneNumber, japanesePhoneMessage } from '@/utils/validation.util';
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
@@ -12,6 +14,10 @@ export const FranchiseCompanyTypeSchema = z
 export const FranchiseCompanyStatusSchema = z
   .enum(['active', 'inactive'])
   .openapi({ title: 'FranchiseCompanyStatus', description: 'FC企業ステータス' });
+
+export const FranchiseCompanyAuthMethodSchema = z
+  .enum(['google_sso', 'idaas'])
+  .openapi({ title: 'FranchiseCompanyAuthMethod', description: '認証方式（Google SSO / IDaaS）' });
 
 export const FranchiseCompanyListItemSchema = z
   .object({
@@ -65,6 +71,7 @@ export const FranchiseCompanyDetailSchema = FranchiseCompanyListItemSchema.exten
     .openapi({ example: '2025-04-01', description: 'FC契約更新日' }),
   royalty_rate: z.number().nullable().openapi({ example: 5, description: 'ロイヤリティ率(%)' }),
   note: z.string().nullable().openapi({ description: '備考' }),
+  auth_method: FranchiseCompanyAuthMethodSchema.openapi({ description: '認証方式' }),
   created_at: z.string().openapi({ example: '2026-06-23T09:00:00.000Z', description: '作成日時' }),
   updated_at: z.string().openapi({ example: '2026-06-23T09:00:00.000Z', description: '更新日時' }),
 }).openapi({
@@ -106,16 +113,58 @@ const DATE_VALUE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 export const CreateFranchiseCompanyBodySchema = z
   .object({
-    formal_name: z.string().min(1, '法人名（正式名称）は必須です'),
-    display_name: z.string().default(''),
+    formal_name: z
+      .string()
+      .min(1, '法人名（正式名称）を入力してください')
+      .max(TEXT_MAX_LENGTH, `法人名（正式名称）は${TEXT_MAX_LENGTH}文字以内で入力してください。`),
+    display_name: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `法人名（表示名）は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .default(''),
     type: FranchiseCompanyTypeSchema.openapi({ description: '直営 / FC 区分' }),
     direct_owned_flag: z.boolean().default(false).openapi({ description: '直営店フラグ' }),
-    corporate_number: z.string().nullable().optional().openapi({ description: '法人番号' }),
-    representative_name: z.string().nullable().optional().openapi({ description: '代表者名' }),
-    head_office_address: z.string().nullable().optional().openapi({ description: '本社所在地' }),
-    phone: z.string().nullable().optional().openapi({ description: '電話番号' }),
-    contact_person: z.string().nullable().optional().openapi({ description: '担当者名' }),
-    contact_phone: z.string().nullable().optional().openapi({ description: '担当者連絡先' }),
+    corporate_number: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `法人番号は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional()
+      .openapi({ description: '法人番号' }),
+    representative_name: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `代表者名は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional()
+      .openapi({ description: '代表者名' }),
+    head_office_address: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `本社所在地は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional()
+      .openapi({ description: '本社所在地' }),
+    phone: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `電話番号は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional()
+      .refine((value) => !value || isJapanesePhoneNumber(value.trim()), {
+        message: japanesePhoneMessage('電話番号'),
+      })
+      .openapi({ description: '電話番号' }),
+    contact_person: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `担当者名は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional()
+      .openapi({ description: '担当者名' }),
+    contact_phone: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `担当者連絡先は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional()
+      .refine((value) => !value || isJapanesePhoneNumber(value.trim()), {
+        message: japanesePhoneMessage('担当者連絡先'),
+      })
+      .openapi({ description: '担当者連絡先' }),
     fc_contract_start_date: z
       .string()
       .nullable()
@@ -139,7 +188,13 @@ export const CreateFranchiseCompanyBodySchema = z
       .nullable()
       .optional()
       .openapi({ description: 'ロイヤリティ率(%)' }),
-    note: z.string().nullable().optional().openapi({ description: '備考' }),
+    note: z
+      .string()
+      .max(TEXTAREA_MAX_LENGTH, `備考は${TEXTAREA_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional()
+      .openapi({ description: '備考' }),
+    auth_method: FranchiseCompanyAuthMethodSchema.openapi({ description: '認証方式' }),
     status: FranchiseCompanyStatusSchema.default('active').openapi({ description: 'ステータス' }),
   })
   .superRefine((value, ctx) => {
@@ -212,20 +267,56 @@ export const GetFranchiseCompanyDetailResponseSchema = z
 
 export const UpdateFranchiseCompanyBodySchema = z
   .object({
-    formal_name: z.string().min(1).optional(),
-    display_name: z.string().optional(),
+    formal_name: z
+      .string()
+      .min(1, '法人名（正式名称）を入力してください')
+      .max(TEXT_MAX_LENGTH, `法人名（正式名称）は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .optional(),
+    display_name: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `法人名（表示名）は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .optional(),
     type: FranchiseCompanyTypeSchema.optional(),
     direct_owned_flag: z.boolean().optional(),
-    corporate_number: z.string().nullable().optional(),
-    representative_name: z.string().nullable().optional(),
-    head_office_address: z.string().nullable().optional(),
-    phone: z.string().nullable().optional(),
-    contact_person: z.string().nullable().optional(),
-    contact_phone: z.string().nullable().optional(),
+    corporate_number: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `法人番号は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional(),
+    representative_name: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `代表者名は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional(),
+    head_office_address: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `本社所在地は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional(),
+    phone: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `電話番号は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional(),
+    contact_person: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `担当者名は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional(),
+    contact_phone: z
+      .string()
+      .max(TEXT_MAX_LENGTH, `担当者連絡先は${TEXT_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional(),
     fc_contract_start_date: z.string().nullable().optional(),
     fc_contract_renewal_date: z.string().nullable().optional(),
     royalty_rate: z.number().nullable().optional(),
-    note: z.string().nullable().optional(),
+    note: z
+      .string()
+      .max(TEXTAREA_MAX_LENGTH, `備考は${TEXTAREA_MAX_LENGTH}文字以内で入力してください。`)
+      .nullable()
+      .optional(),
+    auth_method: FranchiseCompanyAuthMethodSchema.optional(),
     status: FranchiseCompanyStatusSchema.optional(),
   })
   .superRefine((value, ctx) => {
@@ -248,7 +339,7 @@ export const UpdateFranchiseCompanyBodySchema = z
 
 export const UpdateFranchiseCompanyResponseSchema = z
   .object({
-    message: z.string().openapi({ example: 'FC企業を更新しました' }),
+    message: z.string().openapi({ example: 'FC企業の変更を保存しました' }),
     franchise_company: FranchiseCompanyDetailSchema,
   })
   .openapi({
@@ -263,6 +354,42 @@ export const DeleteFranchiseCompanyResponseSchema = z
   .openapi({
     title: 'DeleteFranchiseCompanyResponse',
     description: 'FC企業削除レスポンス',
+  });
+
+export const GetFranchiseCompanyLinkableStoresResponseSchema = z
+  .object({
+    stores: z.array(FranchiseCompanyLinkedStoreSchema),
+  })
+  .openapi({
+    title: 'GetFranchiseCompanyLinkableStoresResponse',
+    description: '紐づけ可能な店舗一覧レスポンス（FC企業未紐づけの店舗）',
+  });
+
+export const LinkFranchiseCompanyStoreBodySchema = z
+  .object({
+    store_id: z.string().openapi({ example: 'store-005', description: '紐づける店舗の内部ID' }),
+  })
+  .openapi({
+    title: 'LinkFranchiseCompanyStoreBody',
+    description: 'FC企業への店舗紐づけリクエスト',
+  });
+
+export const LinkFranchiseCompanyStoreResponseSchema = z
+  .object({
+    message: z.string().openapi({ example: '店舗を紐づけました' }),
+  })
+  .openapi({
+    title: 'LinkFranchiseCompanyStoreResponse',
+    description: 'FC企業への店舗紐づけレスポンス',
+  });
+
+export const UnlinkFranchiseCompanyStoreResponseSchema = z
+  .object({
+    message: z.string().openapi({ example: '店舗の紐づけを解除しました' }),
+  })
+  .openapi({
+    title: 'UnlinkFranchiseCompanyStoreResponse',
+    description: 'FC企業の店舗紐づけ解除レスポンス',
   });
 
 export const GetFranchiseCompanyHistoryResponseSchema = z
@@ -285,6 +412,7 @@ export type GetFranchiseCompanyDetailResponse = z.infer<
 >;
 export type FranchiseCompanyType = z.infer<typeof FranchiseCompanyTypeSchema>;
 export type FranchiseCompanyStatus = z.infer<typeof FranchiseCompanyStatusSchema>;
+export type FranchiseCompanyAuthMethod = z.infer<typeof FranchiseCompanyAuthMethodSchema>;
 export type CreateFranchiseCompanyBody = z.infer<typeof CreateFranchiseCompanyBodySchema>;
 export type CreateFranchiseCompanyResponse = z.infer<typeof CreateFranchiseCompanyResponseSchema>;
 export type UpdateFranchiseCompanyBody = z.infer<typeof UpdateFranchiseCompanyBodySchema>;
@@ -292,4 +420,14 @@ export type UpdateFranchiseCompanyResponse = z.infer<typeof UpdateFranchiseCompa
 export type DeleteFranchiseCompanyResponse = z.infer<typeof DeleteFranchiseCompanyResponseSchema>;
 export type GetFranchiseCompanyHistoryResponse = z.infer<
   typeof GetFranchiseCompanyHistoryResponseSchema
+>;
+export type GetFranchiseCompanyLinkableStoresResponse = z.infer<
+  typeof GetFranchiseCompanyLinkableStoresResponseSchema
+>;
+export type LinkFranchiseCompanyStoreBody = z.infer<typeof LinkFranchiseCompanyStoreBodySchema>;
+export type LinkFranchiseCompanyStoreResponse = z.infer<
+  typeof LinkFranchiseCompanyStoreResponseSchema
+>;
+export type UnlinkFranchiseCompanyStoreResponse = z.infer<
+  typeof UnlinkFranchiseCompanyStoreResponseSchema
 >;

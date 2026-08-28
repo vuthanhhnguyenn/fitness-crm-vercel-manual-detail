@@ -8,6 +8,7 @@ import type { GetCrmLockersContractsResponse } from '@/lib/api/types.gen';
 
 import {
   LOCKER_CONTRACT_STATUS_BADGE_CLASSES,
+  LOCKER_CONTRACT_STATUS_DOT_CLASSES,
   LOCKER_CONTRACT_STATUS_LABELS,
   LOCKER_OPTION_TYPE_LABELS,
 } from '../../_constants/constants';
@@ -59,8 +60,11 @@ export function getLockerContractsTableColumns(): ColumnDef<LockerContractRow>[]
       cell: ({ row }) => (
         <Badge
           variant="outline"
-          className={LOCKER_CONTRACT_STATUS_BADGE_CLASSES[row.original.status]}
+          className={`gap-1 ${LOCKER_CONTRACT_STATUS_BADGE_CLASSES[row.original.status]}`}
         >
+          <span
+            className={`size-1.5 rounded-full ${LOCKER_CONTRACT_STATUS_DOT_CLASSES[row.original.status]}`}
+          />
           {LOCKER_CONTRACT_STATUS_LABELS[row.original.status]}
         </Badge>
       ),

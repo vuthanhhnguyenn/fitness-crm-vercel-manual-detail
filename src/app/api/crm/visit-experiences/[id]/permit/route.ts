@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import { ErrorResponseSchema } from '@/app/api/_schemas/auth.schema';
 import type { VisitExperienceDetail } from '@/app/api/_schemas/visit-experience.schema';
@@ -27,13 +28,19 @@ registerRoute({
       schema: PermitVisitExperienceResponseSchema,
       description: 'Permit issued successfully',
     },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthorized' },
     { status: 404, schema: ErrorResponseSchema, description: 'Not found' },
     { status: 422, schema: PermitVisitExperienceErrorSchema, description: 'Cannot issue permit' },
   ],
 });
 
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+
     const { id } = await params;
     const record = db.visitExperiences.getById(id);
 
@@ -65,7 +72,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         },
         {
           timestamp: now,
-          operator: 'スタッフ',
+          operator: authResult.user.name,
           content: '見学許可を発行（30分間の時間制限入館）',
         },
         ...record.timeline,

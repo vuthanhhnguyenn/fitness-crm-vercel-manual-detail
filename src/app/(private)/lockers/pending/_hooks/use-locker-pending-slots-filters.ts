@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-
-import { PAGE_SIZE } from '@/constants/app.constants';
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import {
   type GetCrmLockersPendingSlotsData,
@@ -10,12 +9,15 @@ import {
   type PostCrmLockersPendingSlotsExportData,
 } from '@/lib/api/types.gen';
 
+import { LOCKER_LIST_DEFAULT_PAGE_SIZE } from '../../_constants/constants';
+
 type LockerPendingSortBy = NonNullable<GetCrmLockersPendingSlotsData['query']>['sort_by'];
 
 export function useLockerPendingSlotsFilters() {
   const [filters, setFilters] = useQueryStates(
     {
       locker_pending_page: parseAsInteger.withDefault(1),
+      locker_pending_limit: parseAsInteger.withDefault(LOCKER_LIST_DEFAULT_PAGE_SIZE),
       locker_pending_search: parseAsString.withDefault(''),
       locker_pending_store_id: parseAsString,
       locker_pending_location: parseAsStringEnum<LockerPendingLocationValue>(
@@ -34,22 +36,16 @@ export function useLockerPendingSlotsFilters() {
     },
   );
 
-  const [searchInput, setSearchInput] = useState(() => filters.locker_pending_search);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput !== filters.locker_pending_search) {
-        setFilters({ locker_pending_search: searchInput || null, locker_pending_page: 1 });
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [filters.locker_pending_search, searchInput, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(
+    filters.locker_pending_search,
+    (value) => setFilters({ locker_pending_search: value || null, locker_pending_page: 1 }),
+  );
 
   const clearFilters = () => {
     setSearchInput('');
     setFilters({
       locker_pending_page: 1,
+      locker_pending_limit: LOCKER_LIST_DEFAULT_PAGE_SIZE,
       locker_pending_search: null,
       locker_pending_store_id: null,
       locker_pending_location: null,
@@ -62,7 +58,7 @@ export function useLockerPendingSlotsFilters() {
 
   const queryParams: NonNullable<GetCrmLockersPendingSlotsData['query']> = {
     page: filters.locker_pending_page,
-    limit: PAGE_SIZE,
+    limit: filters.locker_pending_limit,
     search: filters.locker_pending_search || undefined,
     store_id: filters.locker_pending_store_id || undefined,
     locker_location: filters.locker_pending_location || undefined,
@@ -92,7 +88,9 @@ export function useLockerPendingSlotsFilters() {
     clearFilters,
     currentPage: filters.locker_pending_page,
     setCurrentPage: (page: number) => setFilters({ locker_pending_page: page }),
-    pageSize: PAGE_SIZE,
+    pageSize: filters.locker_pending_limit,
+    setPageSize: (limit: number) =>
+      setFilters({ locker_pending_limit: limit, locker_pending_page: 1 }),
     hasActiveFilters:
       filters.locker_pending_store_id !== null ||
       filters.locker_pending_location !== null ||

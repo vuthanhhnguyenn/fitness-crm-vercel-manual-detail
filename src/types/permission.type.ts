@@ -46,10 +46,8 @@ export enum Permission {
   // Members
   // -------------------------------------------------------------------------
   MembersView = 'members.view',
-  MembersCreate = 'members.create',
   MembersEdit = 'members.edit',
   MembersDelete = 'members.delete',
-  MembersPersonalDataEdit = 'members.personal-data-edit',
   MembersPersonalDataDelete = 'members.personal-data-delete',
   MembersReEnroll = 'members.re-enroll',
   MembersSuspend = 'members.suspend',
@@ -57,6 +55,7 @@ export enum Permission {
   MembersTransfer = 'members.transfer',
   MembersGateStop = 'members.gate-stop',
   MembersForceWithdraw = 'members.force-withdraw',
+  MembersOptionContractOperate = 'members.option-contract-operate',
 
   // -------------------------------------------------------------------------
   // Members — Blacklist
@@ -69,13 +68,18 @@ export enum Permission {
   // Members — Leaves
   // -------------------------------------------------------------------------
   MembersLeavesView = 'members.leaves-view',
-  LeavesApprove = 'leaves.approve',
 
   // -------------------------------------------------------------------------
   // Members — Transfers
   // -------------------------------------------------------------------------
   MembersTransfersView = 'members.transfers-view',
-  TransfersApprove = 'transfers.approve',
+  /** A-02 権限マトリクス: System / Headquarter / Manager / Staff. Row-level scope is narrowed
+   *  further for Staff by `canActOnTransfer` — approve rights alone are not enough. */
+  MembersTransfersApprove = 'members.transfers-approve',
+  /** A-02 FR-013: System / Headquarter / Manager only. */
+  MembersTransfersBulkApprove = 'members.transfers-bulk-approve',
+  /** A-02 FR-012 手動解除: System / Headquarter / Manager only. */
+  MembersTransfersUnlock = 'members.transfers-unlock',
 
   // -------------------------------------------------------------------------
   // Membership applications
@@ -83,6 +87,8 @@ export enum Permission {
   MembershipApplicationsView = 'membership-applications.view',
   MembershipApplicationsCreate = 'membership-applications.create',
   MembershipApplicationsApprove = 'membership-applications.approve',
+  /** C-01: 入会取り消し, separate from 承認・否認 — Staff hold it unconditionally. */
+  MembershipApplicationsCancel = 'membership-applications.cancel',
 
   // -------------------------------------------------------------------------
   // Visit / experience management
@@ -157,7 +163,6 @@ export enum Permission {
   LockersPendingView = 'lockers-pending.view',
   LockersPendingExport = 'lockers-pending.export',
   LockersContractsView = 'lockers-contracts.view',
-  LockersContractsCreate = 'lockers-contracts.create',
   LockersContractsEdit = 'lockers-contracts.edit',
   LockersContractsExport = 'lockers-contracts.export',
 
@@ -168,6 +173,15 @@ export enum Permission {
   SurveysEdit = 'surveys.edit',
   SurveysCreate = 'surveys.create',
   SurveysDelete = 'surveys.delete',
+
+  // -------------------------------------------------------------------------
+  // Banners
+  // -------------------------------------------------------------------------
+  BannersView = 'banners.view',
+  BannersCreate = 'banners.create',
+  BannersEdit = 'banners.edit',
+  BannersDelete = 'banners.delete',
+  BannersReorder = 'banners.reorder',
 
   // Manual notification delivery (I-03)
   ManualNotificationsView = 'manual-notifications.view',
@@ -194,6 +208,15 @@ export enum Permission {
   LessonContentsEdit = 'lesson-contents.edit',
   LessonContentsDelete = 'lesson-contents.delete',
   LessonContentsHistoryView = 'lesson-contents.history-view',
+
+  // -------------------------------------------------------------------------
+  // Exercises
+  // -------------------------------------------------------------------------
+  ExercisesView = 'exercises.view',
+  ExercisesCreate = 'exercises.create',
+  ExercisesEdit = 'exercises.edit',
+  ExercisesDelete = 'exercises.delete',
+  ExercisesPublish = 'exercises.publish',
 
   // -------------------------------------------------------------------------
   // Equipment
@@ -232,12 +255,91 @@ export enum Permission {
   TrainingEquipmentExerciseLinks = 'training-equipment.exercise-links',
 
   // -------------------------------------------------------------------------
-  // Terms
+  // Instructors (D-04)
+  // -------------------------------------------------------------------------
+  InstructorsView = 'instructors.view',
+  InstructorsCreate = 'instructors.create',
+  InstructorsEdit = 'instructors.edit',
+  InstructorsDelete = 'instructors.delete',
+
+  // -------------------------------------------------------------------------
+  // Entry / Exit management
+  // -------------------------------------------------------------------------
+  EntryExitView = 'entry-exit.view',
+  EntryExitHistoryView = 'entry-exit-history.view',
+  EntryExitHistoryExport = 'entry-exit-history.export',
+
+  // -------------------------------------------------------------------------
+  // Article Categories
+  // -------------------------------------------------------------------------
+  ArticleCategoriesView = 'article-categories.view',
+  ArticleCategoriesCreate = 'article-categories.create',
+  ArticleCategoriesEdit = 'article-categories.edit',
+  ArticleCategoriesDelete = 'article-categories.delete',
+
+  // -------------------------------------------------------------------------
+  // App Version Management (Y-05)
+  // -------------------------------------------------------------------------
+  AppVersionsView = 'app-versions.view',
+  AppVersionsCreate = 'app-versions.create',
+  AppVersionsEdit = 'app-versions.edit',
+  AppVersionsDelete = 'app-versions.delete',
+
+  // -------------------------------------------------------------------------
+  // App Maintenance
+  // -------------------------------------------------------------------------
+  AppMaintenanceView = 'app-maintenance.view',
+  AppMaintenanceCreate = 'app-maintenance.create',
+  AppMaintenanceEdit = 'app-maintenance.edit',
+  AppMaintenanceDelete = 'app-maintenance.delete',
+
+  // -------------------------------------------------------------------------
+  // Terms Document Master Management (Y-04)
   // -------------------------------------------------------------------------
   TermsView = 'terms.view',
   TermsCreate = 'terms.create',
   TermsEdit = 'terms.edit',
   TermsDelete = 'terms.delete',
+
+  // Sales Management (F-01)
+  // -------------------------------------------------------------------------
+  SalesView = 'sales.view',
+  SalesConfirm = 'sales.confirm',
+  SalesRefundInitiate = 'sales.refund-initiate',
+  SalesLineItemAdd = 'sales.line-item-add',
+  SalesFeeAdjust = 'sales.fee-adjust',
+  SalesManualRegister = 'sales.manual-register',
+  SalesExport = 'sales.export',
+
+  // -------------------------------------------------------------------------
+  // Sales — Transaction History, Receivables, Refund Management (F-01-01/02/03)
+  // -------------------------------------------------------------------------
+  SalesTransactionsView = 'sales.transactions-view',
+  SalesReceivablesView = 'sales.receivables-view',
+  SalesRefundsView = 'sales.refunds-view',
+  SalesBadDebtExclude = 'sales.bad-debt-exclude',
+  SalesConvenienceIssue = 'sales.convenience-issue',
+  SalesUpcomingBillingConfirm = 'sales.upcoming-billing-confirm',
+  SalesRefundApprove = 'sales.refund-approve',
+  SalesRefundExport = 'sales.refund-export',
+
+  // -------------------------------------------------------------------------
+  // Routines (Y-09)
+  // -------------------------------------------------------------------------
+  RoutinesView = 'routines.view',
+  RoutinesCreate = 'routines.create',
+  RoutinesEdit = 'routines.edit',
+  RoutinesDelete = 'routines.delete',
+  RoutinesPublish = 'routines.publish',
+
+  // -------------------------------------------------------------------------
+  // CRM Maintenance (Y-10) — System writes; System + Headquarter read
+  // -------------------------------------------------------------------------
+  CrmMaintenanceView = 'crm-maintenance.view',
+  CrmMaintenanceCreate = 'crm-maintenance.create',
+  CrmMaintenanceEdit = 'crm-maintenance.edit',
+  CrmMaintenanceDelete = 'crm-maintenance.delete',
+  CrmMaintenanceNotify = 'crm-maintenance.notify',
 }
 
 /** Authenticated user stored in context */
@@ -247,4 +349,8 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   position: string;
+  /** Caller's own StaffListItem.id (empty string if no linked staff record) */
+  staffId: string;
+  /** Store IDs this Manager oversees; populated only when role=Manager */
+  managedStoreIds?: string[];
 }

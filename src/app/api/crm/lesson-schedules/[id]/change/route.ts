@@ -55,12 +55,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const patch: Partial<typeof existing> = {};
     if (parsed.data.new_start_time) {
       patch.start_time = applyTimeSlotToSchedule(existing.start_time, parsed.data.new_start_time);
+      patch.last_change_type = 'time';
     }
     if (parsed.data.new_end_time) {
       patch.end_time = applyTimeSlotToSchedule(existing.start_time, parsed.data.new_end_time);
+      patch.last_change_type = 'time';
     }
     if (parsed.data.new_instructor_id) {
       patch.instructor_id = parsed.data.new_instructor_id;
+      patch.last_change_type = 'instructor';
     }
 
     db.lessonSchedules.update(id, patch);

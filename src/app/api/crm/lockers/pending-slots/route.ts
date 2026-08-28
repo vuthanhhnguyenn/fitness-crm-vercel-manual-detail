@@ -62,7 +62,8 @@ export async function GET(request: NextRequest) {
       sort_order = 'asc',
     } = query;
 
-    const filtered = filterLockerPendingSlots(db.lockerPendingSlots.getList(), {
+    const allPendingSlots = db.lockerPendingSlots.getList();
+    const filtered = filterLockerPendingSlots(allPendingSlots, {
       search,
       store_id,
       locker_location,
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         total_pages,
+        all_total: allPendingSlots.length,
       },
     };
 

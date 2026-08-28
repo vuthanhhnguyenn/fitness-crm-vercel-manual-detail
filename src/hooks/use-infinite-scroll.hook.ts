@@ -1,29 +1,66 @@
 'use client';
 
-import { type UIEventHandler, useCallback } from 'react';
+import { type RefObject, useEffect, useRef } from 'react';
 
-interface UseInfiniteScrollOptions {
-  readonly hasNextPage: boolean;
-  readonly isFetchingNextPage: boolean;
-  readonly fetchNextPage: () => Promise<unknown> | void;
-  readonly threshold?: number;
+interface UseInfiniteScrollParams {
+  /** Whether there are more pages to load. */
+  hasMore: boolean;
+  /** Whether a page is currently being fetched. Prevents duplicate triggers. */
+  isLoading: boolean;
+  /** Called when the sentinel scrolls into view and more data can be loaded. */
+  onLoadMore: () => void;
+  /** Scroll container used as the IntersectionObserver root (falls back to the viewport). */
+  rootRef: RefObject<HTMLElement | null>;
+  /** Pre-fetch margin so the next page loads slightly before the sentinel is visible. */
+  rootMargin?: string;
+  /** Disable observation entirely (e.g. while the dropdown is closed). */
+  enabled?: boolean;
 }
 
-export function useInfiniteScroll({
-  hasNextPage,
-  isFetchingNextPage,
-  fetchNextPage,
-  threshold = 5,
-}: UseInfiniteScrollOptions): UIEventHandler<HTMLElement> {
-  return useCallback(
-    (event) => {
-      const element = event.currentTarget;
-      const reachedBottom =
-        element.scrollTop + element.clientHeight >= element.scrollHeight - threshold;
-      if (reachedBottom && hasNextPage && !isFetchingNextPage) {
-        void fetchNextPage();
-      }
-    },
-    [fetchNextPage, hasNextPage, isFetchingNextPage, threshold],
-  );
+/**
+ * Observes a sentinel element and invokes `onLoadMore` when it enters the
+ * scroll container. Returns the ref to attach to the sentinel element.
+ */
+export function useInfiniteScroll<TSentinel extends HTMLElement = HTMLDivElement>({
+  hasMore,
+  isLoading,
+  onLoadMore,
+  rootRef,
+  rootMargin = '96px',
+  enabled = true,
+}: UseInfiniteScrollParams): RefObject<TSentinel | null> {
+  const sentinelRef = useRef<TSentinel | null>(null);
+
+  // Keep the latest callback without re-creating the observer on every render.
+  const onLoadMoreRef = useRef(onLoadMore);
+  useEffect(() => {
+    onLoadMoreRef.current = onLoadMore;
+  });
+
+  useEffect(() => {
+    if (!enabled || !hasMore) {
+      return;
+    }
+
+    const sentinel = sentinelRef.current;
+    if (!sentinel) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && hasMore && !isLoading) {
+          onLoadMoreRef.current();
+        }
+      },
+      { root: rootRef.current, rootMargin },
+    );
+
+    observer.observe(sentinel);
+
+    return () => observer.disconnect();
+  }, [enabled, hasMore, isLoading, rootRef, rootMargin]);
+
+  return sentinelRef;
 }

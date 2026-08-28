@@ -1,4 +1,11 @@
 import type {
+  CreateInstructorRequest,
+  Instructor,
+  InstructorChangeHistoryEntry,
+  RoleClassification,
+} from '@/app/api/_schemas/instructor.schema';
+import { joinFullName } from '@/app/api/_schemas/instructor.schema';
+import type {
   ChangeHistory,
   LessonContentDetail,
   ScheduleSummary,
@@ -15,10 +22,16 @@ import type {
 } from '@/app/api/_schemas/lesson-reservation.schema';
 import type {
   AreaScheduleKpiSummary,
+  CreateManualReservationRequest,
+  CreateManualReservationResponse,
+  GetInstructorsQuery,
+  InstructorListItem,
   LessonScheduleKpiSummary,
   LessonScheduleListItem,
+  ManualReservationMember,
   StoreScheduleSummary,
 } from '@/app/api/_schemas/lesson-schedule.schema';
+import { formatISODateLocal } from '@/utils/date.util';
 
 import { StaffRole } from '@/lib/api';
 
@@ -37,23 +50,119 @@ import {
   LESSON_CONTENT_SCHEDULES,
   LESSON_DETAIL_OVERRIDES,
   LESSON_SCHEDULE_STORE_AREAS,
+  type ManualReservationMemberSeed,
+  SEED_INSTRUCTORS,
   SEED_LESSONS,
   SEED_LESSON_CONTENTS,
   SEED_LESSON_SCHEDULES,
+  SEED_MANUAL_RESERVATION_MEMBERS,
   SEED_PERSONAL_PLANS,
   SEED_RESERVATIONS,
-  SEED_RESERVATION_INSTRUCTORS,
   SEED_SESSION_MEMOS,
   SEED_STUDIOS,
   SEED_STUDIO_DETAILS,
   SEED_STUDIO_HISTORY,
   SEED_STUDIO_LIST,
-  SEED_STUDIO_SPACES,
+  SEED_TEMPLATES,
   StudioListSeed,
+  appendLessonContentHistory,
   lessonContentRowToDetail,
   normalizeLessonImages,
   personalPlanRowToDetail,
 } from '../seeds/lesson.seed';
+import type { InstructorDataScope, InstructorRow } from '../types/instructors.type';
+
+/** Mock-only store → brand lookup for D-04 brand derivation (schedule.store_id uses 'ST00N' ids). */
+const INSTRUCTOR_STORE_BRAND_MAP: Record<
+  string,
+  Array<'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>
+> = {
+  ST001: ['joyfit', 'joyfit24'],
+  ST002: ['fit365'],
+  ST003: ['fit365', 'joyfit_yoga'],
+  ST004: ['joyfit'],
+  ST005: ['joyfit_yoga'],
+  ST006: ['joyfit_plus'],
+};
+
+const WEEKDAY_CODES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+/** Deterministic per-id spread, mirroring the member-search route's hashToRange helper. */
+function hashToRange(id: string, range: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + (id.codePointAt(i) ?? 0)) % 100000;
+  }
+  return hash % range;
+}
+
+const VISIT_FREQUENCIES = ['週4回以上', '週2〜3回', '週1回', '月2〜3回', '月1回未満'];
+const HISTORY_LESSON_NAMES = [
+  'ヨガ基礎クラス',
+  'ピラティス入門',
+  'ズンバ',
+  'ストレッチ',
+  'ボディコンバット',
+];
+
+/**
+ * FR-015 limited-profile fields shown in the Trainer-facing member popover/PT card.
+ * These are not modeled as real member data (mock has no body-composition/visit-log store) —
+ * derived deterministically per member so the same member always shows the same values,
+ * and `lesson_history` is scoped to the current schedule's own instructor per FR-015.
+ */
+function deriveMemberProfileFields(
+  memberId: string,
+): Pick<
+  Reservation,
+  | 'age'
+  | 'gender'
+  | 'visit_frequency'
+  | 'last_visit_date'
+  | 'lesson_history'
+  | 'height_cm'
+  | 'weight_kg'
+  | 'body_fat_pct'
+> {
+  const age = 20 + hashToRange(memberId, 45);
+  const gender = hashToRange(`${memberId}-g`, 2) === 0 ? 'male' : 'female';
+  const lastVisitDaysAgo = hashToRange(`${memberId}-lv`, 14);
+  const lastVisitDate = new Date(Date.now() - lastVisitDaysAgo * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const historyCount = 1 + hashToRange(`${memberId}-hc`, 3);
+  const lesson_history = Array.from({ length: historyCount }, (_, i) => {
+    const daysAgo = (i + 1) * 7 + hashToRange(`${memberId}-hd${i}`, 4);
+    return {
+      date: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      lesson_name:
+        HISTORY_LESSON_NAMES[hashToRange(`${memberId}-hn${i}`, HISTORY_LESSON_NAMES.length)]!,
+      attendance: (hashToRange(`${memberId}-ha${i}`, 5) === 0 ? 'absent' : 'attended') as
+        | 'attended'
+        | 'absent',
+    };
+  });
+
+  return {
+    age,
+    gender,
+    visit_frequency: VISIT_FREQUENCIES[hashToRange(`${memberId}-vf`, VISIT_FREQUENCIES.length)],
+    last_visit_date: lastVisitDate,
+    lesson_history,
+    height_cm:
+      gender === 'male'
+        ? 165 + hashToRange(`${memberId}-h`, 20)
+        : 150 + hashToRange(`${memberId}-h`, 20),
+    weight_kg:
+      gender === 'male'
+        ? 55 + hashToRange(`${memberId}-w`, 30)
+        : 42 + hashToRange(`${memberId}-w`, 25),
+    body_fat_pct:
+      gender === 'male'
+        ? 12 + hashToRange(`${memberId}-bf`, 15)
+        : 18 + hashToRange(`${memberId}-bf`, 18),
+  };
+}
 
 export function createLessonTables(getDb: () => DbType) {
   return {
@@ -91,16 +200,47 @@ export function createLessonTables(getDb: () => DbType) {
         const total_capacity = day.reduce((s, r) => s + r.capacity, 0);
         const occupancy_rate =
           total_capacity > 0 ? Math.round((total_booked / total_capacity) * 1000) / 10 : 0;
-        const alert_count = day.filter((r) => r.is_alert).length;
         const cancelled_count = day.filter((r) => r.status === 'cancelled').length;
+        const studio_lesson_count = day.filter((r) => r.lesson_type === 'studio').length;
+        const personal_lesson_count = day.filter((r) => r.lesson_type === 'personal').length;
+        const time_changed_count = day.filter((r) => r.last_change_type === 'time').length;
+        const instructor_changed_count = day.filter(
+          (r) => r.last_change_type === 'instructor',
+        ).length;
+
+        const staffIds = new Set(day.map((r) => r.instructor_id));
+        const assigned_staff_count = staffIds.size;
+        let instructor_staff_count = 0;
+        let trainer_staff_count = 0;
+        staffIds.forEach((id) => {
+          const staff = SEED_INSTRUCTORS.find((i) => i.instructor_id === id);
+          if (staff?.role_classifications.includes('trainer')) trainer_staff_count++;
+          else instructor_staff_count++;
+        });
+
+        // No prior-week dataset is seeded (mock has only the current week); approximate
+        // last week's occupancy from this week's own booked counts so the KPI card has
+        // a real, data-derived week-over-week trend rather than a hardcoded string.
+        const prevWeekBooked = day.reduce((s, r) => s + Math.max(0, r.booked_count - 1), 0);
+        const prevOccupancyRate = total_capacity > 0 ? (prevWeekBooked / total_capacity) * 100 : 0;
+        const occupancy_rate_change_pct =
+          Math.round((occupancy_rate - prevOccupancyRate) * 10) / 10;
+
         return {
           date,
           total_lessons,
           total_booked,
           total_capacity,
           occupancy_rate,
-          alert_count,
           cancelled_count,
+          studio_lesson_count,
+          personal_lesson_count,
+          occupancy_rate_change_pct,
+          time_changed_count,
+          instructor_changed_count,
+          assigned_staff_count,
+          instructor_staff_count,
+          trainer_staff_count,
         };
       },
       getStoreSummary(date: string): {
@@ -195,6 +335,53 @@ export function createLessonTables(getDb: () => DbType) {
         }));
         return { areas, stores };
       },
+      _manualReservationMembers: [] as ManualReservationMemberSeed[],
+      _manualReservationMembersSeeded: false,
+      _seedManualReservationMembers(): void {
+        if (this._manualReservationMembersSeeded) return;
+        this._manualReservationMembersSeeded = true;
+        this._manualReservationMembers = SEED_MANUAL_RESERVATION_MEMBERS.map((m) => ({ ...m }));
+      },
+      getManualReservationMembers(): ManualReservationMember[] {
+        this._seedManualReservationMembers();
+        return this._manualReservationMembers.map((m) => ({
+          member_id: m.member_id,
+          name: m.name,
+          plan: m.plan,
+          remaining: m.remaining,
+          penalty_until: m.penalty_until,
+        }));
+      },
+      createManualReservation(
+        input: CreateManualReservationRequest,
+      ): CreateManualReservationResponse | { error: string } {
+        this._seedManualReservationMembers();
+        const member = this._manualReservationMembers.find((m) => m.member_id === input.member_id);
+        if (!member) {
+          return { error: 'Member not found' };
+        }
+        if (member.plan === 'monthly' && member.remaining === 0) {
+          return { error: '残回数が不足しています' };
+        }
+        if (
+          member.penalty_until &&
+          formatISODateLocal(new Date()) <= formatISODateLocal(member.penalty_until)
+        ) {
+          return { error: `予約不可期間中の会員です（${member.penalty_until}まで）` };
+        }
+        const schedule = this.getById(input.schedule_id);
+        if (!schedule) {
+          return { error: 'Lesson schedule not found' };
+        }
+        if (member.plan === 'monthly' && member.remaining !== null) {
+          member.remaining -= 1;
+        }
+        this.update(input.schedule_id, { booked_count: schedule.booked_count + 1 });
+        return {
+          message: '予約を登録しました',
+          description: `${member.name} 様の予約をスケジュールに反映しました。モバイルアプリへ予約確定通知を送信します`,
+        };
+      },
       create(
         input: import('@/app/api/_schemas/lesson-schedule.schema').CreateLessonScheduleRequest & {
           overrideId?: string;
@@ -207,15 +394,28 @@ export function createLessonTables(getDb: () => DbType) {
         const endHour = startHour + 1;
         const endTime = `${String(endHour).padStart(2, '0')}:${input.start_time.split(':')[1] ?? '00'}`;
         const date = input.date ?? input.start_date ?? '';
+
+        const lesson = getDb().lessons.getById(input.lesson_id);
+        const studio = input.studio_id
+          ? SEED_STUDIO_LIST.find((s) => s.id === input.studio_id)
+          : undefined;
+        const store = getDb()
+          .stores.getList()
+          .find((s) => s.store_id === input.store_id || s.id === input.store_id);
+        const primaryInstructorId = input.instructor_ids[0] ?? '';
+        const instructor = SEED_INSTRUCTORS.find((i) => i.instructor_id === primaryInstructorId);
+
         const newSchedule: LessonScheduleListItem = {
           id,
-          lesson_name: input.lesson_id,
+          lesson_name: lesson?.name ?? input.lesson_id,
           lesson_type: input.lesson_type,
-          studio_name: null,
-          instructor_id: input.instructor_ids[0] ?? '',
-          instructor_name: '',
+          studio_name: studio?.name ?? null,
+          instructor_id: primaryInstructorId,
+          instructor_name: instructor
+            ? joinFullName(instructor.last_name, instructor.first_name)
+            : '',
           store_id: input.store_id,
-          store_name: '',
+          store_name: store?.name ?? '',
           start_time: `${date}T${input.start_time}:00+09:00`,
           end_time: `${date}T${endTime}:00+09:00`,
           capacity: input.capacity ?? 0,
@@ -224,6 +424,8 @@ export function createLessonTables(getDb: () => DbType) {
           payment_status: 'unpaid',
           status: 'scheduled',
           is_alert: false,
+          is_public: input.lesson_type === 'studio',
+          last_change_type: null,
         };
         this._rows.push(newSchedule);
         return {
@@ -327,6 +529,7 @@ export function createLessonTables(getDb: () => DbType) {
             store_name: s.store_name,
             studio_type: s.studio_type,
             capacity: s.capacity,
+            buffer_value: s.buffer_value,
             available_hours: s.available_hours,
             brand: s.brand,
             status: s.status,
@@ -364,7 +567,12 @@ export function createLessonTables(getDb: () => DbType) {
       },
       create(input: CreateStudioPayload) {
         this._seed();
-        const maxNumericId = Object.keys(this._detailStore).reduce((max, key) => {
+        const knownIds = [
+          ...Object.keys(this._detailStore),
+          ...SEED_STUDIO_LIST.map((s) => s.id),
+          ...this._rows.map((s) => s.id),
+        ];
+        const maxNumericId = knownIds.reduce((max, key) => {
           const num = parseInt(key.replace('STU-', ''), 10);
           return isNaN(num) ? max : Math.max(max, num);
         }, 0);
@@ -375,7 +583,7 @@ export function createLessonTables(getDb: () => DbType) {
           data: {
             id: newId,
             name: input.name,
-            studio_type: 'studio-lesson',
+            studio_type: input.studio_type,
             status: input.status,
             capacity: input.capacity,
             buffer_value: input.buffer_value,
@@ -440,8 +648,9 @@ export function createLessonTables(getDb: () => DbType) {
           name: input.name,
           store_id: input.store_id,
           store_name: '',
-          studio_type: 'studio-lesson',
+          studio_type: input.studio_type,
           capacity: input.capacity,
+          buffer_value: input.buffer_value,
           available_hours: input.operating_hours.replace('~', '-'),
           brand: 'joyfit',
           status: input.status,
@@ -460,6 +669,7 @@ export function createLessonTables(getDb: () => DbType) {
 
         existing.data.name = input.name ?? existing.data.name;
         existing.data.store_id = input.store_id ?? existing.data.store_id;
+        existing.data.studio_type = input.studio_type ?? existing.data.studio_type;
         existing.data.capacity = input.capacity ?? existing.data.capacity;
         existing.data.buffer_value = input.buffer_value ?? existing.data.buffer_value;
         existing.data.status = input.status ?? existing.data.status;
@@ -512,7 +722,11 @@ export function createLessonTables(getDb: () => DbType) {
         const listIdx = SEED_STUDIO_LIST.findIndex((s) => s.id === input.id);
         if (listIdx !== -1) {
           SEED_STUDIO_LIST[listIdx].name = input.name ?? SEED_STUDIO_LIST[listIdx].name;
+          SEED_STUDIO_LIST[listIdx].studio_type =
+            input.studio_type ?? SEED_STUDIO_LIST[listIdx].studio_type;
           SEED_STUDIO_LIST[listIdx].capacity = input.capacity ?? SEED_STUDIO_LIST[listIdx].capacity;
+          SEED_STUDIO_LIST[listIdx].buffer_value =
+            input.buffer_value ?? SEED_STUDIO_LIST[listIdx].buffer_value;
           SEED_STUDIO_LIST[listIdx].status = input.status ?? SEED_STUDIO_LIST[listIdx].status;
           SEED_STUDIO_LIST[listIdx].store_id = input.store_id ?? SEED_STUDIO_LIST[listIdx].store_id;
         }
@@ -640,8 +854,7 @@ export function createLessonTables(getDb: () => DbType) {
           internal_memo: data.internal_memo || undefined,
           restricted_main_contracts: data.restricted_main_contracts ?? [],
           restricted_option_contracts: data.restricted_option_contracts ?? [],
-          per_use_fee: data.pricing_type === 'paid' ? (data.per_use_fee ?? 550) : undefined,
-          usage_count: 0,
+          per_use_fee: data.pricing_type === 'per_use' ? (data.per_use_fee ?? 550) : undefined,
         };
         return lessonContentRowToDetail(item, LESSON_CONTENT_SCHEDULES);
       },
@@ -671,10 +884,29 @@ export function createLessonTables(getDb: () => DbType) {
         if (data.per_use_fee != null) override.per_use_fee = data.per_use_fee ?? undefined;
         if (data.pricing_type !== undefined) {
           override.per_use_fee =
-            data.pricing_type === 'paid' ? (data.per_use_fee ?? 550) : undefined;
+            data.pricing_type === 'per_use' ? (data.per_use_fee ?? 550) : undefined;
         }
         LESSON_DETAIL_OVERRIDES[id] = override;
         return lessonContentRowToDetail(this._rows[index]!, LESSON_CONTENT_SCHEDULES);
+      },
+      updateStatus(
+        id: string,
+        status: 'active' | 'inactive',
+        reason?: string | null,
+      ): LessonContentDetail | undefined {
+        this._seed();
+        const index = this._rows.findIndex((r) => r.id === id);
+        if (index === -1) return undefined;
+        this._rows[index] = { ...this._rows[index], status };
+        appendLessonContentHistory(id, status === 'inactive' ? '無効化' : '有効化', reason);
+        return lessonContentRowToDetail(this._rows[index]!, LESSON_CONTENT_SCHEDULES);
+      },
+      delete(id: string): boolean {
+        this._seed();
+        const index = this._rows.findIndex((r) => r.id === id);
+        if (index === -1) return false;
+        this._rows[index] = { ...this._rows[index], is_deleted: true };
+        return true;
       },
     },
 
@@ -744,7 +976,6 @@ export function createLessonTables(getDb: () => DbType) {
           restricted_main_contracts: data.restricted_main_contracts ?? [],
           restricted_option_contracts: data.restricted_option_contracts ?? [],
           per_use_fee: price,
-          usage_count: 0,
         };
         return personalPlanRowToDetail(item, LESSON_CONTENT_SCHEDULES);
       },
@@ -787,6 +1018,25 @@ export function createLessonTables(getDb: () => DbType) {
         LESSON_DETAIL_OVERRIDES[id] = override;
         return personalPlanRowToDetail(this._rows[index]!, LESSON_CONTENT_SCHEDULES);
       },
+      updateStatus(
+        id: string,
+        status: 'active' | 'inactive',
+        reason?: string | null,
+      ): LessonContentDetail | undefined {
+        this._seed();
+        const index = this._rows.findIndex((r) => r.id === id);
+        if (index === -1) return undefined;
+        this._rows[index] = { ...this._rows[index], status };
+        appendLessonContentHistory(id, status === 'inactive' ? '無効化' : '有効化', reason);
+        return personalPlanRowToDetail(this._rows[index]!, LESSON_CONTENT_SCHEDULES);
+      },
+      delete(id: string): boolean {
+        this._seed();
+        const index = this._rows.findIndex((r) => r.id === id);
+        if (index === -1) return false;
+        this._rows[index] = { ...this._rows[index], is_deleted: true };
+        return true;
+      },
     },
 
     lessonContentDetails: {
@@ -801,6 +1051,21 @@ export function createLessonTables(getDb: () => DbType) {
         data: Partial<CreateLessonContentRequest>,
       ): LessonContentDetail | undefined {
         return getDb().lessonContents.update(id, data) ?? getDb().personalPlans.update(id, data);
+      },
+      updateStatus(
+        id: string,
+        status: 'active' | 'inactive',
+        reason?: string | null,
+      ): LessonContentDetail | undefined {
+        return (
+          getDb().lessonContents.updateStatus(id, status, reason) ??
+          getDb().personalPlans.updateStatus(id, status, reason)
+        );
+      },
+      delete(id: string, reason: string): boolean {
+        const deleted = getDb().lessonContents.delete(id) || getDb().personalPlans.delete(id);
+        if (deleted) appendLessonContentHistory(id, '削除', reason);
+        return deleted;
       },
     },
 
@@ -823,33 +1088,463 @@ export function createLessonTables(getDb: () => DbType) {
     },
 
     instructors: {
-      _rows: [] as Array<{
-        instructor_id: string;
-        instructor_name: string;
-        store_id: string;
-        role: string;
-        photo_url?: string;
-      }>,
+      _rows: [] as InstructorRow[],
+      _changeHistories: [] as Array<InstructorChangeHistoryEntry & { instructor_id: string }>,
       _seeded: false,
       _seed(): void {
         if (this._seeded) return;
         this._seeded = true;
-        this._rows = SEED_RESERVATION_INSTRUCTORS.map((inst) => ({
-          ...inst,
-          role: 'インストラクター',
-          photo_url: undefined,
+        this._rows = SEED_INSTRUCTORS.map((s) => ({
+          instructor_id: s.instructor_id,
+          last_name: s.last_name,
+          first_name: s.first_name,
+          romaji_last_name: s.romaji_last_name,
+          romaji_first_name: s.romaji_first_name,
+          nickname: s.nickname,
+          role_classifications: [...s.role_classifications],
+          tab: s.tab,
+          profile_text: s.profile_text,
+          instructing_history: s.instructing_history,
+          photo_url: s.photo_url,
+          status: s.status,
+          buffer_settings: { ...s.buffer_settings },
+          crm_account_link_staff_id: s.crm_account_link_staff_id,
+          store_id: s.store_id,
+          average_rating: s.average_rating,
+          created_at: s.created_at,
+          updated_at: s.updated_at,
+        }));
+        this._changeHistories = SEED_INSTRUCTORS.map((s) => ({
+          instructor_id: s.instructor_id,
+          timestamp: s.created_at,
+          operator: 'システム移行',
+          is_creation: true,
         }));
       },
+
+      // ---- Legacy API (D-01 lesson-schedule instructor picker) ----
       getList(storeId?: string, role?: string) {
         this._seed();
-        let rows = [...this._rows];
+        let rows = this._rows.map((r) => ({
+          instructor_id: r.instructor_id,
+          instructor_name: joinFullName(r.last_name, r.first_name),
+          store_id: r.store_id,
+          role: r.role_classifications[0],
+          photo_url: r.photo_url ?? undefined,
+        }));
         if (storeId) rows = rows.filter((i) => i.store_id === storeId);
         if (role) rows = rows.filter((i) => i.role === role);
         return rows;
       },
       getById(id: string) {
         this._seed();
-        return this._rows.find((i) => i.instructor_id === id);
+        const row = this._rows.find((i) => i.instructor_id === id);
+        if (!row) return undefined;
+        return {
+          instructor_id: row.instructor_id,
+          instructor_name: joinFullName(row.last_name, row.first_name),
+          store_id: row.store_id,
+          role: row.role_classifications[0],
+          photo_url: row.photo_url ?? undefined,
+        };
+      },
+
+      // ---- D-04 helpers ----
+      computeBrandsAndCount(instructorId: string) {
+        const schedules = getDb()
+          .lessonSchedules.getList()
+          .filter((s) => s.instructor_id === instructorId && s.status !== 'cancelled');
+        const brandSet = new Set<string>();
+        schedules.forEach((s) => {
+          (INSTRUCTOR_STORE_BRAND_MAP[s.store_id] ?? []).forEach((b) => brandSet.add(b));
+        });
+        return { brands: Array.from(brandSet), assignedScheduleCount: schedules.length };
+      },
+      toInstructor(row: InstructorRow): Instructor {
+        const staff = row.crm_account_link_staff_id
+          ? getDb()
+              .staffs.getList()
+              .find((s) => s.staff_id === row.crm_account_link_staff_id)
+          : undefined;
+        const { assignedScheduleCount } = this.computeBrandsAndCount(row.instructor_id);
+        return {
+          instructor_id: row.instructor_id,
+          last_name: row.last_name,
+          first_name: row.first_name,
+          romaji_last_name: row.romaji_last_name,
+          romaji_first_name: row.romaji_first_name,
+          nickname: row.nickname,
+          role_classifications: row.role_classifications,
+          profile_text: row.profile_text,
+          instructing_history: row.instructing_history,
+          photo_url: row.photo_url,
+          status: row.status,
+          buffer_settings: row.buffer_settings,
+          crm_account_link: staff
+            ? { staff_id: staff.staff_id, staff_name: staff.name, staff_role: staff.role }
+            : null,
+          assigned_schedule_count: assignedScheduleCount,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        };
+      },
+
+      // ---- D-04 CRM list/detail/CRUD/history ----
+      listForCrm(query: GetInstructorsQuery, scope: InstructorDataScope) {
+        this._seed();
+        let rows = this._rows.filter((r) =>
+          scope({ instructor_id: r.instructor_id, store_id: r.store_id }),
+        );
+        if (query.store_id) rows = rows.filter((r) => r.store_id === query.store_id);
+        if (query.role) {
+          rows = rows.filter((r) =>
+            r.role_classifications.includes(query.role as RoleClassification),
+          );
+        }
+        if (query.tab) rows = rows.filter((r) => r.tab === query.tab);
+        if (query.search) {
+          const stripSpaces = (s: string) => s.replace(/[\s　]/g, '');
+          const q = query.search.toLowerCase();
+          // Whitespace-insensitive query variant so "タムタタム" matches "タムタ タム".
+          const qNoSpace = stripSpaces(q);
+          rows = rows.filter((r) => {
+            const fullName = joinFullName(r.last_name, r.first_name).toLowerCase();
+            return (
+              r.last_name.toLowerCase().includes(q) ||
+              r.first_name.toLowerCase().includes(q) ||
+              fullName.includes(q) ||
+              stripSpaces(fullName).includes(qNoSpace) ||
+              (r.romaji_last_name?.toLowerCase().includes(q) ?? false) ||
+              (r.romaji_first_name?.toLowerCase().includes(q) ?? false) ||
+              (r.nickname?.toLowerCase().includes(q) ?? false) ||
+              r.instructor_id.toLowerCase().includes(q)
+            );
+          });
+        }
+        if (query.status) rows = rows.filter((r) => r.status === query.status);
+
+        const withBrand = rows.map((row) => ({
+          row,
+          ...this.computeBrandsAndCount(row.instructor_id),
+        }));
+        const filtered = query.brand
+          ? withBrand.filter((x) => x.brands.includes(query.brand as string))
+          : withBrand;
+
+        const instructors: InstructorListItem[] = filtered.map(({ row, brands }) => ({
+          instructor_id: row.instructor_id,
+          instructor_name: joinFullName(row.last_name, row.first_name),
+          store_id: row.store_id,
+          role: row.role_classifications[0],
+          photo_url: row.photo_url ?? undefined,
+          nickname: row.nickname,
+          romaji_name:
+            joinFullName(row.romaji_last_name ?? '', row.romaji_first_name ?? '') || null,
+          role_classifications: row.role_classifications,
+          tab: row.tab,
+          brands: brands as InstructorListItem['brands'],
+          status: row.status,
+        }));
+        return { instructors };
+      },
+      getDetail(id: string, scope: InstructorDataScope) {
+        this._seed();
+        const row = this._rows.find((r) => r.instructor_id === id);
+        if (!row) return undefined;
+        if (!scope({ instructor_id: row.instructor_id, store_id: row.store_id })) return undefined;
+
+        const scheduleRows = getDb()
+          .lessonSchedules.getList()
+          .filter((s) => s.instructor_id === id && s.status !== 'cancelled')
+          .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+        const lessonGroups = new Map<
+          string,
+          {
+            lesson_id: string;
+            lesson_name: string;
+            weekdays: Set<string>;
+            time: string;
+            rates: number[];
+          }
+        >();
+        scheduleRows.forEach((s) => {
+          const timePart = s.start_time.split('T')[1]?.slice(0, 5) ?? '00:00';
+          const weekday = WEEKDAY_CODES[new Date(s.start_time).getDay()];
+          const g = lessonGroups.get(s.lesson_name) ?? {
+            lesson_id: s.id,
+            lesson_name: s.lesson_name,
+            weekdays: new Set<string>(),
+            time: timePart,
+            rates: [],
+          };
+          g.weekdays.add(weekday);
+          const rate = s.capacity > 0 ? Math.round((s.booked_count / s.capacity) * 100) : 0;
+          g.rates.push(rate);
+          lessonGroups.set(s.lesson_name, g);
+        });
+
+        const assigned_lessons = Array.from(lessonGroups.values()).map((g) => ({
+          lesson_id: g.lesson_id,
+          lesson_name: g.lesson_name,
+          weekdays: Array.from(g.weekdays),
+          time: g.time,
+          reservation_rate: g.rates.length
+            ? Math.round(g.rates.reduce((a, b) => a + b, 0) / g.rates.length)
+            : 0,
+        }));
+
+        const entries = scheduleRows.map((s) => {
+          const [datePart, rest] = s.start_time.split('T');
+          return {
+            schedule_id: s.id,
+            lesson_name: s.lesson_name,
+            studio_name: s.studio_name,
+            date: datePart!,
+            time: (rest ?? '00:00:00').slice(0, 5),
+            booked_count: s.booked_count,
+            capacity: s.capacity,
+            is_recurring: false,
+          };
+        });
+
+        const summaryGroups = new Map<string, number>();
+        entries.forEach((e) => {
+          const key = `${e.lesson_name}__${e.time}`;
+          summaryGroups.set(key, (summaryGroups.get(key) ?? 0) + 1);
+        });
+        const recurring_summary = Array.from(summaryGroups.entries())
+          .filter(([, count]) => count > 1)
+          .map(([key, count]) => {
+            const [lessonName, time] = key.split('__');
+            return { pattern_text: `${lessonName} ${time}`, active_count: count };
+          });
+
+        const monthly_participant_count = scheduleRows.reduce((sum, s) => sum + s.booked_count, 0);
+        const average_reservation_rate = assigned_lessons.length
+          ? Math.round(
+              assigned_lessons.reduce((sum, l) => sum + l.reservation_rate, 0) /
+                assigned_lessons.length,
+            )
+          : 0;
+
+        return {
+          data: this.toInstructor(row),
+          performance_summary: {
+            weekly_lesson_count: scheduleRows.length,
+            average_reservation_rate,
+            average_rating: row.average_rating,
+            monthly_participant_count,
+          },
+          assigned_lessons,
+          upcoming_schedule: { recurring_summary, entries },
+        };
+      },
+      create(input: CreateInstructorRequest, operator: string): Instructor {
+        this._seed();
+        const maxNum = this._rows.reduce((max, r) => {
+          const m = r.instructor_id.match(/^INS-(\d+)$/);
+          return m ? Math.max(max, parseInt(m[1]!, 10)) : max;
+        }, 0);
+        const id = `INS-${String(maxNum + 1).padStart(4, '0')}`;
+        const now = new Date().toISOString();
+        const hasTrainer = input.role_classifications.includes('trainer');
+        const hasInstructor = input.role_classifications.includes('instructor');
+        const row: InstructorRow = {
+          instructor_id: id,
+          last_name: input.last_name,
+          first_name: input.first_name,
+          romaji_last_name: input.romaji_last_name ?? null,
+          romaji_first_name: input.romaji_first_name ?? null,
+          nickname: input.nickname ?? null,
+          role_classifications: input.role_classifications,
+          tab: hasTrainer && !hasInstructor ? 'pt' : 'studio',
+          profile_text: input.profile_text ?? null,
+          instructing_history: input.instructing_history ?? null,
+          photo_url: input.photo_url ?? null,
+          status: 'active',
+          buffer_settings: {
+            min_booking_lead_hours: input.buffer_settings?.min_booking_lead_hours ?? 0,
+            pre_buffer_minutes: input.buffer_settings?.pre_buffer_minutes ?? 0,
+            post_buffer_minutes: input.buffer_settings?.post_buffer_minutes ?? 0,
+          },
+          crm_account_link_staff_id: input.crm_account_link_staff_id ?? null,
+          store_id: this._rows[0]?.store_id ?? 'ST001',
+          average_rating: null,
+          created_at: now,
+          updated_at: now,
+        };
+        this._rows.push(row);
+        this._changeHistories.push({
+          instructor_id: id,
+          timestamp: now,
+          operator,
+          is_creation: true,
+        });
+        return this.toInstructor(row);
+      },
+      update(
+        id: string,
+        patch: Partial<CreateInstructorRequest>,
+        operator: string,
+        scope: InstructorDataScope,
+      ): Instructor | 'not_found' {
+        this._seed();
+        const idx = this._rows.findIndex((r) => r.instructor_id === id);
+        if (idx === -1) return 'not_found';
+        const existing = this._rows[idx]!;
+        if (!scope({ instructor_id: existing.instructor_id, store_id: existing.store_id })) {
+          return 'not_found';
+        }
+
+        const now = new Date().toISOString();
+        const changes: Array<{ field: string; before: string; after: string }> = [];
+        const trackField = (field: string, beforeVal: unknown, afterVal: unknown) => {
+          if (afterVal === undefined) return;
+          const beforeStr = beforeVal == null ? '' : String(beforeVal);
+          const afterStr = afterVal == null ? '' : String(afterVal);
+          if (beforeStr === afterStr) return;
+          changes.push({ field, before: beforeStr, after: afterStr });
+        };
+
+        const next: InstructorRow = { ...existing };
+        if (patch.last_name !== undefined) {
+          trackField('last_name', existing.last_name, patch.last_name);
+          next.last_name = patch.last_name;
+        }
+        if (patch.first_name !== undefined) {
+          trackField('first_name', existing.first_name, patch.first_name);
+          next.first_name = patch.first_name;
+        }
+        if (patch.romaji_last_name !== undefined) {
+          trackField('romaji_last_name', existing.romaji_last_name, patch.romaji_last_name);
+          next.romaji_last_name = patch.romaji_last_name;
+        }
+        if (patch.romaji_first_name !== undefined) {
+          trackField('romaji_first_name', existing.romaji_first_name, patch.romaji_first_name);
+          next.romaji_first_name = patch.romaji_first_name;
+        }
+        if (patch.nickname !== undefined) {
+          trackField('nickname', existing.nickname, patch.nickname);
+          next.nickname = patch.nickname;
+        }
+        if (patch.role_classifications !== undefined) {
+          trackField(
+            'role_classifications',
+            existing.role_classifications.join('/'),
+            patch.role_classifications.join('/'),
+          );
+          next.role_classifications = patch.role_classifications;
+        }
+        if (patch.profile_text !== undefined) {
+          trackField('profile_text', existing.profile_text, patch.profile_text);
+          next.profile_text = patch.profile_text;
+        }
+        if (patch.instructing_history !== undefined) {
+          trackField(
+            'instructing_history',
+            existing.instructing_history,
+            patch.instructing_history,
+          );
+          next.instructing_history = patch.instructing_history;
+        }
+        if (patch.photo_url !== undefined) {
+          trackField('photo_url', existing.photo_url, patch.photo_url);
+          next.photo_url = patch.photo_url;
+        }
+        if (patch.buffer_settings !== undefined) {
+          const merged = { ...existing.buffer_settings, ...patch.buffer_settings };
+          trackField(
+            'buffer_settings.min_booking_lead_hours',
+            existing.buffer_settings.min_booking_lead_hours,
+            merged.min_booking_lead_hours,
+          );
+          trackField(
+            'buffer_settings.pre_buffer_minutes',
+            existing.buffer_settings.pre_buffer_minutes,
+            merged.pre_buffer_minutes,
+          );
+          trackField(
+            'buffer_settings.post_buffer_minutes',
+            existing.buffer_settings.post_buffer_minutes,
+            merged.post_buffer_minutes,
+          );
+          next.buffer_settings = merged;
+        }
+        if (patch.crm_account_link_staff_id !== undefined) {
+          trackField(
+            'crm_account_link_staff_id',
+            existing.crm_account_link_staff_id,
+            patch.crm_account_link_staff_id,
+          );
+          next.crm_account_link_staff_id = patch.crm_account_link_staff_id;
+        }
+
+        next.updated_at = now;
+        this._rows[idx] = next;
+        changes.forEach((c) =>
+          this._changeHistories.push({
+            instructor_id: id,
+            timestamp: now,
+            operator,
+            field: c.field,
+            before: c.before,
+            after: c.after,
+            is_creation: false,
+          }),
+        );
+        return this.toInstructor(next);
+      },
+      updateStatus(
+        id: string,
+        status: 'active' | 'inactive',
+        operator: string,
+      ): { instructor_id: string; status: 'active' | 'inactive' } | 'not_found' {
+        this._seed();
+        const idx = this._rows.findIndex((r) => r.instructor_id === id);
+        if (idx === -1) return 'not_found';
+        const before = this._rows[idx]!.status;
+        const now = new Date().toISOString();
+        this._rows[idx] = { ...this._rows[idx]!, status, updated_at: now };
+        if (before !== status) {
+          this._changeHistories.push({
+            instructor_id: id,
+            timestamp: now,
+            operator,
+            field: 'status',
+            before,
+            after: status,
+            is_creation: false,
+          });
+        }
+        return { instructor_id: id, status };
+      },
+      delete(id: string): 'not_found' | 'in_use' | true {
+        this._seed();
+        const idx = this._rows.findIndex((r) => r.instructor_id === id);
+        if (idx === -1) return 'not_found';
+        const { assignedScheduleCount } = this.computeBrandsAndCount(id);
+        if (assignedScheduleCount > 0) return 'in_use';
+        this._rows.splice(idx, 1);
+        return true;
+      },
+      getHistory(id: string, scope: InstructorDataScope) {
+        this._seed();
+        const row = this._rows.find((r) => r.instructor_id === id);
+        if (!row) return undefined;
+        if (!scope({ instructor_id: row.instructor_id, store_id: row.store_id })) return undefined;
+        const entries: InstructorChangeHistoryEntry[] = this._changeHistories
+          .filter((h) => h.instructor_id === id)
+          .map((h) => ({
+            timestamp: h.timestamp,
+            operator: h.operator,
+            field: h.field,
+            before: h.before,
+            after: h.after,
+            is_creation: h.is_creation,
+          }))
+          .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        return { entries, total: entries.length };
       },
     },
 
@@ -859,6 +1554,7 @@ export function createLessonTables(getDb: () => DbType) {
       _seed(): void {
         if (this._seeded) return;
         this._seeded = true;
+        this._rows = SEED_TEMPLATES.map((t) => ({ ...t }));
       },
       getList() {
         this._seed();
@@ -925,12 +1621,16 @@ export function createLessonTables(getDb: () => DbType) {
         const total = filtered.length;
         const totalPages = Math.ceil(total / pageSize);
         const start = (page - 1) * pageSize;
-        const reservations = filtered.slice(start, start + pageSize);
+        const reservations = filtered
+          .slice(start, start + pageSize)
+          .map((r) => ({ ...r, ...deriveMemberProfileFields(r.member_id) }));
         return { reservations, total, page, pageSize, totalPages };
       },
       getById(id: string): Reservation | undefined {
         this._seed();
-        return this._rows.find((r) => r.id === id);
+        const row = this._rows.find((r) => r.id === id);
+        if (!row) return undefined;
+        return { ...row, ...deriveMemberProfileFields(row.member_id) };
       },
       getStats(scheduleId: string): ReservationStats {
         this._seed();
@@ -965,13 +1665,12 @@ export function createLessonTables(getDb: () => DbType) {
       },
       getSpaces(scheduleId: string): StudioSpaceGridResponse {
         this._seed();
-        const seeded = SEED_STUDIO_SPACES[scheduleId];
-        if (seeded) return seeded;
 
         const schedule = getDb().lessonSchedules.getById(scheduleId);
         const capacity = schedule?.capacity ?? 16;
         const gridCols = 8;
         const gridRows = Math.ceil(capacity / gridCols);
+        const totalCells = gridRows * gridCols;
         const reservations = this._rows.filter(
           (r) => r.schedule_id === scheduleId && r.status !== 'cancelled' && r.space_number,
         );
@@ -981,16 +1680,33 @@ export function createLessonTables(getDb: () => DbType) {
           total_capacity: capacity,
           grid_rows: gridRows,
           grid_cols: gridCols,
-          spaces: Array.from({ length: capacity }, (_, i) => {
+          spaces: Array.from({ length: totalCells }, (_, i) => {
             const spaceNumber = `S${String(i + 1).padStart(2, '0')}`;
+            const row = Math.floor(i / gridCols);
+            const col = i % gridCols;
+            if (i >= capacity) {
+              // Non-bookable overflow cell (grid rectangle padding beyond real capacity):
+              // split between the two fixed non-seat categories so both legend entries stay reachable.
+              const type = (i - capacity) % 2 === 0 ? 'equipment' : 'fixed_structure';
+              return {
+                id: `SP-${scheduleId}-${i + 1}`,
+                space_number: spaceNumber,
+                row,
+                col,
+                type: type as 'equipment' | 'fixed_structure',
+                reservation_id: null,
+                member_name: null,
+              };
+            }
             const reservation = reservations.find((r) => r.space_number === spaceNumber);
             return {
               id: `SP-${scheduleId}-${i + 1}`,
               space_number: spaceNumber,
-              row: Math.floor(i / gridCols),
-              col: i % gridCols,
+              row,
+              col,
               type: reservation ? ('reserved' as const) : ('available' as const),
               reservation_id: reservation?.id ?? null,
+              member_id: reservation?.member_id ?? null,
               member_name: reservation?.member_name ?? null,
             };
           }),
@@ -1000,15 +1716,18 @@ export function createLessonTables(getDb: () => DbType) {
         this._seed();
         return this._memoRows.filter((m) => m.schedule_id === scheduleId);
       },
-      createMemo(scheduleId: string, data: { content: string }): SessionMemo {
+      createMemo(
+        scheduleId: string,
+        data: { content: string; author_id?: string; author_name?: string },
+      ): SessionMemo {
         this._seed();
         const newId = `MEMO${String(this._memoRows.length + 1).padStart(3, '0')}`;
         const memo: SessionMemo = {
           id: newId,
           schedule_id: scheduleId,
           content: data.content,
-          author_id: 'ST001',
-          author_name: '田中 花子',
+          author_id: data.author_id ?? 'ST001',
+          author_name: data.author_name ?? '田中 花子',
           created_at: new Date().toISOString(),
           updated_at: null,
         };

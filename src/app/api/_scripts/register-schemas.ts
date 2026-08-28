@@ -2,14 +2,24 @@
  * Register all schemas with OpenAPI registry
  * This ensures schemas are extracted to components/schemas instead of being inline
  */
+import type { ZodTypeAny } from 'zod';
+
 // Import all schemas
+import * as appMaintenanceSchemas from '../_schemas/app-maintenance.schema';
+import * as appVersionSchemas from '../_schemas/app-version.schema';
+import * as articleCategorySchemas from '../_schemas/article-category.schema';
 import * as authSchemas from '../_schemas/auth.schema';
 import * as autoApprovalSchemas from '../_schemas/auto-approval.schema';
+import * as bannerSchemas from '../_schemas/banner.schema';
+import * as billingSchemas from '../_schemas/billing.schema';
 import * as blacklistSchemas from '../_schemas/blacklist.schema';
 import * as brandSchemas from '../_schemas/brand.schema';
 import * as campaignSchemas from '../_schemas/campaign.schema';
 import * as controllerSchemas from '../_schemas/controller.schema';
+import * as crmMaintenanceSchemas from '../_schemas/crm-maintenance.schema';
 import * as equipmentSchemas from '../_schemas/equipment.schema';
+import * as exerciseMasterSchemas from '../_schemas/exercise-master.schema';
+import * as exerciseSchemas from '../_schemas/exercise.schema';
 import * as familyRegistrationSchemas from '../_schemas/family-registration.schema';
 import * as franchiseCompanySchemas from '../_schemas/franchise-company.schema';
 import * as leaveSchemas from '../_schemas/leave.schema';
@@ -25,12 +35,16 @@ import * as optionDiscountSchemas from '../_schemas/option-discount.schema';
 import * as optionMasterSchemas from '../_schemas/option-master.schema';
 import * as positionSchemas from '../_schemas/position.schema';
 import * as promoCodeSchemas from '../_schemas/promo-code.schema';
+import * as routineCategorySchemas from '../_schemas/routine-category.schema';
+import * as routineSchemas from '../_schemas/routine.schema';
 import * as staffSchemas from '../_schemas/staff.schema';
 import * as storeAccessSettingsSchemas from '../_schemas/store-access-settings.schema';
 import * as storeSchemas from '../_schemas/store.schema';
 import * as studioDetailSchemas from '../_schemas/studio-detail.schema';
 import * as surveySchemas from '../_schemas/survey.schema';
+import * as termsSchemas from '../_schemas/terms.schema';
 import * as trainingEquipmentSchemas from '../_schemas/training-equipment.schema';
+import * as transferSchemas from '../_schemas/transfer.schema';
 import * as visitExperienceSchemas from '../_schemas/visit-experience.schema';
 import { registry } from './registry';
 
@@ -38,7 +52,7 @@ import { registry } from './registry';
  * Map to store registered schemas by their name
  * This allows routes to use the registered schemas which will generate $ref
  */
-export const registeredSchemaMap = new Map<string, any>();
+export const registeredSchemaMap = new Map<string, ZodTypeAny>();
 
 /**
  * Register all schemas with the registry
@@ -154,42 +168,581 @@ export function registerAllSchemas() {
     registry.register('RecentActivity', autoApprovalSchemas.RecentActivitySchema),
   );
 
+  // Register app maintenance schemas
+  registeredSchemaMap.set(
+    'AppMaintenanceTargetBrand',
+    registry.register(
+      'AppMaintenanceTargetBrand',
+      appMaintenanceSchemas.AppMaintenanceTargetBrandSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'AppMaintenanceStatus',
+    registry.register('AppMaintenanceStatus', appMaintenanceSchemas.AppMaintenanceStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'AppMaintenanceSortBy',
+    registry.register('AppMaintenanceSortBy', appMaintenanceSchemas.AppMaintenanceSortSchema),
+  );
+  registeredSchemaMap.set(
+    'AppMaintenance',
+    registry.register('AppMaintenance', appMaintenanceSchemas.AppMaintenanceSchema),
+  );
+  registeredSchemaMap.set(
+    'AppMaintenanceItemResponse',
+    registry.register(
+      'AppMaintenanceItemResponse',
+      appMaintenanceSchemas.AppMaintenanceItemResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'AppMaintenanceDetailResponse',
+    registry.register(
+      'AppMaintenanceDetailResponse',
+      appMaintenanceSchemas.AppMaintenanceDetailResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetAppMaintenancesQuery',
+    registry.register(
+      'GetAppMaintenancesQuery',
+      appMaintenanceSchemas.GetAppMaintenancesQuerySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CreateAppMaintenanceBody',
+    registry.register(
+      'CreateAppMaintenanceBody',
+      appMaintenanceSchemas.CreateAppMaintenanceBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateAppMaintenanceBody',
+    registry.register(
+      'UpdateAppMaintenanceBody',
+      appMaintenanceSchemas.UpdateAppMaintenanceBodySchema,
+    ),
+  );
+
+  // Register terms schemas
+  registeredSchemaMap.set(
+    'TermsType',
+    registry.register('TermsType', termsSchemas.TermsTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'TermsBrand',
+    registry.register('TermsBrand', termsSchemas.TermsBrandSchema),
+  );
+  registeredSchemaMap.set(
+    'TermsStatus',
+    registry.register('TermsStatus', termsSchemas.TermsStatusSchema),
+  );
+  registeredSchemaMap.set('Terms', registry.register('Terms', termsSchemas.TermsSchema));
+  registeredSchemaMap.set(
+    'TermsListItemResponse',
+    registry.register('TermsListItemResponse', termsSchemas.TermsListItemResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'TermsVersionEntry',
+    registry.register('TermsVersionEntry', termsSchemas.TermsVersionEntrySchema),
+  );
+  registeredSchemaMap.set(
+    'TermsDetailResponse',
+    registry.register('TermsDetailResponse', termsSchemas.TermsDetailResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'GetTermsQuery',
+    registry.register('GetTermsQuery', termsSchemas.GetTermsQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'CreateTermsBody',
+    registry.register('CreateTermsBody', termsSchemas.CreateTermsBodySchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateTermsBody',
+    registry.register('UpdateTermsBody', termsSchemas.UpdateTermsBodySchema),
+  );
+  registeredSchemaMap.set(
+    'GetTermsResponse',
+    registry.register('GetTermsResponse', termsSchemas.GetTermsResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'DeleteTermsResponse',
+    registry.register('DeleteTermsResponse', termsSchemas.DeleteTermsResponseSchema),
+  );
+
+  // Register app version schemas
+  registeredSchemaMap.set(
+    'AppVersionBrandEnum',
+    registry.register('AppVersionBrandEnum', appVersionSchemas.AppVersionBrandEnumSchema),
+  );
+  registeredSchemaMap.set(
+    'AppVersionRecord',
+    registry.register('AppVersionRecord', appVersionSchemas.AppVersionRecordSchema),
+  );
+  registeredSchemaMap.set(
+    'GetAppVersionsQueryParams',
+    registry.register(
+      'GetAppVersionsQueryParams',
+      appVersionSchemas.GetAppVersionsQueryParamsSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CreateAppVersionBody',
+    registry.register('CreateAppVersionBody', appVersionSchemas.CreateAppVersionBodySchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateAppVersionBody',
+    registry.register('UpdateAppVersionBody', appVersionSchemas.UpdateAppVersionBodySchema),
+  );
+
+  // Register CRM maintenance schemas (Y-10)
+  registeredSchemaMap.set(
+    'CrmMaintenanceStatus',
+    registry.register('CrmMaintenanceStatus', crmMaintenanceSchemas.CrmMaintenanceStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'CrmMaintenanceSortBy',
+    registry.register('CrmMaintenanceSortBy', crmMaintenanceSchemas.CrmMaintenanceSortSchema),
+  );
+  registeredSchemaMap.set(
+    'CrmMaintenance',
+    registry.register('CrmMaintenance', crmMaintenanceSchemas.CrmMaintenanceSchema),
+  );
+  registeredSchemaMap.set(
+    'CrmMaintenanceAllowedUser',
+    registry.register(
+      'CrmMaintenanceAllowedUser',
+      crmMaintenanceSchemas.CrmMaintenanceAllowedUserResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CrmMaintenanceItemResponse',
+    registry.register(
+      'CrmMaintenanceItemResponse',
+      crmMaintenanceSchemas.CrmMaintenanceItemResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CrmMaintenanceDetailResponse',
+    registry.register(
+      'CrmMaintenanceDetailResponse',
+      crmMaintenanceSchemas.CrmMaintenanceDetailResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetCrmMaintenancesQuery',
+    registry.register(
+      'GetCrmMaintenancesQuery',
+      crmMaintenanceSchemas.GetCrmMaintenancesQuerySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CreateCrmMaintenanceBody',
+    registry.register(
+      'CreateCrmMaintenanceBody',
+      crmMaintenanceSchemas.CreateCrmMaintenanceBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateCrmMaintenanceBody',
+    registry.register(
+      'UpdateCrmMaintenanceBody',
+      crmMaintenanceSchemas.UpdateCrmMaintenanceBodySchema,
+    ),
+  );
+  // Register banner schemas
+  registeredSchemaMap.set(
+    'BannerChannel',
+    registry.register('BannerChannel', bannerSchemas.BannerChannelSchema),
+  );
+  registeredSchemaMap.set(
+    'BannerStatus',
+    registry.register('BannerStatus', bannerSchemas.BannerStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'BannerSortBy',
+    registry.register('BannerSortBy', bannerSchemas.BannerSortSchema),
+  );
+  registeredSchemaMap.set('Banner', registry.register('Banner', bannerSchemas.BannerSchema));
+  registeredSchemaMap.set(
+    'BannerItemResponse',
+    registry.register('BannerItemResponse', bannerSchemas.BannerItemResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'BannerDisplayOrderItem',
+    registry.register('BannerDisplayOrderItem', bannerSchemas.BannerDisplayOrderItemSchema),
+  );
+  registeredSchemaMap.set(
+    'GetBannersQuery',
+    registry.register('GetBannersQuery', bannerSchemas.GetBannersQueryParamsSchema),
+  );
+  registeredSchemaMap.set(
+    'CreateBannerBody',
+    registry.register('CreateBannerBody', bannerSchemas.CreateBannerBodySchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateBannerBody',
+    registry.register('UpdateBannerBody', bannerSchemas.UpdateBannerBodySchema),
+  );
+
+  // Register banner schemas
+  registeredSchemaMap.set(
+    'BannerChannel',
+    registry.register('BannerChannel', bannerSchemas.BannerChannelSchema),
+  );
+  registeredSchemaMap.set(
+    'BannerStatus',
+    registry.register('BannerStatus', bannerSchemas.BannerStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'BannerSortBy',
+    registry.register('BannerSortBy', bannerSchemas.BannerSortSchema),
+  );
+  registeredSchemaMap.set('Banner', registry.register('Banner', bannerSchemas.BannerSchema));
+  registeredSchemaMap.set(
+    'BannerItemResponse',
+    registry.register('BannerItemResponse', bannerSchemas.BannerItemResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'BannerDisplayOrderItem',
+    registry.register('BannerDisplayOrderItem', bannerSchemas.BannerDisplayOrderItemSchema),
+  );
+  registeredSchemaMap.set(
+    'GetBannersQuery',
+    registry.register('GetBannersQuery', bannerSchemas.GetBannersQueryParamsSchema),
+  );
+  registeredSchemaMap.set(
+    'CreateBannerBody',
+    registry.register('CreateBannerBody', bannerSchemas.CreateBannerBodySchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateBannerBody',
+    registry.register('UpdateBannerBody', bannerSchemas.UpdateBannerBodySchema),
+  );
+
+  // Register article category schemas
+  registeredSchemaMap.set(
+    'ArticleCategoryType',
+    registry.register('ArticleCategoryType', articleCategorySchemas.ArticleCategoryTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'ArticleCategorySort',
+    registry.register('ArticleCategorySort', articleCategorySchemas.ArticleCategorySortSchema),
+  );
+  registeredSchemaMap.set(
+    'ArticleCategory',
+    registry.register('ArticleCategory', articleCategorySchemas.ArticleCategorySchema),
+  );
+  registeredSchemaMap.set(
+    'ArticleCategoryItemResponse',
+    registry.register(
+      'ArticleCategoryItemResponse',
+      articleCategorySchemas.ArticleCategoryItemResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetArticleCategoriesQueryParams',
+    registry.register(
+      'GetArticleCategoriesQueryParams',
+      articleCategorySchemas.GetArticleCategoriesQueryParamsSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CreateArticleCategoryBody',
+    registry.register(
+      'CreateArticleCategoryBody',
+      articleCategorySchemas.CreateArticleCategoryBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateArticleCategoryBody',
+    registry.register(
+      'UpdateArticleCategoryBody',
+      articleCategorySchemas.UpdateArticleCategoryBodySchema,
+    ),
+  );
+
   // Register campaign schemas
   registeredSchemaMap.set(
-    'CampaignAcceptStatus',
-    registry.register('CampaignAcceptStatus', campaignSchemas.CampaignAcceptStatusSchema),
+    'CampaignDiscountType',
+    registry.register('CampaignDiscountType', campaignSchemas.CampaignDiscountTypeSchema),
   );
   registeredSchemaMap.set(
-    'CampaignPeriodType',
-    registry.register('CampaignPeriodType', campaignSchemas.CampaignPeriodTypeSchema),
+    'CampaignApplyStartMonth',
+    registry.register('CampaignApplyStartMonth', campaignSchemas.CampaignApplyStartMonthSchema),
   );
   registeredSchemaMap.set(
-    'CampaignListItem',
-    registry.register('CampaignListItem', campaignSchemas.CampaignListItemSchema),
+    'CampaignTargetSex',
+    registry.register('CampaignTargetSex', campaignSchemas.CampaignTargetSexSchema),
   );
   registeredSchemaMap.set(
-    'CampaignDetailPeriod',
-    registry.register('CampaignDetailPeriod', campaignSchemas.CampaignDetailPeriodSchema),
+    'CampaignAcceptState',
+    registry.register('CampaignAcceptState', campaignSchemas.CampaignAcceptStateSchema),
   );
   registeredSchemaMap.set(
-    'CampaignDetailDiscount',
-    registry.register('CampaignDetailDiscount', campaignSchemas.CampaignDetailDiscountSchema),
+    'CampaignPublishScope',
+    registry.register('CampaignPublishScope', campaignSchemas.CampaignPublishScopeSchema),
   );
   registeredSchemaMap.set(
-    'CampaignDetailAutoGrant',
-    registry.register('CampaignDetailAutoGrant', campaignSchemas.CampaignDetailAutoGrantSchema),
+    'CampaignSort',
+    registry.register('CampaignSort', campaignSchemas.CampaignSortSchema),
   );
   registeredSchemaMap.set(
-    'CampaignDetailStats',
-    registry.register('CampaignDetailStats', campaignSchemas.CampaignDetailStatsSchema),
+    'CampaignErrorResponse',
+    registry.register('CampaignErrorResponse', campaignSchemas.CampaignErrorResponseSchema),
   );
   registeredSchemaMap.set(
-    'CampaignDetailMetadata',
-    registry.register('CampaignDetailMetadata', campaignSchemas.CampaignDetailMetadataSchema),
+    'CampaignOptionDiscount',
+    registry.register('CampaignOptionDiscount', campaignSchemas.CampaignOptionDiscountSchema),
   );
   registeredSchemaMap.set(
-    'CampaignDetail',
-    registry.register('CampaignDetail', campaignSchemas.CampaignDetailSchema),
+    'CampaignOptionDiscountInput',
+    registry.register(
+      'CampaignOptionDiscountInput',
+      campaignSchemas.CampaignOptionDiscountInputSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CampaignAutoOption',
+    registry.register('CampaignAutoOption', campaignSchemas.CampaignAutoOptionSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignAutoOptionInput',
+    registry.register('CampaignAutoOptionInput', campaignSchemas.CampaignAutoOptionInputSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignReferralSettings',
+    registry.register('CampaignReferralSettings', campaignSchemas.CampaignReferralSettingsSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignReferralSettingsInput',
+    registry.register(
+      'CampaignReferralSettingsInput',
+      campaignSchemas.CampaignReferralSettingsInputSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CampaignEnrollmentChannels',
+    registry.register(
+      'CampaignEnrollmentChannels',
+      campaignSchemas.CampaignEnrollmentChannelsSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CampaignStats',
+    registry.register('CampaignStats', campaignSchemas.CampaignStatsSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignOptionRef',
+    registry.register('CampaignOptionRef', campaignSchemas.CampaignOptionRefSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignStoreRef',
+    registry.register('CampaignStoreRef', campaignSchemas.CampaignStoreRefSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignStoreUsage',
+    registry.register('CampaignStoreUsage', campaignSchemas.CampaignStoreUsageSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignChangeHistoryItem',
+    registry.register('CampaignChangeHistoryItem', campaignSchemas.CampaignChangeHistoryItemSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignListItemResponse',
+    registry.register('CampaignListItemResponse', campaignSchemas.CampaignListItemResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'CampaignDetailResponse',
+    registry.register('CampaignDetailResponse', campaignSchemas.CampaignDetailResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'CreateCampaignBody',
+    registry.register('CreateCampaignBody', campaignSchemas.CreateCampaignBodySchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateCampaignBody',
+    registry.register('UpdateCampaignBody', campaignSchemas.UpdateCampaignBodySchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseStatus',
+    registry.register('ExerciseStatus', exerciseSchemas.ExerciseStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseLevel',
+    registry.register('ExerciseLevel', exerciseSchemas.ExerciseLevelSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseHandUsage',
+    registry.register('ExerciseHandUsage', exerciseSchemas.ExerciseHandUsageSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseDeleteBlockReason',
+    registry.register('ExerciseDeleteBlockReason', exerciseSchemas.ExerciseDeleteBlockReasonSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseMasterStatus',
+    registry.register('ExerciseMasterStatus', exerciseMasterSchemas.ExerciseMasterStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseMasterDeleteBlockReason',
+    registry.register(
+      'ExerciseMasterDeleteBlockReason',
+      exerciseMasterSchemas.ExerciseMasterDeleteBlockReasonSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ExerciseMasterListItem',
+    registry.register('ExerciseMasterListItem', exerciseMasterSchemas.ExerciseMasterListItemSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseMasterDetail',
+    registry.register('ExerciseMasterDetail', exerciseMasterSchemas.ExerciseMasterDetailSchema),
+  );
+  registeredSchemaMap.set(
+    'GetExerciseMasterListQuery',
+    registry.register(
+      'GetExerciseMasterListQuery',
+      exerciseMasterSchemas.GetExerciseMasterListQuerySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetExerciseMasterListResponse',
+    registry.register(
+      'GetExerciseMasterListResponse',
+      exerciseMasterSchemas.GetExerciseMasterListResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetExerciseMasterDetailResponse',
+    registry.register(
+      'GetExerciseMasterDetailResponse',
+      exerciseMasterSchemas.GetExerciseMasterDetailResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CreateExerciseMasterBody',
+    registry.register(
+      'CreateExerciseMasterBody',
+      exerciseMasterSchemas.CreateExerciseMasterBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateExerciseMasterBody',
+    registry.register(
+      'UpdateExerciseMasterBody',
+      exerciseMasterSchemas.UpdateExerciseMasterBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CreateExerciseMasterResponse',
+    registry.register(
+      'CreateExerciseMasterResponse',
+      exerciseMasterSchemas.CreateExerciseMasterResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateExerciseMasterResponse',
+    registry.register(
+      'UpdateExerciseMasterResponse',
+      exerciseMasterSchemas.UpdateExerciseMasterResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'DeleteExerciseMasterResponse',
+    registry.register(
+      'DeleteExerciseMasterResponse',
+      exerciseMasterSchemas.DeleteExerciseMasterResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'DeleteExerciseMasterBlockedResponse',
+    registry.register(
+      'DeleteExerciseMasterBlockedResponse',
+      exerciseMasterSchemas.DeleteExerciseMasterBlockedResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ExerciseEquipmentOption',
+    registry.register('ExerciseEquipmentOption', exerciseSchemas.ExerciseEquipmentOptionSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseListItem',
+    registry.register('ExerciseListItem', exerciseSchemas.ExerciseListItemSchema),
+  );
+  registeredSchemaMap.set(
+    'ExercisePagination',
+    registry.register('ExercisePagination', exerciseSchemas.ExercisePaginationSchema),
+  );
+  registeredSchemaMap.set(
+    'GetExercisesQuery',
+    registry.register('GetExercisesQuery', exerciseSchemas.GetExercisesQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'GetExercisesResponse',
+    registry.register('GetExercisesResponse', exerciseSchemas.GetExercisesResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseImage',
+    registry.register('ExerciseImage', exerciseSchemas.ExerciseImageSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseStep',
+    registry.register('ExerciseStep', exerciseSchemas.ExerciseStepSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseTagSetting',
+    registry.register('ExerciseTagSetting', exerciseSchemas.ExerciseTagSettingSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseDetail',
+    registry.register('ExerciseDetail', exerciseSchemas.ExerciseDetailSchema),
+  );
+  registeredSchemaMap.set(
+    'GetExerciseDetailResponse',
+    registry.register('GetExerciseDetailResponse', exerciseSchemas.GetExerciseDetailResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'ExerciseStepInput',
+    registry.register('ExerciseStepInput', exerciseSchemas.ExerciseStepInputSchema),
+  );
+  registeredSchemaMap.set(
+    'UpsertExerciseBody',
+    registry.register('UpsertExerciseBody', exerciseSchemas.UpsertExerciseBodySchema),
+  );
+  registeredSchemaMap.set(
+    'CreateExerciseResponse',
+    registry.register('CreateExerciseResponse', exerciseSchemas.CreateExerciseResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateExerciseResponse',
+    registry.register('UpdateExerciseResponse', exerciseSchemas.UpdateExerciseResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateExercisePublishStatusBody',
+    registry.register(
+      'UpdateExercisePublishStatusBody',
+      exerciseSchemas.UpdateExercisePublishStatusBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateExercisePublishStatusResponse',
+    registry.register(
+      'UpdateExercisePublishStatusResponse',
+      exerciseSchemas.UpdateExercisePublishStatusResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'DeleteExerciseResponse',
+    registry.register('DeleteExerciseResponse', exerciseSchemas.DeleteExerciseResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'DeleteExerciseBlockedResponse',
+    registry.register(
+      'DeleteExerciseBlockedResponse',
+      exerciseSchemas.DeleteExerciseBlockedResponseSchema,
+    ),
   );
   registeredSchemaMap.set(
     'FranchiseCompanyType',
@@ -200,6 +753,13 @@ export function registerAllSchemas() {
     registry.register(
       'FranchiseCompanyStatus',
       franchiseCompanySchemas.FranchiseCompanyStatusSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'FranchiseCompanyAuthMethod',
+    registry.register(
+      'FranchiseCompanyAuthMethod',
+      franchiseCompanySchemas.FranchiseCompanyAuthMethodSchema,
     ),
   );
   registeredSchemaMap.set(
@@ -272,39 +832,52 @@ export function registerAllSchemas() {
       franchiseCompanySchemas.GetFranchiseCompanyHistoryResponseSchema,
     ),
   );
-  registeredSchemaMap.set(
-    'GetCampaignsQuery',
-    registry.register('GetCampaignsQuery', campaignSchemas.GetCampaignsQuerySchema),
-  );
-  registeredSchemaMap.set(
-    'GetCampaignsResponse',
-    registry.register('GetCampaignsResponse', campaignSchemas.GetCampaignsResponseSchema),
-  );
-  registeredSchemaMap.set(
-    'GetCampaignDetailResponse',
-    registry.register('GetCampaignDetailResponse', campaignSchemas.GetCampaignDetailResponseSchema),
-  );
 
   // Register promo code schemas
+  registeredSchemaMap.set(
+    'PromoCodeScope',
+    registry.register('PromoCodeScope', promoCodeSchemas.PromoCodeScopeSchema),
+  );
   registeredSchemaMap.set(
     'PromoCodeStatus',
     registry.register('PromoCodeStatus', promoCodeSchemas.PromoCodeStatusSchema),
   );
   registeredSchemaMap.set(
-    'PromoCodeUsageCapMode',
-    registry.register('PromoCodeUsageCapMode', promoCodeSchemas.PromoCodeUsageCapModeSchema),
+    'PromoCodeEffectiveStatus',
+    registry.register('PromoCodeEffectiveStatus', promoCodeSchemas.PromoCodeEffectiveStatusSchema),
   );
   registeredSchemaMap.set(
-    'PromoCodeStoreScope',
-    registry.register('PromoCodeStoreScope', promoCodeSchemas.PromoCodeStoreScopeSchema),
+    'PromoCodeGenerationMethod',
+    registry.register(
+      'PromoCodeGenerationMethod',
+      promoCodeSchemas.PromoCodeGenerationMethodSchema,
+    ),
   );
   registeredSchemaMap.set(
-    'GetPromoCodesQuery',
-    registry.register('GetPromoCodesQuery', promoCodeSchemas.GetPromoCodesQuerySchema),
+    'PromoCodeStatusToggleAction',
+    registry.register(
+      'PromoCodeStatusToggleAction',
+      promoCodeSchemas.PromoCodeStatusToggleActionSchema,
+    ),
   );
   registeredSchemaMap.set(
-    'PromoCodeUpsertBody',
-    registry.register('PromoCodeUpsertBody', promoCodeSchemas.PromoCodeUpsertBodySchema),
+    'PromoCodeSort',
+    registry.register('PromoCodeSort', promoCodeSchemas.PromoCodeSortSchema),
+  );
+  registeredSchemaMap.set(
+    'PromoCodeErrorResponse',
+    registry.register('PromoCodeErrorResponse', promoCodeSchemas.PromoCodeErrorResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'PromoCodeListItemResponse',
+    registry.register(
+      'PromoCodeListItemResponse',
+      promoCodeSchemas.PromoCodeListItemResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CreatePromoCodeBody',
+    registry.register('CreatePromoCodeBody', promoCodeSchemas.CreatePromoCodeBodySchema),
   );
   registeredSchemaMap.set(
     'UpdatePromoCodeStatusBody',
@@ -312,26 +885,6 @@ export function registerAllSchemas() {
       'UpdatePromoCodeStatusBody',
       promoCodeSchemas.UpdatePromoCodeStatusBodySchema,
     ),
-  );
-  registeredSchemaMap.set(
-    'PromoCodeRecord',
-    registry.register('PromoCodeRecord', promoCodeSchemas.PromoCodeRecordSchema),
-  );
-  registeredSchemaMap.set(
-    'GetPromoCodesResponse',
-    registry.register('GetPromoCodesResponse', promoCodeSchemas.GetPromoCodesResponseSchema),
-  );
-  registeredSchemaMap.set(
-    'CreatePromoCodeResponse',
-    registry.register('CreatePromoCodeResponse', promoCodeSchemas.CreatePromoCodeResponseSchema),
-  );
-  registeredSchemaMap.set(
-    'UpdatePromoCodeResponse',
-    registry.register('UpdatePromoCodeResponse', promoCodeSchemas.UpdatePromoCodeResponseSchema),
-  );
-  registeredSchemaMap.set(
-    'PromoCodeErrorResponse',
-    registry.register('PromoCodeErrorResponse', promoCodeSchemas.PromoCodeErrorResponseSchema),
   );
   // Register locker schemas
   registeredSchemaMap.set(
@@ -867,8 +1420,56 @@ export function registerAllSchemas() {
     ),
   );
   registeredSchemaMap.set(
-    'RiskReason',
-    registry.register('RiskReason', membershipApplicationSchemas.RiskReasonSchema),
+    'EnrollmentRoute',
+    registry.register('EnrollmentRoute', membershipApplicationSchemas.EnrollmentRouteSchema),
+  );
+  registeredSchemaMap.set(
+    'RejectionReason',
+    registry.register('RejectionReason', membershipApplicationSchemas.RejectionReasonSchema),
+  );
+  registeredSchemaMap.set(
+    'BlacklistCheckState',
+    registry.register(
+      'BlacklistCheckState',
+      membershipApplicationSchemas.BlacklistCheckStateSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'EnrollmentFeeExemptionKind',
+    registry.register(
+      'EnrollmentFeeExemptionKind',
+      membershipApplicationSchemas.EnrollmentFeeExemptionKindSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'MembershipApplicationSummary',
+    registry.register(
+      'MembershipApplicationSummary',
+      membershipApplicationSchemas.MembershipApplicationSummarySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'TimelineEntry',
+    registry.register('TimelineEntry', membershipApplicationSchemas.TimelineEntrySchema),
+  );
+  registeredSchemaMap.set(
+    'BlacklistCondition',
+    registry.register('BlacklistCondition', membershipApplicationSchemas.BlacklistConditionSchema),
+  );
+  registeredSchemaMap.set(
+    'FeeRow',
+    registry.register('FeeRow', membershipApplicationSchemas.FeeRowSchema),
+  );
+  registeredSchemaMap.set(
+    'EnrollmentFeeExemption',
+    registry.register(
+      'EnrollmentFeeExemption',
+      membershipApplicationSchemas.EnrollmentFeeExemptionSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'CompanionUpgrade',
+    registry.register('CompanionUpgrade', membershipApplicationSchemas.CompanionUpgradeSchema),
   );
   registeredSchemaMap.set(
     'GetMembershipApplicationsQuery',
@@ -889,20 +1490,6 @@ export function registerAllSchemas() {
     registry.register(
       'GetApplicationDetailResponse',
       membershipApplicationSchemas.GetApplicationDetailResponseSchema,
-    ),
-  );
-  registeredSchemaMap.set(
-    'UpdateMembershipApplicationRequest',
-    registry.register(
-      'UpdateMembershipApplicationRequest',
-      membershipApplicationSchemas.UpdateMembershipApplicationRequestSchema,
-    ),
-  );
-  registeredSchemaMap.set(
-    'UpdateMembershipApplicationResponse',
-    registry.register(
-      'UpdateMembershipApplicationResponse',
-      membershipApplicationSchemas.UpdateMembershipApplicationResponseSchema,
     ),
   );
   registeredSchemaMap.set(
@@ -1081,18 +1668,80 @@ export function registerAllSchemas() {
     ),
   );
 
-  // Register position / store masters
+  // Register position / store masters (Y-01 feature 017)
   registeredSchemaMap.set(
     'PositionRoleCategory',
     registry.register('PositionRoleCategory', positionSchemas.PositionRoleCategorySchema),
   );
   registeredSchemaMap.set(
-    'PositionFeatures',
-    registry.register('PositionFeatures', positionSchemas.PositionFeaturesSchema),
+    'PositionPermissionKey',
+    registry.register('PositionPermissionKey', positionSchemas.PositionPermissionKeySchema),
+  );
+  registeredSchemaMap.set(
+    'PositionPermissionMap',
+    registry.register('PositionPermissionMap', positionSchemas.PermissionMapSchema),
+  );
+  registeredSchemaMap.set(
+    'PositionPermissionMapPartial',
+    registry.register('PositionPermissionMapPartial', positionSchemas.PermissionMapPartialSchema),
   );
   registeredSchemaMap.set(
     'Position',
     registry.register('Position', positionSchemas.PositionSchema),
+  );
+  registeredSchemaMap.set(
+    'PositionListItem',
+    registry.register('PositionListItem', positionSchemas.PositionListItemSchema),
+  );
+  registeredSchemaMap.set(
+    'PositionPagination',
+    registry.register('PositionPagination', positionSchemas.PositionPaginationSchema),
+  );
+  registeredSchemaMap.set(
+    'GetPositionsQuery',
+    registry.register('GetPositionsQuery', positionSchemas.GetPositionsQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'PositionDetail',
+    registry.register('PositionDetail', positionSchemas.PositionDetailSchema),
+  );
+  registeredSchemaMap.set(
+    'CreatePositionBody',
+    registry.register('CreatePositionBody', positionSchemas.CreatePositionBodySchema),
+  );
+  registeredSchemaMap.set(
+    'CreatePositionResponse',
+    registry.register('CreatePositionResponse', positionSchemas.CreatePositionResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'UpdatePositionBody',
+    registry.register('UpdatePositionBody', positionSchemas.UpdatePositionBodySchema),
+  );
+  registeredSchemaMap.set(
+    'UpdatePositionResponse',
+    registry.register('UpdatePositionResponse', positionSchemas.UpdatePositionResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'PositionPermissionCategoryKey',
+    registry.register('PositionPermissionCategoryKey', positionSchemas.PositionCategoryKeySchema),
+  );
+  registeredSchemaMap.set(
+    'PositionPermissionItem',
+    registry.register('PositionPermissionItem', positionSchemas.PositionPermissionItemSchema),
+  );
+  registeredSchemaMap.set(
+    'PositionPermissionCategory',
+    registry.register(
+      'PositionPermissionCategory',
+      positionSchemas.PositionPermissionCategorySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetPositionPermissionsResponse',
+    registry.register(
+      'GetPositionPermissionsResponse',
+      positionSchemas.GetPositionPermissionsResponseSchema,
+    ),
   );
   registeredSchemaMap.set(
     'StaffPermissionRecord',
@@ -1367,6 +2016,10 @@ export function registerAllSchemas() {
     'UpdateBrandResponse',
     registry.register('UpdateBrandResponse', brandSchemas.UpdateBrandResponseSchema),
   );
+  registeredSchemaMap.set(
+    'BrandEnum',
+    registry.register('BrandEnum', brandSchemas.BrandEnumSchema),
+  );
 
   // Register staff schemas
   registeredSchemaMap.set(
@@ -1418,16 +2071,46 @@ export function registerAllSchemas() {
     registry.register('UpdateStaffResponse', staffSchemas.UpdateStaffResponseSchema),
   );
   registeredSchemaMap.set(
-    'InviteStaffRequest',
-    registry.register('InviteStaffRequest', staffSchemas.InviteStaffRequestSchema),
-  );
-  registeredSchemaMap.set(
-    'InviteStaffResponse',
-    registry.register('InviteStaffResponse', staffSchemas.InviteStaffResponseSchema),
-  );
-  registeredSchemaMap.set(
     'DeleteStaffResponse',
     registry.register('DeleteStaffResponse', staffSchemas.DeleteStaffResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'StaffPermissionHistoryEntry',
+    registry.register(
+      'StaffPermissionHistoryEntry',
+      staffSchemas.StaffPermissionHistoryEntrySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetStaffPermissionHistoryResponse',
+    registry.register(
+      'GetStaffPermissionHistoryResponse',
+      staffSchemas.GetStaffPermissionHistoryResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'DeactivateStaffRequest',
+    registry.register('DeactivateStaffRequest', staffSchemas.DeactivateStaffRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'DeactivateStaffResponse',
+    registry.register('DeactivateStaffResponse', staffSchemas.DeactivateStaffResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'ResendInviteResponse',
+    registry.register('ResendInviteResponse', staffSchemas.ResendInviteResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'MagicLinkResponse',
+    registry.register('MagicLinkResponse', staffSchemas.MagicLinkResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'CreateStaffsRequest',
+    registry.register('CreateStaffsRequest', staffSchemas.CreateStaffsRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'CreateStaffsResponse',
+    registry.register('CreateStaffsResponse', staffSchemas.CreateStaffsResponseSchema),
   );
 
   // Register leave schemas
@@ -1455,18 +2138,59 @@ export function registerAllSchemas() {
     'LeaveErrorResponse',
     registry.register('LeaveErrorResponse', leaveSchemas.ErrorResponseSchema),
   );
+  registeredSchemaMap.set(
+    'LeaveListStatus',
+    registry.register('LeaveListStatus', leaveSchemas.LeaveListStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'CancellationBlockedReason',
+    registry.register('CancellationBlockedReason', leaveSchemas.CancellationBlockedReasonSchema),
+  );
+  registeredSchemaMap.set(
+    'ProxyAgreementMethod',
+    registry.register('ProxyAgreementMethod', leaveSchemas.ProxyAgreementMethodSchema),
+  );
+  registeredSchemaMap.set(
+    'SuspensionHistoryStatus',
+    registry.register('SuspensionHistoryStatus', leaveSchemas.SuspensionHistoryStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'SuspensionHistoryMonth',
+    registry.register('SuspensionHistoryMonth', leaveSchemas.SuspensionHistoryMonthSchema),
+  );
+  registeredSchemaMap.set(
+    'LeaveMember',
+    registry.register('LeaveMember', leaveSchemas.LeaveMemberSchema),
+  );
+  registeredSchemaMap.set(
+    'LeaveDetail',
+    registry.register('LeaveDetail', leaveSchemas.LeaveDetailSchema),
+  );
+  registeredSchemaMap.set(
+    'GetLeaveDetailResponse',
+    registry.register('GetLeaveDetailResponse', leaveSchemas.GetLeaveDetailResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'CancelWithdrawalRequest',
+    registry.register('CancelWithdrawalRequest', leaveSchemas.CancelWithdrawalRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'LeaveActionResponse',
+    registry.register('LeaveActionResponse', leaveSchemas.LeaveActionResponseSchema),
+  );
 
   // Register blacklist schemas
   registeredSchemaMap.set(
-    'BlacklistRegistrationSource',
-    registry.register(
-      'BlacklistRegistrationSource',
-      blacklistSchemas.BlacklistRegistrationSourceSchema,
-    ),
+    'BlacklistSource',
+    registry.register('BlacklistSource', blacklistSchemas.BlacklistSourceSchema),
   );
   registeredSchemaMap.set(
-    'BlacklistManualReason',
-    registry.register('BlacklistManualReason', blacklistSchemas.BlacklistManualReasonSchema),
+    'BlacklistReasonCategory',
+    registry.register('BlacklistReasonCategory', blacklistSchemas.BlacklistReasonCategorySchema),
+  );
+  registeredSchemaMap.set(
+    'BlacklistHistoryEvent',
+    registry.register('BlacklistHistoryEvent', blacklistSchemas.BlacklistHistoryEventSchema),
   );
   registeredSchemaMap.set(
     'UnpaidFilter',
@@ -1474,9 +2198,17 @@ export function registerAllSchemas() {
   );
 
   // Register withdraw schemas
+  // A-01 FR-014: the free-text 退会理由 replaced the former WithdrawReason picklist; what is
+  // enumerated now is the *derived* withdrawal type, not the member's motivation.
   registeredSchemaMap.set(
-    'WithdrawReason',
-    registry.register('WithdrawReason', memberSchemas.WithdrawReasonSchema),
+    'WithdrawalType',
+    registry.register('WithdrawalType', memberSchemas.WithdrawalTypeSchema),
+  );
+
+  // Register 代理申請 schemas (A-01 FR-017) — shared by 休会 / 退会 / 移籍
+  registeredSchemaMap.set(
+    'ProxyAgreementMethod',
+    registry.register('ProxyAgreementMethod', memberSchemas.ProxyAgreementMethodSchema),
   );
 
   // Register gate stop schemas
@@ -1489,8 +2221,24 @@ export function registerAllSchemas() {
     registry.register('GateStopReason', memberSchemas.GateStopReasonSchema),
   );
   registeredSchemaMap.set(
-    'GateStopScope',
-    registry.register('GateStopScope', memberSchemas.GateStopScopeSchema),
+    'GateStopPattern',
+    registry.register('GateStopPattern', memberSchemas.GateStopPatternSchema),
+  );
+  registeredSchemaMap.set(
+    'GateStopSetPattern',
+    registry.register('GateStopSetPattern', memberSchemas.GateStopSetPatternSchema),
+  );
+  registeredSchemaMap.set(
+    'NotificationTopic',
+    registry.register('NotificationTopic', memberSchemas.NotificationTopicSchema),
+  );
+  registeredSchemaMap.set(
+    'NotificationPreference',
+    registry.register('NotificationPreference', memberSchemas.NotificationPreferenceSchema),
+  );
+  registeredSchemaMap.set(
+    'MemberFamilyBundle',
+    registry.register('MemberFamilyBundle', memberSchemas.MemberFamilyBundleSchema),
   );
   registeredSchemaMap.set(
     'GateStopRequest',
@@ -1723,6 +2471,45 @@ export function registerAllSchemas() {
   registeredSchemaMap.set(
     'SurveyQuestion',
     registry.register('SurveyQuestion', surveySchemas.SurveyQuestionSchema),
+  );
+  registeredSchemaMap.set(
+    'SurveyStoreVisibilityChoice',
+    registry.register(
+      'SurveyStoreVisibilityChoice',
+      surveySchemas.SurveyStoreVisibilityChoiceSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'SurveyStoreVisibilityQuestion',
+    registry.register(
+      'SurveyStoreVisibilityQuestion',
+      surveySchemas.SurveyStoreVisibilityQuestionSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'SurveyStoreVisibility',
+    registry.register('SurveyStoreVisibility', surveySchemas.SurveyStoreVisibilitySchema),
+  );
+  registeredSchemaMap.set(
+    'GetSurveyStoreVisibilityResponse',
+    registry.register(
+      'GetSurveyStoreVisibilityResponse',
+      surveySchemas.GetSurveyStoreVisibilityResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateSurveyStoreVisibilityBody',
+    registry.register(
+      'UpdateSurveyStoreVisibilityBody',
+      surveySchemas.UpdateSurveyStoreVisibilityBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateSurveyStoreVisibilityResponse',
+    registry.register(
+      'UpdateSurveyStoreVisibilityResponse',
+      surveySchemas.UpdateSurveyStoreVisibilityResponseSchema,
+    ),
   );
   registeredSchemaMap.set(
     'SurveyTemplateListItem',
@@ -2199,11 +2986,16 @@ export function registerAllSchemas() {
 
   // Register training equipment schemas
   registeredSchemaMap.set(
-    'TrainingEquipmentStatus',
-    registry.register(
-      'TrainingEquipmentStatus',
-      trainingEquipmentSchemas.TrainingEquipmentStatusSchema,
-    ),
+    'InstallationStatus',
+    registry.register('InstallationStatus', trainingEquipmentSchemas.InstallationStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'LocationInGym',
+    registry.register('LocationInGym', trainingEquipmentSchemas.LocationInGymSchema),
+  );
+  registeredSchemaMap.set(
+    'ToolTypeCode',
+    registry.register('ToolTypeCode', trainingEquipmentSchemas.ToolTypeCodeSchema),
   );
   registeredSchemaMap.set(
     'TrainingEquipmentToolType',
@@ -2211,10 +3003,6 @@ export function registerAllSchemas() {
       'TrainingEquipmentToolType',
       trainingEquipmentSchemas.TrainingEquipmentToolTypeSchema,
     ),
-  );
-  registeredSchemaMap.set(
-    'ToolTypeCode',
-    registry.register('ToolTypeCode', trainingEquipmentSchemas.ToolTypeCodeSchema),
   );
   registeredSchemaMap.set(
     'ToolType',
@@ -2232,94 +3020,157 @@ export function registerAllSchemas() {
     ),
   );
   registeredSchemaMap.set(
-    'TrainingEquipmentItem',
+    'TrainingEquipmentPagination',
     registry.register(
-      'TrainingEquipmentItem',
-      trainingEquipmentSchemas.TrainingEquipmentItemSchema,
+      'TrainingEquipmentPagination',
+      trainingEquipmentSchemas.TrainingEquipmentPaginationSchema,
     ),
   );
   registeredSchemaMap.set(
-    'GetTrainingEquipmentQuery',
+    'TrainingEquipmentListItem',
     registry.register(
-      'GetTrainingEquipmentQuery',
-      trainingEquipmentSchemas.GetTrainingEquipmentQuerySchema,
+      'TrainingEquipmentListItem',
+      trainingEquipmentSchemas.TrainingEquipmentListItemSchema,
     ),
   );
   registeredSchemaMap.set(
-    'GetTrainingEquipmentResponse',
+    'TrainingEquipmentLinkedExercise',
     registry.register(
-      'GetTrainingEquipmentResponse',
-      trainingEquipmentSchemas.GetTrainingEquipmentResponseSchema,
+      'TrainingEquipmentLinkedExercise',
+      trainingEquipmentSchemas.TrainingEquipmentLinkedExerciseSchema,
     ),
   );
   registeredSchemaMap.set(
-    'UpsertTrainingEquipment',
+    'TrainingEquipmentStatusCard',
     registry.register(
-      'UpsertTrainingEquipment',
-      trainingEquipmentSchemas.UpsertTrainingEquipmentSchema,
+      'TrainingEquipmentStatusCard',
+      trainingEquipmentSchemas.TrainingEquipmentStatusCardSchema,
     ),
   );
   registeredSchemaMap.set(
-    'PatchTrainingEquipment',
+    'TrainingEquipmentDetail',
     registry.register(
-      'PatchTrainingEquipment',
-      trainingEquipmentSchemas.PatchTrainingEquipmentSchema,
+      'TrainingEquipmentDetail',
+      trainingEquipmentSchemas.TrainingEquipmentDetailSchema,
     ),
   );
   registeredSchemaMap.set(
-    'TrainingEquipmentDetailResponse',
+    'ListTrainingEquipmentQuery',
     registry.register(
-      'TrainingEquipmentDetailResponse',
-      trainingEquipmentSchemas.TrainingEquipmentDetailResponseSchema,
+      'ListTrainingEquipmentQuery',
+      trainingEquipmentSchemas.ListTrainingEquipmentQuerySchema,
     ),
   );
   registeredSchemaMap.set(
-    'TrainingEquipmentExerciseLink',
+    'ListTrainingEquipmentResponse',
     registry.register(
-      'TrainingEquipmentExerciseLink',
-      trainingEquipmentSchemas.TrainingEquipmentExerciseLinkSchema,
+      'ListTrainingEquipmentResponse',
+      trainingEquipmentSchemas.ListTrainingEquipmentResponseSchema,
     ),
   );
   registeredSchemaMap.set(
-    'AddTrainingEquipmentExerciseLinks',
+    'CreateTrainingEquipmentRequest',
     registry.register(
-      'AddTrainingEquipmentExerciseLinks',
-      trainingEquipmentSchemas.AddTrainingEquipmentExerciseLinksSchema,
+      'CreateTrainingEquipmentRequest',
+      trainingEquipmentSchemas.CreateTrainingEquipmentRequestSchema,
     ),
   );
   registeredSchemaMap.set(
-    'TrainingEquipmentExerciseLinksResponse',
+    'UpdateTrainingEquipmentRequest',
     registry.register(
-      'TrainingEquipmentExerciseLinksResponse',
-      trainingEquipmentSchemas.TrainingEquipmentExerciseLinksResponseSchema,
+      'UpdateTrainingEquipmentRequest',
+      trainingEquipmentSchemas.UpdateTrainingEquipmentRequestSchema,
     ),
   );
   registeredSchemaMap.set(
-    'TrainingEquipmentStatusHistory',
+    'ChangeInstallationStatusRequest',
     registry.register(
-      'TrainingEquipmentStatusHistory',
-      trainingEquipmentSchemas.TrainingEquipmentStatusHistorySchema,
+      'ChangeInstallationStatusRequest',
+      trainingEquipmentSchemas.ChangeInstallationStatusRequestSchema,
     ),
   );
   registeredSchemaMap.set(
-    'GetTrainingEquipmentHistoryResponse',
+    'ChangeInstallationStatusResponse',
     registry.register(
-      'GetTrainingEquipmentHistoryResponse',
-      trainingEquipmentSchemas.GetTrainingEquipmentHistoryResponseSchema,
+      'ChangeInstallationStatusResponse',
+      trainingEquipmentSchemas.ChangeInstallationStatusResponseSchema,
     ),
   );
   registeredSchemaMap.set(
-    'UpdateTrainingEquipmentStatus',
+    'BulkUpdateInstallationStatusRequest',
     registry.register(
-      'UpdateTrainingEquipmentStatus',
-      trainingEquipmentSchemas.UpdateTrainingEquipmentStatusSchema,
+      'BulkUpdateInstallationStatusRequest',
+      trainingEquipmentSchemas.BulkUpdateInstallationStatusRequestSchema,
     ),
   );
   registeredSchemaMap.set(
-    'UpdateTrainingEquipmentStatusResponse',
+    'BulkUpdateInstallationStatusResponse',
     registry.register(
-      'UpdateTrainingEquipmentStatusResponse',
-      trainingEquipmentSchemas.UpdateTrainingEquipmentStatusResponseSchema,
+      'BulkUpdateInstallationStatusResponse',
+      trainingEquipmentSchemas.BulkUpdateInstallationStatusResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'TrainingEquipmentStatusHistoryItem',
+    registry.register(
+      'TrainingEquipmentStatusHistoryItem',
+      trainingEquipmentSchemas.TrainingEquipmentStatusHistoryItemSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ListEquipmentStatusHistoryResponse',
+    registry.register(
+      'ListEquipmentStatusHistoryResponse',
+      trainingEquipmentSchemas.ListEquipmentStatusHistoryResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ListEquipmentExerciseLinksResponse',
+    registry.register(
+      'ListEquipmentExerciseLinksResponse',
+      trainingEquipmentSchemas.ListEquipmentExerciseLinksResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'AddEquipmentExerciseLinksRequest',
+    registry.register(
+      'AddEquipmentExerciseLinksRequest',
+      trainingEquipmentSchemas.AddEquipmentExerciseLinksRequestSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'AddEquipmentExerciseLinksResponse',
+    registry.register(
+      'AddEquipmentExerciseLinksResponse',
+      trainingEquipmentSchemas.AddEquipmentExerciseLinksResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'TrainingEquipmentExerciseCandidate',
+    registry.register(
+      'TrainingEquipmentExerciseCandidate',
+      trainingEquipmentSchemas.TrainingEquipmentExerciseCandidateSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ListEquipmentExerciseCandidatesQuery',
+    registry.register(
+      'ListEquipmentExerciseCandidatesQuery',
+      trainingEquipmentSchemas.ListEquipmentExerciseCandidatesQuerySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ListEquipmentExerciseCandidatesResponse',
+    registry.register(
+      'ListEquipmentExerciseCandidatesResponse',
+      trainingEquipmentSchemas.ListEquipmentExerciseCandidatesResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ExportTrainingEquipmentQuery',
+    registry.register(
+      'ExportTrainingEquipmentQuery',
+      trainingEquipmentSchemas.ExportTrainingEquipmentQuerySchema,
     ),
   );
 
@@ -2442,5 +3293,527 @@ export function registerAllSchemas() {
   registeredSchemaMap.set(
     'GetStudioDetailQuery',
     registry.register('GetStudioDetailQuery', studioDetailSchemas.GetStudioDetailQuerySchema),
+  );
+
+  // Register transfer schemas (A-02 移籍管理).
+  // Registering the enums by name is what gives the UI a `TransferStatus` / `ExclusionReason`
+  // type in types.gen.ts, so no component has to hand-declare a status union (Constitution II).
+  registeredSchemaMap.set(
+    'TransferStatus',
+    registry.register('TransferStatus', transferSchemas.TransferStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'TransferBrand',
+    registry.register('TransferBrand', transferSchemas.TransferBrandSchema),
+  );
+  registeredSchemaMap.set(
+    'ExclusionReason',
+    registry.register('ExclusionReason', transferSchemas.ExclusionReasonSchema),
+  );
+  registeredSchemaMap.set(
+    'TransferRequest',
+    registry.register('TransferRequest', transferSchemas.TransferRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'ApprovalHistoryItem',
+    registry.register('ApprovalHistoryItem', transferSchemas.ApprovalHistoryItemSchema),
+  );
+  registeredSchemaMap.set(
+    'TransferDecision',
+    registry.register('TransferDecision', transferSchemas.TransferDecisionSchema),
+  );
+  registeredSchemaMap.set(
+    'TransferUnlock',
+    registry.register('TransferUnlock', transferSchemas.TransferUnlockSchema),
+  );
+  registeredSchemaMap.set(
+    'TransferDetail',
+    registry.register('TransferDetail', transferSchemas.TransferDetailSchema),
+  );
+  registeredSchemaMap.set(
+    'TransferPagination',
+    registry.register('TransferPagination', transferSchemas.TransferPaginationSchema),
+  );
+  registeredSchemaMap.set(
+    'GetTransfersQuery',
+    registry.register('GetTransfersQuery', transferSchemas.GetTransfersQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'GetTransfersResponse',
+    registry.register('GetTransfersResponse', transferSchemas.GetTransfersResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'GetTransferDetailResponse',
+    registry.register('GetTransferDetailResponse', transferSchemas.GetTransferDetailResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'ApproveTransferBody',
+    registry.register('ApproveTransferBody', transferSchemas.ApproveTransferBodySchema),
+  );
+  registeredSchemaMap.set(
+    'RejectTransferBody',
+    registry.register('RejectTransferBody', transferSchemas.RejectTransferBodySchema),
+  );
+  registeredSchemaMap.set(
+    'BulkApproveTransfersBody',
+    registry.register('BulkApproveTransfersBody', transferSchemas.BulkApproveTransfersBodySchema),
+  );
+  registeredSchemaMap.set(
+    'UnlockTransferBody',
+    registry.register('UnlockTransferBody', transferSchemas.UnlockTransferBodySchema),
+  );
+  registeredSchemaMap.set(
+    'ApproveTransferResponse',
+    registry.register('ApproveTransferResponse', transferSchemas.ApproveTransferResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'RejectTransferResponse',
+    registry.register('RejectTransferResponse', transferSchemas.RejectTransferResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'BulkApproveTransfersResponse',
+    registry.register(
+      'BulkApproveTransfersResponse',
+      transferSchemas.BulkApproveTransfersResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UnlockTransferResponse',
+    registry.register('UnlockTransferResponse', transferSchemas.UnlockTransferResponseSchema),
+  );
+  // Register billing (Sales Management, F-01) schemas
+  registeredSchemaMap.set(
+    'BillingType',
+    registry.register('BillingType', billingSchemas.BillingTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'PaymentMethod',
+    registry.register('PaymentMethod', billingSchemas.PaymentMethodSchema),
+  );
+  registeredSchemaMap.set(
+    'ConfirmationStatus',
+    registry.register('ConfirmationStatus', billingSchemas.ConfirmationStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'BillingRefundStatus',
+    registry.register('BillingRefundStatus', billingSchemas.BillingRefundStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'LineItemSource',
+    registry.register('LineItemSource', billingSchemas.LineItemSourceSchema),
+  );
+  registeredSchemaMap.set(
+    'LineItemPaymentStatus',
+    registry.register('LineItemPaymentStatus', billingSchemas.LineItemPaymentStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'FeeAdjustmentPattern',
+    registry.register('FeeAdjustmentPattern', billingSchemas.FeeAdjustmentPatternSchema),
+  );
+  registeredSchemaMap.set(
+    'FeeAdjustmentStatus',
+    registry.register('FeeAdjustmentStatus', billingSchemas.FeeAdjustmentStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundRequestType',
+    registry.register('RefundRequestType', billingSchemas.RefundRequestTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundHandling',
+    registry.register('RefundHandling', billingSchemas.RefundHandlingSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundRequestStatus',
+    registry.register('RefundRequestStatus', billingSchemas.RefundRequestStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'AccountingEntryType',
+    registry.register('AccountingEntryType', billingSchemas.AccountingEntryTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'BillingLineItem',
+    registry.register('BillingLineItem', billingSchemas.BillingLineItemSchema),
+  );
+  registeredSchemaMap.set(
+    'FeeAdjustment',
+    registry.register('FeeAdjustment', billingSchemas.FeeAdjustmentSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundLineItemRefund',
+    registry.register('RefundLineItemRefund', billingSchemas.RefundLineItemRefundSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundRequest',
+    registry.register('RefundRequest', billingSchemas.RefundRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'BillingRecordListItem',
+    registry.register('BillingRecordListItem', billingSchemas.BillingRecordListItemSchema),
+  );
+  registeredSchemaMap.set(
+    'BillingRecord',
+    registry.register('BillingRecord', billingSchemas.BillingRecordSchema),
+  );
+  registeredSchemaMap.set(
+    'BillingRecordDetail',
+    registry.register('BillingRecordDetail', billingSchemas.BillingRecordDetailSchema),
+  );
+  registeredSchemaMap.set(
+    'BillingSummary',
+    registry.register('BillingSummary', billingSchemas.BillingSummarySchema),
+  );
+  registeredSchemaMap.set(
+    'GetBillingRecordsQuery',
+    registry.register('GetBillingRecordsQuery', billingSchemas.GetBillingRecordsQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'GetBillingRecordsResponse',
+    registry.register('GetBillingRecordsResponse', billingSchemas.GetBillingRecordsResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'GetBillingRecordsSummaryQuery',
+    registry.register(
+      'GetBillingRecordsSummaryQuery',
+      billingSchemas.GetBillingRecordsSummaryQuerySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetBillingRecordDetailResponse',
+    registry.register(
+      'GetBillingRecordDetailResponse',
+      billingSchemas.GetBillingRecordDetailResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ConfirmBillingRecordsRequest',
+    registry.register(
+      'ConfirmBillingRecordsRequest',
+      billingSchemas.ConfirmBillingRecordsRequestSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ConfirmBillingRecordsResponse',
+    registry.register(
+      'ConfirmBillingRecordsResponse',
+      billingSchemas.ConfirmBillingRecordsResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ToggleConfirmationRequest',
+    registry.register('ToggleConfirmationRequest', billingSchemas.ToggleConfirmationRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'AddLineItemRequest',
+    registry.register('AddLineItemRequest', billingSchemas.AddLineItemRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'ApplyFeeAdjustmentRequest',
+    registry.register('ApplyFeeAdjustmentRequest', billingSchemas.ApplyFeeAdjustmentRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'SubmitRefundRequest',
+    registry.register('SubmitRefundRequest', billingSchemas.SubmitRefundRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'SubmitBulkRefundRequest',
+    registry.register('SubmitBulkRefundRequest', billingSchemas.SubmitBulkRefundRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'SubmitBulkRefundResponse',
+    registry.register('SubmitBulkRefundResponse', billingSchemas.SubmitBulkRefundResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'ManualBillingRegistrationRequest',
+    registry.register(
+      'ManualBillingRegistrationRequest',
+      billingSchemas.ManualBillingRegistrationRequestSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ManualBillingRegistrationResponse',
+    registry.register(
+      'ManualBillingRegistrationResponse',
+      billingSchemas.ManualBillingRegistrationResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ExportBillingRecordsRequest',
+    registry.register(
+      'ExportBillingRecordsRequest',
+      billingSchemas.ExportBillingRecordsRequestSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'StoreMemberOption',
+    registry.register('StoreMemberOption', billingSchemas.StoreMemberOptionSchema),
+  );
+  registeredSchemaMap.set(
+    'StoreMembersResponse',
+    registry.register('StoreMembersResponse', billingSchemas.StoreMembersResponseSchema),
+  );
+
+  // Register billing schemas — F-01-01/02/03 (Transaction ledger / Receivables / Refund approval)
+  registeredSchemaMap.set(
+    'ReceivableStatus',
+    registry.register('ReceivableStatus', billingSchemas.ReceivableStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundRequesterRole',
+    registry.register('RefundRequesterRole', billingSchemas.RefundRequesterRoleSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundApproverRole',
+    registry.register('RefundApproverRole', billingSchemas.RefundApproverRoleSchema),
+  );
+  registeredSchemaMap.set(
+    'TransactionType',
+    registry.register('TransactionType', billingSchemas.TransactionTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'TransactionStatus',
+    registry.register('TransactionStatus', billingSchemas.TransactionStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'UnpaidContractType',
+    registry.register('UnpaidContractType', billingSchemas.UnpaidContractTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'UpcomingBillingType',
+    registry.register('UpcomingBillingType', billingSchemas.UpcomingBillingTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundQueueStatus',
+    registry.register('RefundQueueStatus', billingSchemas.RefundQueueStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'BadDebtExclusionAction',
+    registry.register('BadDebtExclusionAction', billingSchemas.BadDebtExclusionActionSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundDecision',
+    registry.register('RefundDecision', billingSchemas.RefundDecisionSchema),
+  );
+  registeredSchemaMap.set(
+    'TransactionRecord',
+    registry.register('TransactionRecord', billingSchemas.TransactionRecordSchema),
+  );
+  registeredSchemaMap.set(
+    'GetTransactionLedgerQuery',
+    registry.register('GetTransactionLedgerQuery', billingSchemas.GetTransactionLedgerQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'GetTransactionLedgerResponse',
+    registry.register(
+      'GetTransactionLedgerResponse',
+      billingSchemas.GetTransactionLedgerResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ExportTransactionLedgerRequest',
+    registry.register(
+      'ExportTransactionLedgerRequest',
+      billingSchemas.ExportTransactionLedgerRequestSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UnpaidLineItem',
+    registry.register('UnpaidLineItem', billingSchemas.UnpaidLineItemSchema),
+  );
+  registeredSchemaMap.set(
+    'UnpaidReceivable',
+    registry.register('UnpaidReceivable', billingSchemas.UnpaidReceivableSchema),
+  );
+  registeredSchemaMap.set(
+    'GetUnpaidReceivablesQuery',
+    registry.register('GetUnpaidReceivablesQuery', billingSchemas.GetUnpaidReceivablesQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'GetUnpaidReceivablesResponse',
+    registry.register(
+      'GetUnpaidReceivablesResponse',
+      billingSchemas.GetUnpaidReceivablesResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetUnpaidDetailResponse',
+    registry.register('GetUnpaidDetailResponse', billingSchemas.GetUnpaidDetailResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'IssueConveniencePaymentRequest',
+    registry.register(
+      'IssueConveniencePaymentRequest',
+      billingSchemas.IssueConveniencePaymentRequestSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'IssueConveniencePaymentResponse',
+    registry.register(
+      'IssueConveniencePaymentResponse',
+      billingSchemas.IssueConveniencePaymentResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'BadDebtExclusionRequest',
+    registry.register('BadDebtExclusionRequest', billingSchemas.BadDebtExclusionRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'BadDebtExclusionResponse',
+    registry.register('BadDebtExclusionResponse', billingSchemas.BadDebtExclusionResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'UpcomingBillingEntry',
+    registry.register('UpcomingBillingEntry', billingSchemas.UpcomingBillingEntrySchema),
+  );
+  registeredSchemaMap.set(
+    'UpcomingBillingSummary',
+    registry.register('UpcomingBillingSummary', billingSchemas.UpcomingBillingSummarySchema),
+  );
+  registeredSchemaMap.set(
+    'GetUpcomingBillingQuery',
+    registry.register('GetUpcomingBillingQuery', billingSchemas.GetUpcomingBillingQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'GetUpcomingBillingResponse',
+    registry.register(
+      'GetUpcomingBillingResponse',
+      billingSchemas.GetUpcomingBillingResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'RefundQueueEntry',
+    registry.register('RefundQueueEntry', billingSchemas.RefundQueueEntrySchema),
+  );
+  registeredSchemaMap.set(
+    'GetRefundQueueQuery',
+    registry.register('GetRefundQueueQuery', billingSchemas.GetRefundQueueQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'PendingRefundSummary',
+    registry.register('PendingRefundSummary', billingSchemas.PendingRefundSummarySchema),
+  );
+  registeredSchemaMap.set(
+    'GetRefundQueueResponse',
+    registry.register('GetRefundQueueResponse', billingSchemas.GetRefundQueueResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'RefundDecisionRequest',
+    registry.register('RefundDecisionRequest', billingSchemas.RefundDecisionRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'BulkRefundDecisionRequest',
+    registry.register('BulkRefundDecisionRequest', billingSchemas.BulkRefundDecisionRequestSchema),
+  );
+  registeredSchemaMap.set(
+    'BulkRefundDecisionResponse',
+    registry.register(
+      'BulkRefundDecisionResponse',
+      billingSchemas.BulkRefundDecisionResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ExportRefundQueueRequest',
+    registry.register('ExportRefundQueueRequest', billingSchemas.ExportRefundQueueRequestSchema),
+  );
+
+  // ─── Routine (Y-09) ──────────────────────────────────────────────────────
+  registeredSchemaMap.set(
+    'RoutineCategory',
+    registry.register('RoutineCategory', routineCategorySchemas.RoutineCategorySchema),
+  );
+  registeredSchemaMap.set(
+    'GetRoutineCategoriesResponse',
+    registry.register(
+      'GetRoutineCategoriesResponse',
+      routineCategorySchemas.GetRoutineCategoriesResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'RoutinePublishStatus',
+    registry.register('RoutinePublishStatus', routineSchemas.RoutinePublishStatusSchema),
+  );
+  registeredSchemaMap.set(
+    'RoutineBrand',
+    registry.register('RoutineBrand', routineSchemas.RoutineBrandSchema),
+  );
+  registeredSchemaMap.set(
+    'RoutineSetType',
+    registry.register('RoutineSetType', routineSchemas.RoutineSetTypeSchema),
+  );
+  registeredSchemaMap.set(
+    'RoutineSet',
+    registry.register('RoutineSet', routineSchemas.RoutineSetSchema),
+  );
+  registeredSchemaMap.set(
+    'RoutineExercise',
+    registry.register('RoutineExercise', routineSchemas.RoutineExerciseSchema),
+  );
+  registeredSchemaMap.set(
+    'RoutineListItem',
+    registry.register('RoutineListItem', routineSchemas.RoutineListItemSchema),
+  );
+  registeredSchemaMap.set(
+    'RoutinePagination',
+    registry.register('RoutinePagination', routineSchemas.RoutinePaginationSchema),
+  );
+  registeredSchemaMap.set(
+    'GetRoutinesQuery',
+    registry.register('GetRoutinesQuery', routineSchemas.GetRoutinesQuerySchema),
+  );
+  registeredSchemaMap.set(
+    'GetRoutinesResponse',
+    registry.register('GetRoutinesResponse', routineSchemas.GetRoutinesResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'RoutineDetail',
+    registry.register('RoutineDetail', routineSchemas.RoutineDetailSchema),
+  );
+  registeredSchemaMap.set(
+    'UpsertRoutineSetInput',
+    registry.register('UpsertRoutineSetInput', routineSchemas.UpsertRoutineSetInputSchema),
+  );
+  registeredSchemaMap.set(
+    'UpsertRoutineExerciseInput',
+    registry.register(
+      'UpsertRoutineExerciseInput',
+      routineSchemas.UpsertRoutineExerciseInputSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpsertRoutineBody',
+    registry.register('UpsertRoutineBody', routineSchemas.UpsertRoutineBodySchema),
+  );
+  registeredSchemaMap.set(
+    'CreateRoutineResponse',
+    registry.register('CreateRoutineResponse', routineSchemas.CreateRoutineResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateRoutineResponse',
+    registry.register('UpdateRoutineResponse', routineSchemas.UpdateRoutineResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'GetRoutineDetailResponse',
+    registry.register('GetRoutineDetailResponse', routineSchemas.GetRoutineDetailResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'UpdateRoutinePublishStatusBody',
+    registry.register(
+      'UpdateRoutinePublishStatusBody',
+      routineSchemas.UpdateRoutinePublishStatusBodySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'UpdateRoutinePublishStatusResponse',
+    registry.register(
+      'UpdateRoutinePublishStatusResponse',
+      routineSchemas.UpdateRoutinePublishStatusResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'DuplicateRoutineResponse',
+    registry.register('DuplicateRoutineResponse', routineSchemas.DuplicateRoutineResponseSchema),
+  );
+  registeredSchemaMap.set(
+    'DeleteRoutineResponse',
+    registry.register('DeleteRoutineResponse', routineSchemas.DeleteRoutineResponseSchema),
   );
 }

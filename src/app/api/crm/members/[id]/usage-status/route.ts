@@ -64,11 +64,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const monthlyVisitsDiff = (idNum % 11) - 5; // -5 ~ +5
     const peakTimeSlot = TIME_SLOTS[idNum % TIME_SLOTS.length]!;
 
+    const monthlyLessons = 8 + (idNum % 8);
+    const monthlyOptions = 3 + (idNum % 4);
+
     const usageStatus = {
-      monthly_visits: monthlyVisits,
-      monthly_visits_diff: monthlyVisitsDiff,
-      peak_time_slot: peakTimeSlot,
-      frequent_store: member.profile.store_name ?? null,
+      monthlyVisits,
+      monthlyVisitsDiff,
+      peakTimeSlot,
+      frequentStore: member.primaryStore.name ?? null,
+      monthlyLessons,
+      monthlyLessonsDiff: (idNum % 7) - 3,
+      monthlyOptions,
+      monthlyOptionsBreakdown: [
+        { label: '水素水', count: Math.max(1, monthlyOptions - 2) },
+        { label: 'PT', count: 1 },
+        { label: 'タンニング', count: 1 },
+      ],
     };
 
     return NextResponse.json(usageStatus);

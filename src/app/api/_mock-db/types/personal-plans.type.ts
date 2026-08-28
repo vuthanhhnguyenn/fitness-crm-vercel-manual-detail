@@ -39,4 +39,10 @@ export type PersonalPlansType = {
       restricted_option_contracts?: string[];
     }>,
   ): LessonContentDetail | undefined;
+  updateStatus(
+    id: string,
+    status: 'active' | 'inactive',
+    reason?: string | null,
+  ): LessonContentDetail | undefined;
+  delete(id: string): boolean;
 };

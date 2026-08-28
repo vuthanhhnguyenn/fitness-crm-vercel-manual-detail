@@ -10,9 +10,11 @@ import type {
   Reservation,
   ReservationStatus,
   SessionMemo,
-  StudioSpaceGridResponse,
 } from '@/app/api/_schemas/lesson-reservation.schema';
-import type { LessonScheduleListItem } from '@/app/api/_schemas/lesson-schedule.schema';
+import type {
+  LessonScheduleListItem,
+  RepeatTemplate,
+} from '@/app/api/_schemas/lesson-schedule.schema';
 
 import {
   GetStudioDetailResponse,
@@ -46,6 +48,8 @@ type LessonScheduleSeedSpec = {
   payment_status: 'paid' | 'unpaid' | 'partial';
   is_alert?: boolean;
   booked_members?: Array<{ member_id: string; name: string }>;
+  /** Kind of the most recent schedule-change edit applied today (KPI breakdown only). */
+  last_change_type?: 'time' | 'instructor';
 };
 
 function lsFormatDate(d: Date): string {
@@ -118,6 +122,7 @@ function getLessonScheduleDayTemplates(): LessonScheduleSeedSpec[] {
       status: 'in_progress',
       payment_status: 'paid',
       is_alert: true,
+      last_change_type: 'time',
     },
     {
       store_id: 'ST001',
@@ -171,6 +176,21 @@ function getLessonScheduleDayTemplates(): LessonScheduleSeedSpec[] {
       ],
     },
     {
+      store_id: 'ST001',
+      store_name: 'FIT365八潮店',
+      start: '19:30',
+      end: '20:30',
+      lesson_name: 'パーソナル：空き枠',
+      studio_name: 'パーソナルブースA',
+      lesson_type: 'personal',
+      instructor_id: 'S004',
+      instructor_name: '山田 太郎',
+      capacity: 1,
+      booked_count: 0,
+      status: 'scheduled',
+      payment_status: 'unpaid',
+    },
+    {
       store_id: 'ST002',
       store_name: 'JOYFIT渋谷店',
       start: '8:00',
@@ -184,6 +204,7 @@ function getLessonScheduleDayTemplates(): LessonScheduleSeedSpec[] {
       booked_count: 16,
       status: 'completed',
       payment_status: 'paid',
+      last_change_type: 'instructor',
     },
     {
       store_id: 'ST002',
@@ -653,6 +674,8 @@ function lessonSeedToRow(
     payment_status: spec.payment_status,
     status,
     is_alert: spec.is_alert ?? false,
+    is_public: spec.lesson_type === 'studio',
+    last_change_type: spec.last_change_type ?? null,
     booked_members: spec.booked_members,
   };
 }
@@ -700,22 +723,355 @@ function makeLessonSchedules(): LessonScheduleListItem[] {
 
 export const SEED_LESSON_SCHEDULES: LessonScheduleListItem[] = makeLessonSchedules();
 
+// ─── D-01 FR-006: Manual Reservation (手動予約入力) member fixtures ────────────
+
+export interface ManualReservationMemberSeed {
+  member_id: string;
+  name: string;
+  plan: 'monthly' | 'per_use';
+  remaining: number | null;
+  penalty_until: string | null;
+}
+
+export const SEED_MANUAL_RESERVATION_MEMBERS: ManualReservationMemberSeed[] = [
+  { member_id: 'M-1024', name: '田中 花子', plan: 'monthly', remaining: 3, penalty_until: null },
+  { member_id: 'M-1058', name: '木村 拓也', plan: 'per_use', remaining: null, penalty_until: null },
+  { member_id: 'M-1103', name: '佐藤 一郎', plan: 'monthly', remaining: 0, penalty_until: null },
+  {
+    member_id: 'M-1147',
+    name: '森田 健一',
+    plan: 'monthly',
+    remaining: 2,
+    penalty_until: '2026/03/20',
+  },
+  {
+    member_id: 'M-1198',
+    name: '西村 陽子',
+    plan: 'monthly',
+    remaining: 1,
+    penalty_until: '2027/12/31',
+  },
+];
+
+// ─── D-04: Instructor Management full-profile seed data ────────────────
+
+export interface InstructorSeedRow {
+  instructor_id: string;
+  last_name: string;
+  first_name: string;
+  romaji_last_name: string | null;
+  romaji_first_name: string | null;
+  nickname: string | null;
+  role_classifications: Array<'trainer' | 'instructor' | 'body_care_therapist'>;
+  tab: 'studio' | 'pt';
+  profile_text: string | null;
+  instructing_history: string | null;
+  photo_url: string | null;
+  status: 'active' | 'inactive';
+  buffer_settings: {
+    min_booking_lead_hours: 0 | 1 | 2 | 3 | 6 | 12 | 24 | 48 | 72;
+    pre_buffer_minutes: 0 | 15 | 30 | 45 | 60;
+    post_buffer_minutes: 0 | 15 | 30 | 45 | 60;
+  };
+  crm_account_link_staff_id: string | null;
+  store_id: string;
+  average_rating: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const SEED_INSTRUCTORS: InstructorSeedRow[] = [
+  {
+    instructor_id: 'U-004',
+    last_name: 'タムタ',
+    first_name: 'タム',
+    romaji_last_name: 'Tamta',
+    romaji_first_name: 'Tam',
+    nickname: 'タム先生',
+    role_classifications: ['instructor', 'body_care_therapist'],
+    tab: 'studio',
+    profile_text:
+      '全米ヨガアライアンス認定RYT200を取得。フィットネスクラブでの指導歴8年。初心者から上級者まで幅広いレベルに対応したヨガ・ピラティスクラスを担当。',
+    instructing_history: '指導歴8年\n全米ヨガアライアンス RYT200\nマットピラティスインストラクター',
+    photo_url:
+      'https://images.unsplash.com/photo-1594381898411-846e7d193883?w=200&h=200&fit=crop&crop=face',
+    status: 'active',
+    buffer_settings: {
+      min_booking_lead_hours: 24,
+      pre_buffer_minutes: 15,
+      post_buffer_minutes: 15,
+    },
+    crm_account_link_staff_id: null,
+    store_id: 'ST001',
+    average_rating: 4.6,
+    created_at: '2025-04-15T00:00:00.000Z',
+    updated_at: '2026-03-01T05:00:00.000Z',
+  },
+  {
+    instructor_id: 'S002',
+    last_name: '鈴木',
+    first_name: '美咲',
+    romaji_last_name: 'Suzuki',
+    romaji_first_name: 'Misaki',
+    nickname: 'みさき先生',
+    role_classifications: ['instructor'],
+    tab: 'studio',
+    profile_text: 'ピラティス専門インストラクター。姿勢改善指導を得意とする。',
+    instructing_history: '指導歴5年\nマットピラティス、リフォーマーピラティス',
+    photo_url: null,
+    status: 'active',
+    buffer_settings: { min_booking_lead_hours: 12, pre_buffer_minutes: 15, post_buffer_minutes: 0 },
+    crm_account_link_staff_id: null,
+    store_id: 'ST001',
+    average_rating: 4.4,
+    created_at: '2025-05-01T00:00:00.000Z',
+    updated_at: '2025-05-01T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'S003',
+    last_name: '高橋',
+    first_name: '咲',
+    romaji_last_name: 'Takahashi',
+    romaji_first_name: 'Saki',
+    nickname: 'サキ',
+    role_classifications: ['instructor'],
+    tab: 'studio',
+    profile_text: 'エアロビクス・ダンス系レッスンを中心に担当。',
+    instructing_history: '指導歴4年',
+    photo_url: null,
+    status: 'active',
+    buffer_settings: { min_booking_lead_hours: 0, pre_buffer_minutes: 0, post_buffer_minutes: 0 },
+    crm_account_link_staff_id: 'STF-001',
+    store_id: 'ST001',
+    average_rating: 4.2,
+    created_at: '2025-06-10T00:00:00.000Z',
+    updated_at: '2025-06-10T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'S004',
+    last_name: '山田',
+    first_name: '太郎',
+    romaji_last_name: 'Yamada',
+    romaji_first_name: 'Taro',
+    nickname: 'タロウ',
+    role_classifications: ['instructor', 'body_care_therapist'],
+    tab: 'studio',
+    profile_text: 'ボディケア・ストレッチ指導を専門とする。',
+    instructing_history: '指導歴6年\n健康運動指導士',
+    photo_url: null,
+    status: 'active',
+    buffer_settings: {
+      min_booking_lead_hours: 24,
+      pre_buffer_minutes: 30,
+      post_buffer_minutes: 30,
+    },
+    crm_account_link_staff_id: null,
+    store_id: 'ST001',
+    average_rating: 4.5,
+    created_at: '2025-03-20T00:00:00.000Z',
+    updated_at: '2025-03-20T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'S005',
+    last_name: '佐藤',
+    first_name: '健太',
+    romaji_last_name: 'Sato',
+    romaji_first_name: 'Kenta',
+    nickname: 'ケンタ',
+    role_classifications: ['instructor'],
+    tab: 'studio',
+    profile_text: null,
+    instructing_history: null,
+    photo_url: null,
+    status: 'active',
+    buffer_settings: { min_booking_lead_hours: 0, pre_buffer_minutes: 0, post_buffer_minutes: 0 },
+    crm_account_link_staff_id: null,
+    store_id: 'ST001',
+    average_rating: null,
+    created_at: '2025-07-01T00:00:00.000Z',
+    updated_at: '2025-07-01T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'S006',
+    last_name: '田中',
+    first_name: '優太',
+    romaji_last_name: 'Tanaka',
+    romaji_first_name: 'Yuta',
+    nickname: 'ゆーた',
+    role_classifications: ['trainer'],
+    tab: 'pt',
+    profile_text: 'パーソナルトレーニング専門。ボディメイク・ダイエット指導を得意とする。',
+    instructing_history: '指導歴7年\nNSCA-CPT資格保有',
+    photo_url: null,
+    status: 'active',
+    buffer_settings: {
+      min_booking_lead_hours: 24,
+      pre_buffer_minutes: 15,
+      post_buffer_minutes: 15,
+    },
+    crm_account_link_staff_id: null,
+    store_id: 'ST002',
+    average_rating: 4.8,
+    created_at: '2025-02-15T00:00:00.000Z',
+    updated_at: '2025-02-15T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'S007',
+    last_name: '佐藤',
+    first_name: '花',
+    romaji_last_name: 'Sato',
+    romaji_first_name: 'Hana',
+    nickname: null,
+    role_classifications: ['instructor'],
+    tab: 'studio',
+    profile_text: 'ヨガインストラクター。リラックス系レッスンを担当。',
+    instructing_history: '指導歴3年',
+    photo_url: null,
+    status: 'active',
+    buffer_settings: { min_booking_lead_hours: 12, pre_buffer_minutes: 0, post_buffer_minutes: 0 },
+    crm_account_link_staff_id: null,
+    store_id: 'ST003',
+    average_rating: 4.1,
+    created_at: '2025-08-05T00:00:00.000Z',
+    updated_at: '2025-08-05T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'S008',
+    last_name: '伊藤',
+    first_name: '麻衣',
+    romaji_last_name: 'Ito',
+    romaji_first_name: 'Mai',
+    nickname: 'まい先生',
+    role_classifications: ['trainer'],
+    tab: 'pt',
+    profile_text: 'パーソナルトレーナー。女性会員向けボディメイク指導が中心。',
+    instructing_history: '指導歴4年',
+    photo_url: null,
+    status: 'active',
+    buffer_settings: { min_booking_lead_hours: 24, pre_buffer_minutes: 15, post_buffer_minutes: 0 },
+    crm_account_link_staff_id: null,
+    store_id: 'ST003',
+    average_rating: 4.3,
+    created_at: '2025-09-01T00:00:00.000Z',
+    updated_at: '2025-09-01T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'S009',
+    last_name: '小林',
+    first_name: '真理',
+    romaji_last_name: 'Kobayashi',
+    romaji_first_name: 'Mari',
+    nickname: 'まりん',
+    role_classifications: ['body_care_therapist'],
+    tab: 'pt',
+    profile_text: 'ボディケアセラピスト。整体・ストレッチ専門。',
+    instructing_history: '指導歴5年\n柔道整復師資格保有',
+    photo_url: null,
+    status: 'active',
+    buffer_settings: { min_booking_lead_hours: 6, pre_buffer_minutes: 15, post_buffer_minutes: 15 },
+    crm_account_link_staff_id: null,
+    store_id: 'ST004',
+    average_rating: 4.7,
+    created_at: '2025-10-10T00:00:00.000Z',
+    updated_at: '2025-10-10T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'S010',
+    last_name: '渡辺',
+    first_name: '大輝',
+    romaji_last_name: 'Watanabe',
+    romaji_first_name: 'Daiki',
+    nickname: 'だいき',
+    role_classifications: ['trainer'],
+    tab: 'pt',
+    profile_text: null,
+    instructing_history: null,
+    photo_url: null,
+    status: 'active',
+    buffer_settings: { min_booking_lead_hours: 0, pre_buffer_minutes: 0, post_buffer_minutes: 0 },
+    crm_account_link_staff_id: null,
+    store_id: 'ST004',
+    average_rating: null,
+    created_at: '2025-11-01T00:00:00.000Z',
+    updated_at: '2025-11-01T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'INS-0001',
+    last_name: '松本',
+    first_name: '健',
+    romaji_last_name: null,
+    romaji_first_name: null,
+    nickname: null,
+    role_classifications: ['trainer'],
+    tab: 'pt',
+    profile_text: null,
+    instructing_history: null,
+    photo_url: null,
+    status: 'active',
+    buffer_settings: { min_booking_lead_hours: 0, pre_buffer_minutes: 0, post_buffer_minutes: 0 },
+    crm_account_link_staff_id: null,
+    store_id: 'ST002',
+    average_rating: null,
+    created_at: '2025-12-01T00:00:00.000Z',
+    updated_at: '2025-12-01T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'INS-0002',
+    last_name: '加藤',
+    first_name: '美穂',
+    romaji_last_name: 'Kato',
+    romaji_first_name: 'Miho',
+    nickname: 'みほ先生',
+    role_classifications: ['trainer', 'instructor', 'body_care_therapist'],
+    tab: 'pt',
+    profile_text:
+      'トレーナー・インストラクター・ボディケアセラピストの三役をこなすオールラウンダー。',
+    instructing_history: '指導歴9年',
+    photo_url: null,
+    status: 'active',
+    buffer_settings: {
+      min_booking_lead_hours: 48,
+      pre_buffer_minutes: 30,
+      post_buffer_minutes: 30,
+    },
+    crm_account_link_staff_id: 'STF-001',
+    store_id: 'ST003',
+    average_rating: 4.9,
+    created_at: '2025-01-10T00:00:00.000Z',
+    updated_at: '2025-01-10T00:00:00.000Z',
+  },
+  {
+    instructor_id: 'INS-0003',
+    last_name: '中村',
+    first_name: '翔',
+    romaji_last_name: 'Nakamura',
+    romaji_first_name: 'Sho',
+    nickname: 'ショウ',
+    role_classifications: ['instructor'],
+    tab: 'studio',
+    profile_text: '産休・育休のため現在対応を休止中。',
+    instructing_history: '指導歴3年',
+    photo_url: null,
+    status: 'inactive',
+    buffer_settings: { min_booking_lead_hours: 0, pre_buffer_minutes: 0, post_buffer_minutes: 0 },
+    crm_account_link_staff_id: null,
+    store_id: 'ST001',
+    average_rating: null,
+    created_at: '2025-01-20T00:00:00.000Z',
+    updated_at: '2026-01-05T00:00:00.000Z',
+  },
+];
+
+/** @deprecated Legacy shape kept only for reference; use SEED_INSTRUCTORS. */
 export const SEED_RESERVATION_INSTRUCTORS: Array<{
   instructor_id: string;
   instructor_name: string;
   store_id: string;
-}> = [
-  { instructor_id: 'U-004', instructor_name: 'タムタ タム', store_id: 'ST001' },
-  { instructor_id: 'S002', instructor_name: '鈴木 美咲', store_id: 'ST001' },
-  { instructor_id: 'S003', instructor_name: '高橋 咲', store_id: 'ST001' },
-  { instructor_id: 'S004', instructor_name: '山田 太郎', store_id: 'ST001' },
-  { instructor_id: 'S005', instructor_name: '佐藤 健太', store_id: 'ST001' },
-  { instructor_id: 'S006', instructor_name: '田中 優太', store_id: 'ST002' },
-  { instructor_id: 'S007', instructor_name: '佐藤 花', store_id: 'ST003' },
-  { instructor_id: 'S008', instructor_name: '伊藤 麻衣', store_id: 'ST003' },
-  { instructor_id: 'S009', instructor_name: '小林 真理', store_id: 'ST004' },
-  { instructor_id: 'S010', instructor_name: '渡辺 大輝', store_id: 'ST004' },
-];
+}> = SEED_INSTRUCTORS.map((i) => ({
+  instructor_id: i.instructor_id,
+  instructor_name: `${i.last_name} ${i.first_name}`,
+  store_id: i.store_id,
+}));
 
 export const SEED_LESSONS: Array<{
   id: string;
@@ -800,7 +1156,7 @@ export const SEED_LESSON_CONTENTS: LessonContentItem[] = [
     kind: 'studio',
     brand: 'fit365',
     duration: 60,
-    pricing_type: 'paid',
+    pricing_type: 'per_use',
     status: 'active',
     gender_restriction: 'female',
     lesson_category: 'スタジオレッスン',
@@ -896,7 +1252,7 @@ export const SEED_LESSON_CONTENTS: LessonContentItem[] = [
     kind: 'bodycare',
     brand: 'fit365',
     duration: 60,
-    pricing_type: 'paid',
+    pricing_type: 'per_use',
     status: 'active',
     gender_restriction: 'none',
     lesson_category: 'ボディケア',
@@ -912,7 +1268,7 @@ export const SEED_LESSON_CONTENTS: LessonContentItem[] = [
     kind: 'bodycare',
     brand: 'fit365',
     duration: 45,
-    pricing_type: 'paid',
+    pricing_type: 'per_use',
     status: 'active',
     gender_restriction: 'none',
     lesson_category: 'ボディケア',
@@ -928,7 +1284,7 @@ export const SEED_LESSON_CONTENTS: LessonContentItem[] = [
     kind: 'bodycare',
     brand: 'joyfit',
     duration: 30,
-    pricing_type: 'paid',
+    pricing_type: 'per_use',
     status: 'inactive',
     gender_restriction: 'none',
     lesson_category: 'ボディケア',
@@ -1065,7 +1421,6 @@ export type LessonDetailOverride = {
   restricted_main_contracts?: string[];
   restricted_option_contracts?: string[];
   per_use_fee?: number;
-  usage_count?: number;
 };
 
 export const LESSON_DETAIL_OVERRIDES: Record<string, LessonDetailOverride> = {
@@ -1075,13 +1430,11 @@ export const LESSON_DETAIL_OVERRIDES: Record<string, LessonDetailOverride> = {
       '初心者向けのベーシックヨガです。呼吸法と基本ポーズを中心に、心身のリラックスと柔軟性向上を目指します。',
     internal_memo: 'マットは各自持参を案内。開始5分前に入室締切。',
     restricted_main_contracts: ['プレミアム会員'],
-    usage_count: 3,
   },
   'LSN-0002': {
     imageCount: 3,
     description: '全身を使う有酸素エアロビクスです。脂肪燃焼と体力づくりに最適です。',
     internal_memo: '特記事項なし',
-    usage_count: 0,
   },
   'LSN-0003': {
     imageCount: 5,
@@ -1090,20 +1443,17 @@ export const LESSON_DETAIL_OVERRIDES: Record<string, LessonDetailOverride> = {
     restricted_main_contracts: ['プレミアム会員', 'レディース会員'],
     restricted_option_contracts: ['ホットスタジオオプション'],
     per_use_fee: 550,
-    usage_count: 6,
   },
   'LSN-0004': {
     imageCount: 1,
     description: '格闘技の動きを取り入れた高強度プログラムです。',
     internal_memo: '現在休止中。再開時は要レイアウト確認。',
-    usage_count: 0,
   },
   'BDC-0001': {
     imageCount: 2,
     description: 'アロマオイルを使った全身リラクゼーションです。',
     internal_memo: '施術者は資格保有スタッフのみ。',
     per_use_fee: 3300,
-    usage_count: 2,
   },
   'PLN-0001': {
     imageCount: 3,
@@ -1114,7 +1464,6 @@ export const LESSON_DETAIL_OVERRIDES: Record<string, LessonDetailOverride> = {
     restricted_main_contracts: ['FIT365プレミアム会員'],
     restricted_option_contracts: ['パーソナルトレーニングオプション'],
     per_use_fee: 5500,
-    usage_count: 5,
   },
 };
 
@@ -1193,6 +1542,62 @@ export const LESSON_CONTENT_SCHEDULES: Record<string, ScheduleSummary> = {
         booked: 3,
         capacity: 16,
       },
+      {
+        id: 'SCH-1006',
+        date: '2026-07-07',
+        time: '10:00–11:00',
+        studio: 'スタジオA',
+        booked: 11,
+        capacity: 16,
+      },
+      {
+        id: 'SCH-1007',
+        date: '2026-07-09',
+        time: '14:00–15:00',
+        studio: 'メインスタジオ',
+        booked: 20,
+        capacity: 20,
+      },
+      {
+        id: 'SCH-1008',
+        date: '2026-07-11',
+        time: '10:00–11:00',
+        studio: 'スタジオA',
+        booked: 6,
+        capacity: 16,
+      },
+      {
+        id: 'SCH-1009',
+        date: '2026-07-12',
+        time: '14:00–15:00',
+        studio: 'メインスタジオ',
+        booked: 5,
+        capacity: 20,
+      },
+      {
+        id: 'SCH-1010',
+        date: '2026-07-14',
+        time: '10:00–11:00',
+        studio: 'スタジオA',
+        booked: 13,
+        capacity: 16,
+      },
+      {
+        id: 'SCH-1011',
+        date: '2026-07-16',
+        time: '10:00–11:00',
+        studio: 'スタジオA',
+        booked: 0,
+        capacity: 16,
+      },
+      {
+        id: 'SCH-1012',
+        date: '2026-07-18',
+        time: '10:00–11:00',
+        studio: 'スタジオA',
+        booked: 8,
+        capacity: 16,
+      },
     ],
     total: 12,
   },
@@ -1230,6 +1635,46 @@ export const LESSON_CONTENT_SCHEDULES: Record<string, ScheduleSummary> = {
         time: '19:00–20:00',
         studio: 'ホットスタジオ',
         booked: 2,
+        capacity: 12,
+      },
+      {
+        id: 'SCH-2004',
+        date: '2026-07-04',
+        time: '19:00–20:00',
+        studio: 'ホットスタジオ',
+        booked: 12,
+        capacity: 12,
+      },
+      {
+        id: 'SCH-2005',
+        date: '2026-07-06',
+        time: '19:00–20:00',
+        studio: 'ホットスタジオ',
+        booked: 5,
+        capacity: 12,
+      },
+      {
+        id: 'SCH-2006',
+        date: '2026-07-08',
+        time: '19:00–20:00',
+        studio: 'ホットスタジオ',
+        booked: 0,
+        capacity: 12,
+      },
+      {
+        id: 'SCH-2007',
+        date: '2026-07-11',
+        time: '19:00–20:00',
+        studio: 'ホットスタジオ',
+        booked: 10,
+        capacity: 12,
+      },
+      {
+        id: 'SCH-2008',
+        date: '2026-07-13',
+        time: '19:00–20:00',
+        studio: 'ホットスタジオ',
+        booked: 3,
         capacity: 12,
       },
     ],
@@ -1272,6 +1717,30 @@ export const LESSON_CONTENT_SCHEDULES: Record<string, ScheduleSummary> = {
         time: '18:00–19:00',
         studio: 'パーソナルルーム1',
         booked: 0,
+        capacity: 1,
+      },
+      {
+        id: 'SCH-3004',
+        date: '2026-07-06',
+        time: '18:00–19:00',
+        studio: 'パーソナルルーム1',
+        booked: 1,
+        capacity: 1,
+      },
+      {
+        id: 'SCH-3005',
+        date: '2026-07-09',
+        time: '18:00–19:00',
+        studio: 'パーソナルルーム1',
+        booked: 0,
+        capacity: 1,
+      },
+      {
+        id: 'SCH-3006',
+        date: '2026-07-11',
+        time: '18:00–19:00',
+        studio: 'パーソナルルーム1',
+        booked: 1,
         capacity: 1,
       },
     ],
@@ -1345,6 +1814,23 @@ export const LESSON_CONTENT_HISTORY: Record<string, ChangeHistory> = {
     total: 2,
   },
 };
+
+export function appendLessonContentHistory(
+  id: string,
+  action: string,
+  detail?: string | null,
+): void {
+  const history = LESSON_CONTENT_HISTORY[id] ?? { entries: [], total: 0 };
+  history.entries.unshift({
+    id: `HIS-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    operator: '本部 管理者',
+    action,
+    detail: detail ?? null,
+  });
+  history.total = history.entries.length;
+  LESSON_CONTENT_HISTORY[id] = history;
+}
 
 export const SEED_STUDIOS: Array<{
   id: string;
@@ -1423,6 +1909,7 @@ export interface StudioListSeed {
   store_name: string;
   studio_type: 'studio-lesson' | 'pt' | 'body-care';
   capacity: number;
+  buffer_value: number;
   available_hours: string;
   brand: 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365';
   status: 'active' | 'inactive';
@@ -1437,6 +1924,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365八潮店',
     studio_type: 'studio-lesson',
     capacity: 16,
+    buffer_value: 2,
     available_hours: '9:00-22:00',
     brand: 'joyfit',
     status: 'active',
@@ -1448,6 +1936,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365八潮店',
     studio_type: 'studio-lesson',
     capacity: 35,
+    buffer_value: 3,
     available_hours: '10:00-21:00',
     brand: 'fit365',
     status: 'active',
@@ -1459,6 +1948,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365八潮店',
     studio_type: 'pt',
     capacity: 6,
+    buffer_value: 2,
     available_hours: '8:00-22:00',
     brand: 'fit365',
     status: 'active',
@@ -1471,6 +1961,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365新宿店',
     studio_type: 'studio-lesson',
     capacity: 30,
+    buffer_value: 3,
     available_hours: '9:00-21:00',
     brand: 'fit365',
     status: 'active',
@@ -1482,6 +1973,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365新宿店',
     studio_type: 'body-care',
     capacity: 10,
+    buffer_value: 1,
     available_hours: '10:00-20:00',
     brand: 'fit365',
     status: 'active',
@@ -1493,6 +1985,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365新宿店',
     studio_type: 'studio-lesson',
     capacity: 20,
+    buffer_value: 2,
     available_hours: '9:00-20:00',
     brand: 'fit365',
     status: 'inactive',
@@ -1505,6 +1998,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365渋谷店',
     studio_type: 'studio-lesson',
     capacity: 25,
+    buffer_value: 2,
     available_hours: '8:00-23:00',
     brand: 'fit365',
     status: 'active',
@@ -1516,6 +2010,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365渋谷店',
     studio_type: 'pt',
     capacity: 8,
+    buffer_value: 1,
     available_hours: '10:00-21:00',
     brand: 'fit365',
     status: 'active',
@@ -1527,6 +2022,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'FIT365渋谷店',
     studio_type: 'studio-lesson',
     capacity: 15,
+    buffer_value: 2,
     available_hours: '9:00-22:00',
     brand: 'fit365',
     status: 'inactive',
@@ -1539,6 +2035,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'JOYFIT池袋店',
     studio_type: 'studio-lesson',
     capacity: 20,
+    buffer_value: 2,
     available_hours: '9:00-21:00',
     brand: 'joyfit',
     status: 'active',
@@ -1550,6 +2047,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'JOYFIT池袋店',
     studio_type: 'body-care',
     capacity: 12,
+    buffer_value: 1,
     available_hours: '10:00-20:00',
     brand: 'joyfit',
     status: 'active',
@@ -1561,6 +2059,7 @@ export const SEED_STUDIO_LIST: StudioListSeed[] = [
     store_name: 'JOYFIT池袋店',
     studio_type: 'studio-lesson',
     capacity: 30,
+    buffer_value: 3,
     available_hours: '8:00-22:00',
     brand: 'joyfit24',
     status: 'active',
@@ -1849,54 +2348,6 @@ export const SEED_STUDIO_DETAILS: Record<string, GetStudioDetailResponse> = {
   },
 };
 
-export const SEED_STUDIO_SPACES: Record<string, StudioSpaceGridResponse> = {
-  LS0001: {
-    studio_name: 'Zumbaスタジオ',
-    total_capacity: 16,
-    grid_rows: 2,
-    grid_cols: 8,
-    spaces: Array.from({ length: 16 }, (_, i) => ({
-      id: `SP${String(i + 1).padStart(2, '0')}`,
-      space_number: `S${String(i + 1).padStart(2, '0')}`,
-      row: Math.floor(i / 8),
-      col: i % 8,
-      type: (i < 14 ? 'available' : 'reserved') as 'available' | 'reserved',
-      reservation_id: i < 14 ? null : `RD${String(i - 13).padStart(3, '0')}`,
-      member_name: i < 14 ? null : '予約済み',
-    })),
-  },
-  LS0006: {
-    studio_name: 'Zumbaスタジオ',
-    total_capacity: 16,
-    grid_rows: 2,
-    grid_cols: 8,
-    spaces: Array.from({ length: 16 }, (_, i) => ({
-      id: `SP${String(i + 17).padStart(2, '0')}`,
-      space_number: `S${String(i + 1).padStart(2, '0')}`,
-      row: Math.floor(i / 8),
-      col: i % 8,
-      type: (i < 5 ? 'reserved' : 'available') as 'reserved' | 'available',
-      reservation_id: i < 5 ? `RD${String(i + 100).padStart(3, '0')}` : null,
-      member_name: i < 5 ? '予約済み' : null,
-    })),
-  },
-  LS0007: {
-    studio_name: 'スタジオA',
-    total_capacity: 16,
-    grid_rows: 2,
-    grid_cols: 8,
-    spaces: Array.from({ length: 16 }, (_, i) => ({
-      id: `SP${String(i + 33).padStart(2, '0')}`,
-      space_number: `S${String(i + 1).padStart(2, '0')}`,
-      row: Math.floor(i / 8),
-      col: i % 8,
-      type: (i < 14 ? 'available' : 'equipment') as 'available' | 'equipment',
-      reservation_id: null,
-      member_name: null,
-    })),
-  },
-};
-
 export const SEED_SESSION_MEMOS: SessionMemo[] = [
   {
     id: 'MEMO001',
@@ -1942,6 +2393,55 @@ export const SEED_SESSION_MEMOS: SessionMemo[] = [
     author_name: '木村 拓也',
     created_at: '2026-06-23T09:30:00+09:00',
     updated_at: '2026-06-23T09:45:00+09:00',
+  },
+];
+
+/**
+ * Curated members always reachable via the Add-Reservation member search, covering the
+ * eligible / zero-remaining / penalty-active scenarios deterministically (unlike the generic
+ * CRM member table, whose remaining/penalty values are hash-derived per id).
+ */
+export const SEED_RESERVATION_SEARCH_MEMBERS: Array<{
+  member_id: string;
+  name: string;
+  remaining_sessions: number;
+  penalty_active: boolean;
+  penalty_end_date: string | null;
+}> = [
+  {
+    member_id: 'M-0234',
+    name: '渡辺 直美',
+    remaining_sessions: 8,
+    penalty_active: false,
+    penalty_end_date: null,
+  },
+  {
+    member_id: 'M-0567',
+    name: '鈴木 大輔',
+    remaining_sessions: 0,
+    penalty_active: false,
+    penalty_end_date: null,
+  },
+  {
+    member_id: 'M-0891',
+    name: '伊藤 麻衣',
+    remaining_sessions: 3,
+    penalty_active: true,
+    penalty_end_date: '2026-08-20',
+  },
+  {
+    member_id: 'M-1023',
+    name: '斎藤 健太',
+    remaining_sessions: 12,
+    penalty_active: false,
+    penalty_end_date: null,
+  },
+  {
+    member_id: 'M-1156',
+    name: '岡田 彩花',
+    remaining_sessions: 5,
+    penalty_active: false,
+    penalty_end_date: null,
   },
 ];
 
@@ -2013,7 +2513,7 @@ export const SEED_RESERVATIONS: Reservation[] = [
     schedule_id: 'LS0001',
     member_id: 'M113',
     member_name: '松本 隆',
-    plan_type: '都次',
+    plan_type: '都度',
     space_number: 'S13',
     reservation_date: '2026-06-23',
     reservation_time: '08:40',
@@ -2073,7 +2573,7 @@ export const SEED_RESERVATIONS: Reservation[] = [
     schedule_id: 'LS0003',
     member_id: `M${301 + i}`,
     member_name: ['小川 茜', '斎藤 拓', '近藤 麻衣', '福田 大輔', '西村 真理'][i]!,
-    plan_type: i === 0 ? '都次' : '月額8回',
+    plan_type: i === 0 ? '都度' : '月額8回',
     space_number: null,
     reservation_date: '2026-06-23',
     reservation_time: '12:30',
@@ -2108,7 +2608,7 @@ export const SEED_RESERVATIONS: Reservation[] = [
     schedule_id: 'LS0004',
     member_id: 'M115',
     member_name: '渡辺 誠',
-    plan_type: '都次',
+    plan_type: '都度',
     space_number: 'S01',
     reservation_date: '2026-06-23',
     reservation_time: '13:30',
@@ -2188,11 +2688,10 @@ export function lessonContentRowToDetail(
   LESSON_CONTENT_SCHEDULES_MAP: Record<string, ScheduleSummary>,
 ): LessonContentDetail {
   const override = LESSON_DETAIL_OVERRIDES[row.id] ?? {};
-  const isPaid = row.pricing_type === 'paid';
+  const isPaid = row.pricing_type === 'per_use';
   const perUseFee = isPaid ? (override.per_use_fee ?? 550) : null;
-  const usageCount =
-    override.usage_count ?? (row.reservation_count && row.reservation_count > 0 ? 2 : 0);
   const schedule = LESSON_CONTENT_SCHEDULES_MAP[row.id];
+  const usageCount = schedule?.total ?? 0;
   return {
     id: row.id,
     name: row.name,
@@ -2223,8 +2722,8 @@ export function personalPlanRowToDetail(
   LESSON_CONTENT_SCHEDULES_MAP: Record<string, ScheduleSummary>,
 ): LessonContentDetail {
   const override = LESSON_DETAIL_OVERRIDES[row.id] ?? {};
-  const usageCount = override.usage_count ?? (row.reservations > 0 ? 2 : 0);
   const schedule = LESSON_CONTENT_SCHEDULES_MAP[row.id];
+  const usageCount = schedule?.total ?? 0;
   return {
     id: row.id,
     name: row.name,
@@ -2232,7 +2731,7 @@ export function personalPlanRowToDetail(
     brand: row.brand,
     status: row.status,
     duration: row.duration,
-    pricing_type: 'paid',
+    pricing_type: 'per_use',
     per_use_fee: override.per_use_fee ?? row.price,
     images: override.images ?? buildLessonImages(PERSONAL_IMAGE_POOL, override.imageCount ?? 3),
     description: override.description ?? row.description ?? `${row.name}の詳細説明です。`,
@@ -2302,3 +2801,48 @@ export const SEED_STUDIO_HISTORY: Record<string, StudioChangeHistoryEntry[]> = {
     },
   ],
 };
+
+export const SEED_TEMPLATES: RepeatTemplate[] = [
+  {
+    id: 'TMP-001',
+    name: '平日朝クラス',
+    repeat_type: 'weekly',
+    days_of_week: [1, 3, 5],
+    end_condition: 'indefinite',
+    end_value: null,
+    skip_holidays: false,
+    start_time: '09:00',
+    store_id: 'ST001',
+    lesson_class: 'studio',
+    studio_id: 'STU-002',
+    lesson_id: 'LSN-001',
+  },
+  {
+    id: 'TMP-002',
+    name: '週末固定',
+    repeat_type: 'weekly',
+    days_of_week: [6, 0],
+    end_condition: 'indefinite',
+    end_value: null,
+    skip_holidays: false,
+    start_time: '10:00',
+    store_id: 'ST001',
+    lesson_class: 'studio',
+    studio_id: 'STU-001',
+    lesson_id: 'LSN-004',
+  },
+  {
+    id: 'TMP-003',
+    name: '夏季パターン',
+    repeat_type: 'weekly',
+    days_of_week: [1, 2, 3, 4, 5],
+    end_condition: 'indefinite',
+    end_value: null,
+    skip_holidays: false,
+    start_time: '18:00',
+    store_id: 'ST001',
+    lesson_class: 'studio',
+    studio_id: 'STU-003',
+    lesson_id: 'LSN-003',
+  },
+];

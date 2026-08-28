@@ -34,9 +34,10 @@ export const LESSON_TYPE_BADGE_CLASSES: Record<LessonDetailType, string> = {
 };
 
 /** Pricing-type display labels (basic-info card). */
-export const LESSON_PRICING_TYPE_LABELS: Record<'included' | 'paid', string> = {
+export const LESSON_PRICING_TYPE_LABELS = {
   included: '会費内',
-  paid: '有料（都次）',
+  monthly: '有料（月払）',
+  per_use: '有料（都次）',
 };
 
 /**

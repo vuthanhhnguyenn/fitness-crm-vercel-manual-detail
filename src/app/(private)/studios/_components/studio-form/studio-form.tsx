@@ -93,7 +93,7 @@ export function StudioForm({
     defaultValues: {
       storeId: '',
       name: '',
-      studioType: 'normal',
+      studioType: 'studio-lesson',
       operatingHours: '',
       capacity: undefined as unknown as number,
       bufferValue: 0,
@@ -107,10 +107,10 @@ export function StudioForm({
 
   const createMutation = useMutation({
     ...postCrmStudiosMutation(),
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success('スタジオを登録しました');
       queryClient.invalidateQueries({ queryKey: getCrmStudiosQueryKey() });
-      router.push(navigate('/studios'));
+      router.push(navigate('/studios/[id]', data.id));
     },
     onError: (error: Error) => {
       toast.error(error.message || 'スタジオの登録に失敗しました');
@@ -125,7 +125,7 @@ export function StudioForm({
       queryClient.invalidateQueries({
         queryKey: getCrmStudiosByIdQueryKey({ path: { id: studioId! } }),
       });
-      router.push(navigate('/studios'));
+      router.push(navigate('/studios/[id]', studioId!));
     },
     onError: (error: Error) => {
       toast.error(error.message || 'スタジオの保存に失敗しました');

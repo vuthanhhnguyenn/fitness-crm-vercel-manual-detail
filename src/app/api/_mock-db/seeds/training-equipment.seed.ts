@@ -1,330 +1,406 @@
 import type {
+  InstallationStatus,
+  LocationInGym,
   ToolType,
-  TrainingEquipmentExerciseLink,
-  TrainingEquipmentItem,
-  TrainingEquipmentStatusHistory,
+  TrainingEquipmentStatusHistoryItem,
+  TrainingEquipmentToolType,
 } from '@/app/api/_schemas/training-equipment.schema';
 
-export type TrainingEquipmentMockItem = TrainingEquipmentItem;
+import { EXERCISE_MASTER_KIND_PREFIX, EXERCISE_MASTER_SEEDS } from './exercise-master.seed';
+import { SEED_EXERCISES } from './exercise.seed';
 
 export type ToolTypeMockRow = {
   id: string;
   code: ToolType['code'];
   name: string;
-  sort_order: number;
-  is_active: boolean;
-  deleted_at: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  deletedAt: string | null;
+};
+
+/** Internal mock row. `statusChanged*` backs the FR-004 status card. */
+export type TrainingEquipmentMockItem = {
+  id: string;
+  storeId: string;
+  storeName: string;
+  name: string;
+  mstToolId: string;
+  quantity: number;
+  locationInGym: LocationInGym | null;
+  manufacturer: string | null;
+  model: string | null;
+  installedOn: string | null;
+  installationStatus: InstallationStatus;
+  note: string | null;
+  statusChangedAt: string;
+  statusChangedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  isDeleted: boolean;
+};
+
+export type TrainingEquipmentExerciseLinkRow = {
+  equipmentId: string;
+  exerciseId: string;
+  createdAt: string;
 };
 
 export type TrainingEquipmentExerciseCatalogItem = {
-  id: string;
+  exerciseId: string;
+  exerciseCode: string;
   name: string;
-  tool_type: TrainingEquipmentItem['tool_type'];
-  difficulty: string;
-  body_part: string;
+  mstToolId: string;
+  difficulty: string | null;
+  bodyPart: string | null;
 };
 
+export type TrainingEquipmentStatusHistoryRow = TrainingEquipmentStatusHistoryItem & {
+  equipmentId: string;
+};
+
+const TOOL_ID = {
+  none: 'a0000001-0000-4000-8000-000000000001',
+  machine: 'a0000002-0000-4000-8000-000000000002',
+  cableMachine: 'a0000003-0000-4000-8000-000000000003',
+  smithMachine: 'a0000004-0000-4000-8000-000000000004',
+  barbell: 'a0000005-0000-4000-8000-000000000005',
+  dumbbell: 'a0000006-0000-4000-8000-000000000006',
+  kettlebell: 'a0000007-0000-4000-8000-000000000007',
+  resistanceBand: 'a0000008-0000-4000-8000-000000000008',
+  trx: 'a0000009-0000-4000-8000-000000000009',
+  other: 'a000000a-0000-4000-8000-00000000000a',
+} satisfies Record<ToolType['code'], string>;
+
+/** Tool-type master (`mst_tools`) — the 10 E-03 tool types, including "none (bodyweight)". */
 export const SEED_TOOL_TYPES: ToolTypeMockRow[] = [
+  { id: TOOL_ID.none, code: 'none', name: '自重', sortOrder: 0, isActive: true, deletedAt: null },
   {
-    id: 'a0000001-0000-4000-8000-000000000001',
-    code: 'none',
-    name: '自重',
-    sort_order: 0,
-    is_active: true,
-    deleted_at: null,
-  },
-  {
-    id: 'a0000002-0000-4000-8000-000000000002',
+    id: TOOL_ID.machine,
     code: 'machine',
     name: 'マシン',
-    sort_order: 1,
-    is_active: true,
-    deleted_at: null,
+    sortOrder: 1,
+    isActive: true,
+    deletedAt: null,
   },
   {
-    id: 'a0000003-0000-4000-8000-000000000003',
+    id: TOOL_ID.cableMachine,
     code: 'cableMachine',
     name: 'ケーブル（マシン）',
-    sort_order: 2,
-    is_active: true,
-    deleted_at: null,
+    sortOrder: 2,
+    isActive: true,
+    deletedAt: null,
   },
   {
-    id: 'a0000004-0000-4000-8000-000000000004',
+    id: TOOL_ID.smithMachine,
     code: 'smithMachine',
     name: 'スミスマシン',
-    sort_order: 3,
-    is_active: true,
-    deleted_at: null,
+    sortOrder: 3,
+    isActive: true,
+    deletedAt: null,
   },
   {
-    id: 'a0000005-0000-4000-8000-000000000005',
+    id: TOOL_ID.barbell,
     code: 'barbell',
     name: 'バーベル',
-    sort_order: 4,
-    is_active: true,
-    deleted_at: null,
+    sortOrder: 4,
+    isActive: true,
+    deletedAt: null,
   },
   {
-    id: 'a0000006-0000-4000-8000-000000000006',
+    id: TOOL_ID.dumbbell,
     code: 'dumbbell',
     name: 'ダンベル',
-    sort_order: 5,
-    is_active: true,
-    deleted_at: null,
+    sortOrder: 5,
+    isActive: true,
+    deletedAt: null,
   },
   {
-    id: 'a0000007-0000-4000-8000-000000000007',
+    id: TOOL_ID.kettlebell,
     code: 'kettlebell',
     name: 'ケトルベル',
-    sort_order: 6,
-    is_active: true,
-    deleted_at: null,
+    sortOrder: 6,
+    isActive: true,
+    deletedAt: null,
   },
   {
-    id: 'a0000008-0000-4000-8000-000000000008',
+    id: TOOL_ID.resistanceBand,
     code: 'resistanceBand',
     name: 'ゴムバンド',
-    sort_order: 7,
-    is_active: true,
-    deleted_at: null,
+    sortOrder: 7,
+    isActive: true,
+    deletedAt: null,
   },
+  { id: TOOL_ID.trx, code: 'trx', name: 'TRX', sortOrder: 8, isActive: true, deletedAt: null },
   {
-    id: 'a0000009-0000-4000-8000-000000000009',
-    code: 'trx',
-    name: 'TRX',
-    sort_order: 8,
-    is_active: true,
-    deleted_at: null,
-  },
-  {
-    id: 'a000000a-0000-4000-8000-00000000000a',
+    id: TOOL_ID.other,
     code: 'other',
     name: 'その他',
-    sort_order: 9,
-    is_active: false,
-    deleted_at: null,
+    sortOrder: 9,
+    isActive: true,
+    deletedAt: null,
   },
 ];
 
 export const SEED_TRAINING_EQUIPMENT: TrainingEquipmentMockItem[] = [
   {
     id: 'TE-001',
-    store_id: 'S-001',
-    store_name: 'FIT365八潮店',
+    storeId: 'store-001',
+    storeName: 'Fit365八潮店',
     name: 'ラットプルダウン LP-100',
-    tool_type: 'cableMachine',
+    mstToolId: TOOL_ID.cableMachine,
     quantity: 1,
-    installation_area: 'machine_area',
+    locationInGym: 'machine_area',
     manufacturer: 'テクノジム',
-    model_number: 'LP-100X',
-    installed_on: '2023-05-01',
-    status: 'maintenance',
-    notes: '定期点検中',
-    linked_exercise_count: 2,
-    last_updated_at: '2026-06-24T09:00:00.000Z',
-    last_updated_by: '田中花子',
-    is_deleted: false,
+    model: 'LP-100X',
+    installedOn: '2023-05-01',
+    installationStatus: 'maintenance',
+    note: '2026/01/20にワイヤー摩耗を確認。定期点検で交換推奨の指摘あり。\n\n担当業者: テクノジムジャパン（担当: 高橋）\n連絡先: 03-9876-5432',
+    statusChangedAt: '2026-06-24T09:00:00.000Z',
+    statusChangedByName: '田中花子',
+    createdAt: '2023-05-01T00:00:00.000Z',
+    updatedAt: '2026-06-24T09:00:00.000Z',
+    isDeleted: false,
   },
   {
     id: 'TE-002',
-    store_id: 'S-001',
-    store_name: 'FIT365八潮店',
+    storeId: 'store-001',
+    storeName: 'Fit365八潮店',
     name: 'ダンベルセット 2-40kg',
-    tool_type: 'dumbbell',
+    mstToolId: TOOL_ID.dumbbell,
     quantity: 1,
-    installation_area: 'free_weight_area',
+    locationInGym: 'free_weight_area',
     manufacturer: 'アイロテック',
-    model_number: 'DS-40PRO',
-    installed_on: '2024-04-11',
-    status: 'installed',
-    notes: null,
-    linked_exercise_count: 0,
-    last_updated_at: '2026-06-18T03:00:00.000Z',
-    last_updated_by: '山田太郎',
-    is_deleted: false,
+    model: 'DS-40PRO',
+    installedOn: '2024-04-11',
+    installationStatus: 'installed',
+    note: null,
+    statusChangedAt: '2026-06-18T03:00:00.000Z',
+    statusChangedByName: '山田太郎',
+    createdAt: '2024-04-11T00:00:00.000Z',
+    updatedAt: '2026-06-18T03:00:00.000Z',
+    isDeleted: false,
   },
   {
     id: 'TE-003',
-    store_id: 'S-001',
-    store_name: 'FIT365八潮店',
+    storeId: 'store-001',
+    storeName: 'Fit365八潮店',
     name: 'トレッドミル TM-500',
-    tool_type: 'machine',
+    mstToolId: TOOL_ID.machine,
     quantity: 3,
-    installation_area: 'aerobic_area',
+    locationInGym: 'aerobic_area',
     manufacturer: 'テクノジム',
-    model_number: 'TM-500X',
-    installed_on: '2022-01-15',
-    status: 'installed',
-    notes: null,
-    linked_exercise_count: 0,
-    last_updated_at: '2026-02-01T00:00:00.000Z',
-    last_updated_by: '田中花子',
-    is_deleted: false,
+    model: 'TM-500X',
+    installedOn: '2022-01-15',
+    installationStatus: 'installed',
+    note: null,
+    statusChangedAt: '2026-02-01T00:00:00.000Z',
+    statusChangedByName: '田中花子',
+    createdAt: '2022-01-15T00:00:00.000Z',
+    updatedAt: '2026-02-01T00:00:00.000Z',
+    isDeleted: false,
   },
   {
     id: 'TE-004',
-    store_id: 'S-001',
-    store_name: 'FIT365八潮店',
+    storeId: 'store-001',
+    storeName: 'Fit365八潮店',
     name: 'バーベルセット 20-120kg',
-    tool_type: 'barbell',
+    mstToolId: TOOL_ID.barbell,
     quantity: 2,
-    installation_area: 'free_weight_area',
+    locationInGym: 'free_weight_area',
     manufacturer: 'アイロテック',
-    model_number: 'BS-120PRO',
-    installed_on: '2021-08-20',
-    status: 'removed',
-    notes: null,
-    linked_exercise_count: 0,
-    last_updated_at: '2026-03-10T00:00:00.000Z',
-    last_updated_by: '山田太郎',
-    is_deleted: false,
+    model: 'BS-120PRO',
+    installedOn: '2021-08-20',
+    installationStatus: 'removed',
+    note: null,
+    statusChangedAt: '2026-03-10T00:00:00.000Z',
+    statusChangedByName: '山田太郎',
+    createdAt: '2021-08-20T00:00:00.000Z',
+    updatedAt: '2026-03-10T00:00:00.000Z',
+    isDeleted: false,
   },
   {
     id: 'TE-005',
-    store_id: 'S-001',
-    store_name: 'FIT365八潮店',
+    storeId: 'store-001',
+    storeName: 'Fit365八潮店',
     name: 'スミスマシン SM-200',
-    tool_type: 'smithMachine',
+    mstToolId: TOOL_ID.smithMachine,
     quantity: 1,
-    installation_area: 'free_weight_area',
+    locationInGym: 'free_weight_area',
     manufacturer: 'ハンマーストレングス',
-    model_number: 'SM-200X',
-    installed_on: '2020-12-01',
-    status: 'discarded',
-    notes: null,
-    linked_exercise_count: 0,
-    last_updated_at: '2025-12-01T00:00:00.000Z',
-    last_updated_by: '佐藤一郎',
-    is_deleted: false,
+    model: 'SM-200X',
+    installedOn: '2020-12-01',
+    installationStatus: 'discarded',
+    note: null,
+    statusChangedAt: '2025-12-01T00:00:00.000Z',
+    statusChangedByName: '佐藤一郎',
+    createdAt: '2020-12-01T00:00:00.000Z',
+    updatedAt: '2025-12-01T00:00:00.000Z',
+    isDeleted: false,
   },
 ];
 
-export const SEED_TRAINING_EQUIPMENT_HISTORY: TrainingEquipmentStatusHistory[] = [
+/**
+ * FR-011 history seed (read-only in Phase 1). `previousStatus` is null on the initial registration row.
+ */
+export const SEED_TRAINING_EQUIPMENT_HISTORY: TrainingEquipmentStatusHistoryRow[] = [
+  {
+    id: 'TH-006',
+    equipmentId: 'TE-001',
+    changedAt: '2026-06-24T09:00:00.000Z',
+    changedByName: '田中花子',
+    previousStatus: 'installed',
+    newStatus: 'maintenance',
+    changedReason: 'ケーブル系統の摩耗確認、点検のためメンテナンス中に変更',
+  },
+  {
+    id: 'TH-005',
+    equipmentId: 'TE-001',
+    changedAt: '2026-01-20T05:00:00.000Z',
+    changedByName: '山田太郎',
+    previousStatus: 'maintenance',
+    newStatus: 'installed',
+    changedReason: '動作確認・ワイヤー点検。摩耗を確認、交換推奨',
+  },
+  {
+    id: 'TH-004',
+    equipmentId: 'TE-001',
+    changedAt: '2025-10-16T07:00:00.000Z',
+    changedByName: '田中花子',
+    previousStatus: 'maintenance',
+    newStatus: 'installed',
+    changedReason: '部品交換完了、動作確認OK',
+  },
+  {
+    id: 'TH-003',
+    equipmentId: 'TE-001',
+    changedAt: '2025-10-15T01:30:00.000Z',
+    changedByName: '田中花子',
+    previousStatus: 'installed',
+    newStatus: 'maintenance',
+    changedReason: 'シートクッション交換・滑車グリスアップ',
+  },
+  {
+    id: 'TH-002',
+    equipmentId: 'TE-001',
+    changedAt: '2025-04-05T23:15:00.000Z',
+    changedByName: '佐藤一郎',
+    previousStatus: 'removed',
+    newStatus: 'installed',
+    changedReason: '新モデル導入完了、旧マシンから入替のうえ設置',
+  },
   {
     id: 'TH-001',
-    equipment_id: 'TE-001',
-    changed_at: '2026-06-24T09:00:00.000Z',
-    changed_by: '田中花子',
-    from_status: 'installed',
-    to_status: 'maintenance',
-    reason: 'ケーブル摩耗確認',
+    equipmentId: 'TE-001',
+    changedAt: '2023-05-01T00:00:00.000Z',
+    changedByName: '佐藤一郎',
+    previousStatus: null,
+    newStatus: 'installed',
+    changedReason: '新規設置登録',
+  },
+  {
+    id: 'TH-011',
+    equipmentId: 'TE-004',
+    changedAt: '2026-03-10T00:00:00.000Z',
+    changedByName: '山田太郎',
+    previousStatus: 'installed',
+    newStatus: 'removed',
+    changedReason: '旧マシン一時撤去。新モデル導入後に復旧予定',
+  },
+  // Initial registration rows. `changedReason` is NOT NULL, so every record carries a 「新規登録」 reason.
+  {
+    id: 'TH-021',
+    equipmentId: 'TE-002',
+    changedAt: '2024-04-11T00:00:00.000Z',
+    changedByName: '山田太郎',
+    previousStatus: null,
+    newStatus: 'installed',
+    changedReason: '新規登録',
+  },
+  {
+    id: 'TH-022',
+    equipmentId: 'TE-003',
+    changedAt: '2022-01-15T00:00:00.000Z',
+    changedByName: '田中花子',
+    previousStatus: null,
+    newStatus: 'installed',
+    changedReason: '新規登録',
+  },
+  {
+    id: 'TH-023',
+    equipmentId: 'TE-004',
+    changedAt: '2021-08-20T00:00:00.000Z',
+    changedByName: '山田太郎',
+    previousStatus: null,
+    newStatus: 'installed',
+    changedReason: '新規登録',
+  },
+  {
+    id: 'TH-024',
+    equipmentId: 'TE-005',
+    changedAt: '2020-12-01T00:00:00.000Z',
+    changedByName: '佐藤一郎',
+    previousStatus: null,
+    newStatus: 'installed',
+    changedReason: '新規登録',
   },
 ];
 
-export const SEED_TRAINING_EQUIPMENT_LINKS: TrainingEquipmentExerciseLink[] = [
-  {
-    equipment_id: 'TE-001',
-    exercise_id: 'EX-011',
-    exercise_name: 'ラットプルダウン（ワイドグリップ）',
-    exercise_tool_type: 'cableMachine',
-    exercise_tool_name: 'ケーブル（マシン）',
-    difficulty: '中級',
-    body_part: '背中',
-    created_at: '2026-01-01T00:00:00.000Z',
-  },
-  {
-    equipment_id: 'TE-001',
-    exercise_id: 'EX-012',
-    exercise_name: 'シーテッドケーブルロウ',
-    exercise_tool_type: 'cableMachine',
-    exercise_tool_name: 'ケーブル（マシン）',
-    difficulty: '中級',
-    body_part: '背中',
-    created_at: '2026-01-01T00:00:00.000Z',
-  },
+export const SEED_TRAINING_EQUIPMENT_LINKS: TrainingEquipmentExerciseLinkRow[] = [
+  { equipmentId: 'TE-001', exerciseId: 'EX-011', createdAt: '2026-01-01T00:00:00.000Z' },
+  { equipmentId: 'TE-001', exerciseId: 'EX-013', createdAt: '2026-01-01T00:00:00.000Z' },
 ];
+
+/**
+ * The Y-08 tool-type master is numbered by `exercise-master.table.ts` following the seed array order
+ * (`tool[2]` → `TOOL-003`). This bridges an exercise's `toolId` to the equipment-side `mst_tools`.
+ */
+const TOOL_CODE_BY_EXERCISE_MASTER_ID = new Map<string, TrainingEquipmentToolType>(
+  EXERCISE_MASTER_SEEDS.tool.map((tool, index) => [
+    `${EXERCISE_MASTER_KIND_PREFIX.tool}-${String(index + 1).padStart(3, '0')}`,
+    tool.code as TrainingEquipmentToolType,
+  ]),
+);
+
+/**
+ * The Y-08 exercise master (`SEED_EXERCISES`) is the single source of truth for candidates: id, name,
+ * code and tool type all come from it, so `/exercises/[id]` linked from the equipment detail always
+ * exists. Difficulty and body part have no Y-08 master, so they live here for this list's display.
+ */
+function candidate(
+  exerciseId: string,
+  difficulty: string,
+  bodyPart: string,
+): TrainingEquipmentExerciseCatalogItem {
+  const exercise = SEED_EXERCISES.find((row) => row.id === exerciseId);
+  if (!exercise) {
+    throw new Error(
+      `[training-equipment.seed] 候補 ${exerciseId} が SEED_EXERCISES に存在しません（リンク先が 404 になります）`,
+    );
+  }
+  const toolCode = TOOL_CODE_BY_EXERCISE_MASTER_ID.get(exercise.toolId);
+
+  return {
+    exerciseId: exercise.id,
+    exerciseCode: exercise.exerciseCode,
+    name: exercise.nameJa,
+    mstToolId: toolCode ? TOOL_ID[toolCode] : TOOL_ID.other,
+    difficulty,
+    bodyPart,
+  };
+}
 
 export const TRAINING_EQUIPMENT_EXERCISE_CATALOG: TrainingEquipmentExerciseCatalogItem[] = [
-  {
-    id: 'EX-011',
-    name: 'ラットプルダウン（ワイドグリップ）',
-    tool_type: 'cableMachine',
-    difficulty: '中級',
-    body_part: '背中',
-  },
-  {
-    id: 'EX-012',
-    name: 'ラットプルダウン（ナローグリップ）',
-    tool_type: 'cableMachine',
-    difficulty: '中級',
-    body_part: '背中',
-  },
-  {
-    id: 'EX-013',
-    name: 'シーテッドケーブルロウ',
-    tool_type: 'cableMachine',
-    difficulty: '中級',
-    body_part: '背中',
-  },
-  {
-    id: 'EX-014',
-    name: 'ストレートアームプルダウン',
-    tool_type: 'cableMachine',
-    difficulty: '上級',
-    body_part: '背中',
-  },
-  {
-    id: 'EX-015',
-    name: 'フェイスプル',
-    tool_type: 'cableMachine',
-    difficulty: '中級',
-    body_part: '肩',
-  },
-  {
-    id: 'EX-016',
-    name: 'トライセプスプッシュダウン',
-    tool_type: 'cableMachine',
-    difficulty: '初級',
-    body_part: '腕',
-  },
-  {
-    id: 'EX-017',
-    name: 'バイセプスカール（ケーブル）',
-    tool_type: 'cableMachine',
-    difficulty: '初級',
-    body_part: '腕',
-  },
-  {
-    id: 'EX-018',
-    name: 'ケーブルクロスオーバー',
-    tool_type: 'cableMachine',
-    difficulty: '上級',
-    body_part: '胸',
-  },
-  {
-    id: 'EX-019',
-    name: 'ケーブルリアデルト',
-    tool_type: 'cableMachine',
-    difficulty: '中級',
-    body_part: '肩',
-  },
-  {
-    id: 'EX-020',
-    name: 'スクワット（バーベル）',
-    tool_type: 'barbell',
-    difficulty: '中級',
-    body_part: '脚',
-  },
-  {
-    id: 'EX-021',
-    name: 'デッドリフト（バーベル）',
-    tool_type: 'barbell',
-    difficulty: '上級',
-    body_part: '背中',
-  },
-  {
-    id: 'EX-022',
-    name: 'ベンチプレス（バーベル）',
-    tool_type: 'barbell',
-    difficulty: '中級',
-    body_part: '胸',
-  },
-  {
-    id: 'EX-023',
-    name: 'ダンベルカール',
-    tool_type: 'dumbbell',
-    difficulty: '初級',
-    body_part: '腕',
-  },
+  candidate('EX-011', '中級', '背中'),
+  candidate('EX-012', '中級', '背中'),
+  candidate('EX-013', '中級', '背中'),
+  candidate('EX-014', '上級', '背中'),
+  candidate('EX-015', '中級', '肩'),
+  candidate('EX-016', '初級', '腕'),
+  candidate('EX-017', '初級', '腕'),
+  candidate('EX-018', '上級', '胸'),
+  candidate('EX-019', '中級', '肩'),
+  candidate('EX-020', '中級', '脚'),
+  candidate('EX-021', '上級', '背中'),
+  candidate('EX-022', '中級', '胸'),
+  candidate('EX-023', '初級', '腕'),
 ];

@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { z } from 'zod';
 
 import {
   AlertDialog,
@@ -15,7 +17,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Label } from '@/components/ui/label';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 
 import {
@@ -26,6 +35,14 @@ import {
   postCrmMembersByIdForceWithdrawMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
 import { MainBrand } from '@/lib/api/types.gen';
+
+// ── Zod schema ────────────────────────────────────────────────────────────────
+// A-01 FR-016: the reason is the audit trail for a forced withdrawal, so it is required
+const forceRetireFormSchema = z.object({
+  reason: z.string().trim().min(1, '理由は必須です'),
+});
+
+type ForceRetireFormValues = z.infer<typeof forceRetireFormSchema>;
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface ForceRetireDialogProps {
@@ -43,7 +60,14 @@ export function ForceRetireDialog({
   memberBrand,
 }: Readonly<ForceRetireDialogProps>) {
   const queryClient = useQueryClient();
-  const [reason, setReason] = useState('');
+
+  const form = useForm<ForceRetireFormValues>({
+    resolver: zodResolver(forceRetireFormSchema),
+    mode: 'onSubmit',
+    defaultValues: { reason: '' },
+  });
+  // Drives the footer button; RHF is the single source of truth for the field state
+  const reason = useWatch({ control: form.control, name: 'reason' });
 
   const mutation = useMutation({
     ...postCrmMembersByIdForceWithdrawMutation(),
@@ -52,9 +76,9 @@ export function ForceRetireDialog({
       queryClient.invalidateQueries({
         queryKey: getCrmMembersByIdQueryKey({ path: { id: memberId } }),
       });
-      queryClient.invalidateQueries({ queryKey: getCrmMembersQueryKey(), refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: getCrmLeavesQueryKey(), refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: getCrmBlacklistQueryKey(), refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: getCrmMembersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getCrmLeavesQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getCrmBlacklistQueryKey() });
       handleClose();
     },
     onError: () => {
@@ -64,15 +88,15 @@ export function ForceRetireDialog({
 
   const handleClose = () => {
     onOpenChange(false);
-    setTimeout(() => setReason(''), 300);
+    setTimeout(() => form.reset({ reason: '' }), 300);
   };
 
-  const handleExecute = () => {
+  const handleExecute = form.handleSubmit((data) => {
     mutation.mutate({
       path: { id: memberId },
-      body: { reason: reason.trim() },
+      body: { reason: data.reason },
     });
-  };
+  });
 
   return (
     <AlertDialog open={open} onOpenChange={handleClose}>
@@ -85,7 +109,7 @@ export function ForceRetireDialog({
         </AlertDialogHeader>
 
         <div className="flex flex-col gap-3 px-1 pb-2">
-          {/* ブランド×決済手段条件表示 */}
+          {/* Brand × payment-method condition display */}
           <div className="space-y-2 rounded-lg border p-3 text-sm">
             <p className="font-medium">強制退会の条件（ブランド×決済手段）</p>
             <div className="text-muted-foreground grid grid-cols-2 gap-2 text-xs">
@@ -118,24 +142,37 @@ export function ForceRetireDialog({
             </div>
           </div>
 
-          {/* 理由入力 */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="force-retire-reason" className="text-sm font-medium">
-              理由 <span className="text-destructive ml-1 text-xs">*</span>
-            </Label>
-            <Textarea
-              id="force-retire-reason"
-              placeholder="強制退会の理由を入力..."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className="min-h-20 resize-none text-sm"
-              disabled={mutation.isPending}
+          {/* Reason input */}
+          <Form {...form}>
+            <FormField
+              control={form.control}
+              name="reason"
+              render={({ field }) => (
+                <FormItem className="flex flex-col gap-2">
+                  <FormLabel htmlFor="force-retire-reason" className="text-sm font-medium">
+                    理由 <span className="text-destructive ml-1 text-xs">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      id="force-retire-reason"
+                      placeholder="強制退会の理由を入力..."
+                      className="min-h-20 resize-none text-sm"
+                      disabled={mutation.isPending}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
+          </Form>
         </div>
 
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => setReason('')} disabled={mutation.isPending}>
+          <AlertDialogCancel
+            onClick={() => form.reset({ reason: '' })}
+            disabled={mutation.isPending}
+          >
             キャンセル
           </AlertDialogCancel>
           <AlertDialogAction

@@ -37,27 +37,30 @@ function StatusCardSkeleton() {
   );
 }
 
+/**
+ * The back link and the heading are **not** skeletoned: `PageHeader` renders both for
+ * real while the body loads, so repeating them here would stack a placeholder under a
+ * live header.
+ */
 export function BlacklistDetailSkeleton() {
   return (
-    <div className="flex flex-col gap-4 p-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-4 w-4" />
-        <Skeleton className="h-4 w-20" />
-      </div>
-
-      {/* Heading row */}
-      <div className="flex items-center gap-3">
-        <Skeleton className="h-7 w-32" />
-        <Skeleton className="h-6 w-20 rounded-full" />
-      </div>
+    <div className="flex flex-col gap-4">
+      {/* Member head-up card */}
+      <Card>
+        <CardContent className="flex items-center gap-4 py-4">
+          <Skeleton className="size-24 rounded-lg" />
+          <div className="flex flex-1 flex-col gap-2">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-3 w-56" />
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="flex gap-4">
-        {/* Left column — 60% */}
+        {/* Left column — 60%. Two cards: 登録情報 と 未納金 (照合条件 is not built, Q-02). */}
         <div className="flex w-[60%] flex-col gap-4">
           <CardSkeleton rows={4} />
-          <CardSkeleton rows={4} compact />
           <CardSkeleton rows={1} compact />
         </div>
 

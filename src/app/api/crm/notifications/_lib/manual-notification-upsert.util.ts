@@ -6,8 +6,37 @@ import type {
   ManualNotificationUpsertBody,
 } from '@/app/api/_schemas/manual-notification.schema';
 
-export function manualNotificationRequiresApproval(target: { type: string }): boolean {
-  return target.type !== 'stores' && target.type !== 'members';
+/**
+ * Spec FR-006 & Prototype:
+ * HQ Approval is required when target is:
+ *  - "全会員" (all_members)
+ *  - a whole brand: "JOYFIT全体" (joyfit_all) or "FIT365" (fit365)
+ *  - all JOYFIT sub-brands individually selected (equivalent to joyfit_all)
+ * NOTE: Keep in sync with src/app/(private)/manual-notifications/_constants/manual-notification.constants.ts
+ */
+export function manualNotificationRequiresApproval(target: {
+  type: string;
+  brands?: string[];
+}): boolean {
+  if (target.type === 'all_members') return true;
+
+  if (target.type === 'brands') {
+    const brands = target.brands ?? [];
+    // (a) Whole-brand explicit token (JOYFIT全体 or FIT365) -> approval required
+    if (brands.some((brand) => brand === 'joyfit_all' || brand === 'fit365')) {
+      return true;
+    }
+    // (b) All JOYFIT sub-brands individually selected == JOYFIT全体 -> approval required.
+    // Keep in sync with the JOYFIT_SUB_BRANDS list in getManualNotificationTargetStoreIds below.
+    const JOYFIT_SUB_BRANDS = ['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus'];
+    if (JOYFIT_SUB_BRANDS.every((brand) => brands.includes(brand))) {
+      return true;
+    }
+    return false;
+  }
+
+  // Limited targets (single sub-brand / stores / members / etc.) -> no approval required
+  return false;
 }
 
 export function getManualNotificationTargetStoreIds(
@@ -18,7 +47,7 @@ export function getManualNotificationTargetStoreIds(
     return [
       ...new Set(
         target.memberIds.flatMap((memberId) => {
-          const storeId = db.members.get(memberId)?.profile.store_id;
+          const storeId = db.members.get(memberId)?.primaryStore.storeId;
           return storeId ? [storeId] : [];
         }),
       ),
@@ -55,7 +84,7 @@ export function validateManualNotificationTarget(
 
   if (target.type === 'members') {
     for (const memberId of target.memberIds) {
-      const storeId = db.members.get(memberId)?.profile.store_id;
+      const storeId = db.members.get(memberId)?.primaryStore.storeId;
       if (!storeId) return 'not_found';
       if (allowedStoreIds !== null && !allowedStoreIds.includes(storeId)) return 'out_of_scope';
     }
@@ -90,11 +119,14 @@ function resolveManualNotificationTarget(
       type: 'members',
       members: target.memberIds.map((id) => {
         const member = db.members.get(id);
+        const name = member
+          ? `${member.personalInfo.lastName} ${member.personalInfo.firstName}`
+          : id;
         return {
           id,
-          name: member?.basic_info.name_kanji ?? id,
-          memberNumber: member?.basic_info.member_number,
-          storeName: member?.profile.store_name,
+          name,
+          memberNumber: member?.memberNumber,
+          storeName: member?.primaryStore.name,
         };
       }),
     };
@@ -107,10 +139,13 @@ function resolveManualNotificationStatus(
   existing?: ManualNotificationRow,
 ): ManualNotificationRow['status'] {
   if (body.intent === 'save') {
+    // The PATCH /crm/notifications/{id} route blocks `intent=save` when
+    // existing.status === 'pending_approval' (see [id]/route.ts), so we
+    // only need to handle `returned` here.
     if (existing?.status === 'returned' && !manualNotificationRequiresApproval(body.target)) {
       return 'draft';
     }
-    return existing?.status === 'pending_approval' ? 'draft' : (existing?.status ?? 'draft');
+    return existing?.status ?? 'draft';
   }
   if (manualNotificationRequiresApproval(body.target)) return 'pending_approval';
   return body.timing.type === 'immediate' ? 'sending' : 'scheduled';
@@ -141,7 +176,7 @@ export function buildManualNotificationRow(input: {
     ...(existing?.approvedBy ? { approvedBy: existing.approvedBy } : {}),
     ...(existing?.approvedAt ? { approvedAt: existing.approvedAt } : {}),
     ...(body.intent === 'submit'
-      ? {}
+      ? { returnReason: undefined }
       : existing?.returnReason
         ? { returnReason: existing.returnReason }
         : {}),

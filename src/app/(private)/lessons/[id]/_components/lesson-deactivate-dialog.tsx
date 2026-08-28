@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import {
@@ -14,9 +16,31 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 
+import {
+  getCrmLessonContentsByIdHistoryQueryKey,
+  getCrmLessonContentsByIdQueryKey,
+  getCrmLessonContentsQueryKey,
+  patchCrmLessonContentsByIdStatusMutation,
+} from '@/lib/api/@tanstack/react-query.gen';
+
+import {
+  type LessonDeactivateReasonSubmitValues,
+  type LessonDeactivateReasonValues,
+  buildLessonDeactivateReasonSchema,
+} from '../../_schemas/lesson-deactivate-dialog.schema';
+
 interface LessonDeactivateDialogProps {
+  lessonId: string;
   lessonName: string;
   /** true → re-activation flow (有効化), false → deactivation flow (無効化). */
   isReactivation: boolean;
@@ -26,37 +50,64 @@ interface LessonDeactivateDialogProps {
 
 /**
  * Deactivate / re-activate confirmation (FR-003-P1-14 / research D9).
- * Phase 1 is UI-only: validate the required reason (deactivate) → toast → close.
- * No backend write.
+ * Validates the required reason (deactivate only), then calls the status API.
  */
 export function LessonDeactivateDialog({
+  lessonId,
   lessonName,
   isReactivation,
   open,
   onOpenChange,
-}: LessonDeactivateDialogProps) {
-  const [reason, setReason] = useState('');
-  const [showError, setShowError] = useState(false);
+}: Readonly<LessonDeactivateDialogProps>) {
+  const queryClient = useQueryClient();
 
   const reasonRequired = !isReactivation;
-  const reasonInvalid = reasonRequired && reason.trim().length === 0;
+
+  const form = useForm<LessonDeactivateReasonValues, unknown, LessonDeactivateReasonSubmitValues>({
+    resolver: zodResolver(buildLessonDeactivateReasonSchema(reasonRequired)),
+    mode: 'onSubmit',
+    defaultValues: { reason: '' },
+  });
+
+  const statusMutation = useMutation({
+    ...patchCrmLessonContentsByIdStatusMutation(),
+    onSuccess: (response) => {
+      toast.success(
+        response.message ??
+          (isReactivation ? 'レッスンを有効化しました' : 'レッスンを無効化しました'),
+      );
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonContentsByIdQueryKey({ path: { id: lessonId } }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonContentsByIdHistoryQueryKey({ path: { id: lessonId } }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonContentsQueryKey(),
+      });
+      handleOpenChange(false);
+    },
+    onError: () => {
+      toast.error(
+        isReactivation ? 'レッスンの有効化に失敗しました' : 'レッスンの無効化に失敗しました',
+      );
+    },
+  });
 
   const handleOpenChange = (next: boolean) => {
-    if (!next) {
-      setReason('');
-      setShowError(false);
-    }
+    if (!next) form.reset();
     onOpenChange(next);
   };
 
-  const handleConfirm = () => {
-    if (reasonInvalid) {
-      setShowError(true);
-      return;
-    }
-    toast.success(isReactivation ? 'レッスンを有効化しました' : 'レッスンを無効化しました');
-    handleOpenChange(false);
-  };
+  const handleConfirm = form.handleSubmit((values) => {
+    statusMutation.mutate({
+      path: { id: lessonId },
+      body: {
+        status: isReactivation ? 'active' : 'inactive',
+        reason: reasonRequired ? values.reason.trim() : undefined,
+      },
+    });
+  });
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
@@ -78,37 +129,42 @@ export function LessonDeactivateDialog({
         </AlertDialogHeader>
 
         {reasonRequired && (
-          <div className="px-1">
-            <p className="mb-1 text-xs font-medium">
-              無効化の理由 <span className="text-destructive">*</span>
-            </p>
-            <Textarea
-              value={reason}
-              maxLength={1000}
-              className="min-h-[80px] text-sm"
-              placeholder="無効化する理由を入力してください（変更履歴に記録されます）"
-              onChange={(e) => {
-                setReason(e.target.value);
-                if (showError) setShowError(false);
-              }}
+          <Form {...form}>
+            <FormField
+              control={form.control}
+              name="reason"
+              render={({ field }) => (
+                <FormItem className="px-1">
+                  <FormLabel className="text-xs font-medium">
+                    無効化の理由 <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      className="min-h-20 text-sm"
+                      placeholder="無効化する理由を入力してください（変更履歴に記録されます）"
+                      disabled={statusMutation.isPending}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-            {showError && reasonInvalid && (
-              <p className="text-destructive mt-1 text-xs">理由を入力してください</p>
-            )}
-          </div>
+          </Form>
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel>キャンセル</AlertDialogCancel>
+          <AlertDialogCancel disabled={statusMutation.isPending}>キャンセル</AlertDialogCancel>
           <AlertDialogAction
             className={
               isReactivation
                 ? 'bg-success text-success-foreground hover:bg-success/90'
                 : 'bg-warning text-warning-foreground hover:bg-warning/90'
             }
+            disabled={statusMutation.isPending}
             onClick={(e) => {
               e.preventDefault();
-              handleConfirm();
+              void handleConfirm();
             }}
           >
             {isReactivation ? '有効化する' : '無効化する'}

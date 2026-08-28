@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { db } from '@/app/api/_mock-db';
+import { db, memberToBasicInfo } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
   MemberBasicInfoSchema,
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!member) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
-    return NextResponse.json(member.basic_info);
+    return NextResponse.json(memberToBasicInfo(member));
   } catch {
     return NextResponse.json({ error: 'Failed to fetch basic info' }, { status: 500 });
   }
@@ -121,7 +121,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    const response: UpdateBasicInfoResponse = updatedMember.basic_info as any;
+    const response: UpdateBasicInfoResponse = memberToBasicInfo(updatedMember);
     return NextResponse.json(response);
   } catch {
     return NextResponse.json({ error: 'Failed to update basic info' }, { status: 500 });

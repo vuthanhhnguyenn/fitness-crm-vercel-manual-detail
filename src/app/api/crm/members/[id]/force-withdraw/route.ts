@@ -59,11 +59,9 @@ registerRoute({
   ],
 });
 
-const FORCE_WITHDRAWABLE_STATUSES: string[] = [
-  MemberStatus.ACTIVE,
-  MemberStatus.SUSPENDED,
-  MemberStatus.GATE_STOP,
-];
+// Gate stop is an orthogonal flag, not a status — a gate-stopped member is still
+// active or suspended underneath and stays force-withdrawable.
+const FORCE_WITHDRAWABLE_STATUSES: string[] = [MemberStatus.ACTIVE, MemberStatus.SUSPENDED];
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -74,7 +72,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    if (!FORCE_WITHDRAWABLE_STATUSES.includes(member.profile.status)) {
+    if (!FORCE_WITHDRAWABLE_STATUSES.includes(member.memberStatus)) {
       return NextResponse.json(
         { error: 'Member is not in a state that allows force withdrawal' },
         { status: 409 },

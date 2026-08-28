@@ -1,4 +1,5 @@
 import { exportCsv } from '@/utils/csv.util';
+import { formatDateYYYYMMDD } from '@/utils/date.util';
 
 import type { PostCrmLockersByIdSlotsExportResponse } from '@/lib/api/types.gen';
 
@@ -10,27 +11,24 @@ const CSV_HEADERS = [
   '契約者',
   '会員ID',
   'オプション契約',
-  'G-02契約種類',
-  '開放待ち日',
+  '契約種類',
+  '解約日',
   'パスワード',
 ];
 
 type LockerSlotExportItem = PostCrmLockersByIdSlotsExportResponse['slots'][number];
 
-function toCsvRows(
-  slots: LockerSlotExportItem[],
-  contractTypeNameByCode: Map<string, string>,
-): string[][] {
+function toCsvRows(slots: LockerSlotExportItem[]): string[][] {
   return slots.map((slot) => [
     slot.slot_number,
     LOCKER_CONTRACT_STATUS_LABELS[slot.status],
     slot.member_name ?? '',
     slot.member_id ?? '',
     slot.option_contract_name ?? '',
-    slot.is_bottom_row
-      ? (contractTypeNameByCode.get(slot.contract_type_code ?? '') ?? '未割当')
-      : '',
-    slot.cancel_date ?? '',
+    // The contract type master is resolved server-side on the slot, so the export needs no
+    // separate lookup table (and cannot mislabel a code missing from a partially loaded list).
+    slot.is_bottom_row ? (slot.contract_type?.name ?? '未割当') : '',
+    slot.cancel_date ? formatDateYYYYMMDD(slot.cancel_date) : '',
     slot.password ?? '',
   ]);
 }
@@ -38,15 +36,6 @@ function toCsvRows(
 export function exportLockerSlotsCsv(
   data: PostCrmLockersByIdSlotsExportResponse,
   lockerCode: string,
-  contractTypeMasters: { code: string; name: string }[],
 ): void {
-  const contractTypeNameByCode = new Map(
-    contractTypeMasters.map((item) => [item.code, item.name] as const),
-  );
-
-  exportCsv(
-    CSV_HEADERS,
-    toCsvRows(data.slots, contractTypeNameByCode),
-    `locker_${lockerCode}_slots`,
-  );
+  exportCsv(CSV_HEADERS, toCsvRows(data.slots), `locker_${lockerCode}_slots`);
 }

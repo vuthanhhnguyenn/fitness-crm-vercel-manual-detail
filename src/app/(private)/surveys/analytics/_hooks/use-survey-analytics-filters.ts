@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-
 import { endOfDay, endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
 import { parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import { MemberType, StoreListBrand } from '@/lib/api/types.gen';
 import type { GetCrmSurveysAnalyticsData } from '@/lib/api/types.gen';
@@ -83,17 +83,9 @@ export function useSurveyAnalyticsFilters() {
     },
   );
 
-  const [searchInput, setSearchInput] = useState(() => filters.search);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput !== filters.search) {
-        setFilters({ search: searchInput || null });
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [filters.search, searchInput, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(filters.search, (value) =>
+    setFilters({ search: value || null }),
+  );
 
   const updateFilter = <K extends keyof SurveyAnalyticsFiltersState>(
     key: K,

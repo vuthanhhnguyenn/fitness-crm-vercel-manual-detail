@@ -1,8 +1,9 @@
 import { ButtonProps } from '@base-ui/react';
 import type { Column } from '@tanstack/react-table';
-import { MoveDown, MoveUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { cn } from '@/lib/utils';
 
@@ -21,34 +22,51 @@ export function DataTableColumnHeader<TData, TValue>({
     return <div className={cn(className)}>{title}</div>;
   }
 
+  const isSorted = column.getIsSorted();
+
+  function handleSortClick() {
+    if (isSorted === false) {
+      column.toggleSorting(false);
+    } else if (isSorted === 'asc') {
+      column.toggleSorting(true);
+    } else {
+      column.clearSorting();
+    }
+  }
+
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => {
-        column.toggleSorting(column.getIsSorted() === 'asc');
-      }}
-      className={cn(
-        'flex h-7 w-full items-center justify-start gap-2 px-0 py-0 hover:bg-transparent',
-        className,
-      )}
-      {...props}
-    >
-      <span className="text-xs font-semibold">{title}</span>
-      <span className="flex items-center justify-center">
-        <MoveUp
-          className={cn(
-            '-mr-[2px] size-[14px]',
-            column.getIsSorted() === 'asc' ? 'text-foreground' : 'text-muted-foreground',
-          )}
-        />
-        <MoveDown
-          className={cn(
-            '-ml-[5px] size-[14px]',
-            column.getIsSorted() === 'desc' ? 'text-foreground' : 'text-muted-foreground',
-          )}
-        />
-      </span>
-    </Button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger render={<span className="inline-flex" />}>
+          <Button
+            variant="ghost"
+            onClick={handleSortClick}
+            className={cn(
+              'group/sort h-auto gap-1 p-0 text-xs font-semibold hover:bg-transparent',
+              className,
+            )}
+            {...props}
+          >
+            {title}
+            {isSorted === 'asc' ? (
+              <ArrowUp className="size-3" />
+            ) : isSorted === 'desc' ? (
+              <ArrowDown className="size-3" />
+            ) : (
+              <ArrowUpDown className="text-muted-foreground/40 group-hover/sort:text-foreground size-3 transition-colors" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p className="text-xs">
+            {isSorted === false
+              ? 'クリックで昇順ソート'
+              : isSorted === 'asc'
+                ? 'クリックで降順ソート'
+                : 'クリックで解除'}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

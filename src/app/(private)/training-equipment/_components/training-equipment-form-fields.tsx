@@ -1,11 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Control } from 'react-hook-form';
 import { useWatch } from 'react-hook-form';
 
-import { useQuery } from '@tanstack/react-query';
+import { formatISODateLocal } from '@/utils/date.util';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { parseISO } from 'date-fns';
 
+import { useDebounce } from '@/hooks/use-debounce.hook';
+
+import { RequiredMark } from '@/components/common/field-marker';
 import { SearchableSelect } from '@/components/common/searchable-select';
 import { TextWithTooltip } from '@/components/common/text-with-tooltip';
 import { Badge } from '@/components/ui/badge';
@@ -22,31 +27,38 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 
-import { getCrmStoresOptions, getCrmToolTypesOptions } from '@/lib/api/@tanstack/react-query.gen';
-import type { Store, TrainingEquipmentItem } from '@/lib/api/types.gen';
+import {
+  getCrmStoresInfiniteOptions,
+  getCrmToolTypesOptions,
+} from '@/lib/api/@tanstack/react-query.gen';
+import type { GetCrmStoresResponse, InstallationStatus, Store } from '@/lib/api/types.gen';
 
 import {
-  TRAINING_EQUIPMENT_INSTALLATION_AREA_OPTIONS,
-  TRAINING_EQUIPMENT_STATUS_LABELS,
+  INSTALLATION_STATUS_LABELS,
+  LOCATION_IN_GYM_OPTIONS,
+  TRAINING_EQUIPMENT_MANUFACTURERS,
+  TRAINING_EQUIPMENT_NAME_MAX_LENGTH,
+  TRAINING_EQUIPMENT_NOTE_MAX_LENGTH,
 } from '../_constants/training-equipment.constants';
 import type {
   TrainingEquipmentFormSubmitValues,
   TrainingEquipmentFormValues,
 } from '../_schemas/training-equipment-form.schema';
 import {
-  getTrainingEquipmentStatusBadgeClass,
-  getTrainingEquipmentStatusDotClass,
+  getInstallationStatusBadgeClass,
+  getInstallationStatusDotClass,
 } from '../_utils/training-equipment-display.util';
 
-function RequiredMark() {
-  return <span className="text-destructive ml-0.5">*</span>;
-}
+const STORE_PAGE_SIZE = 20;
 
 type TrainingEquipmentFormFieldsProps = {
   control: Control<TrainingEquipmentFormValues, unknown, TrainingEquipmentFormSubmitValues>;
   isEdit?: boolean;
-  currentStatus?: TrainingEquipmentItem['status'];
-  showToolTypeWarning?: boolean;
+  currentStatus?: InstallationStatus;
+  /** Installation store name, shown read-only while editing. */
+  storeNameLabel?: string;
+  /** Store code (`storeCode`) shown next to it while editing. `storeId` is an internal id and is never displayed. */
+  storeCodeLabel?: string;
   onStoreChange?: (store: Store | null) => void;
 };
 
@@ -54,30 +66,49 @@ export function TrainingEquipmentFormFields({
   control,
   isEdit = false,
   currentStatus,
-  showToolTypeWarning = false,
+  storeNameLabel,
+  storeCodeLabel,
   onStoreChange,
 }: TrainingEquipmentFormFieldsProps) {
   const [isStoreOpen, setIsStoreOpen] = useState(false);
   const [storeSearch, setStoreSearch] = useState('');
+  const [manufacturerSearch, setManufacturerSearch] = useState('');
 
-  const { data: storesRes, isFetching: isStoresLoading } = useQuery({
-    ...getCrmStoresOptions({
+  // Stores can span the whole company, so the search runs server-side and more rows load via infinite scroll.
+  const debouncedStoreSearch = useDebounce(storeSearch, 300);
+  const {
+    data: storesRes,
+    isFetching: isStoresLoading,
+    isFetchingNextPage: isLoadingMoreStores,
+    hasNextPage: hasMoreStores,
+    fetchNextPage: fetchMoreStores,
+  } = useInfiniteQuery({
+    ...getCrmStoresInfiniteOptions({
       query: {
-        page: 1,
-        limit: 20,
-        search: storeSearch || undefined,
+        limit: STORE_PAGE_SIZE,
+        search: debouncedStoreSearch || undefined,
         sort_by: 'name',
         sort_order: 'asc',
       },
     }),
     enabled: isStoreOpen,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: GetCrmStoresResponse, allPages) => {
+      const currentPage = allPages.length;
+      return currentPage < (lastPage.pagination?.total_pages ?? 0) ? currentPage + 1 : undefined;
+    },
   });
 
   const { data: toolTypesRes } = useQuery({ ...getCrmToolTypesOptions() });
-  const toolTypes = (toolTypesRes?.items ?? []).filter((item) => item.code !== 'none');
-  const stores = storesRes?.stores ?? [];
-  const storeId = useWatch({ control, name: 'store_id' });
-  const storeName = useWatch({ control, name: 'store_name' });
+  const toolTypes = toolTypesRes?.items ?? [];
+  const stores = useMemo(
+    () => storesRes?.pages.flatMap((page) => page.stores ?? []) ?? [],
+    [storesRes],
+  );
+  const storeId = useWatch({ control, name: 'storeId' });
+  const manufacturerOptions = TRAINING_EQUIPMENT_MANUFACTURERS.filter((name) =>
+    manufacturerSearch ? name.includes(manufacturerSearch) : true,
+  );
 
   return (
     <div className="space-y-6">
@@ -86,18 +117,23 @@ export function TrainingEquipmentFormFields({
           <CardTitle className="text-base font-semibold">基本情報</CardTitle>
         </CardHeader>
         <CardContent className="px-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
             <FormField
               control={control}
               name="name"
               render={({ field }) => (
                 <FormItem className="md:col-span-2">
-                  <FormLabel className="text-xs font-medium">
+                  <FormLabel>
                     機材名
                     <RequiredMark />
                   </FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="機材名を入力" className="h-8" />
+                    <Input
+                      {...field}
+                      placeholder="機材名を入力"
+                      className="h-8"
+                      maxLength={TRAINING_EQUIPMENT_NAME_MAX_LENGTH}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -106,7 +142,7 @@ export function TrainingEquipmentFormFields({
 
             <FormField
               control={control}
-              name="tool_type"
+              name="mstToolId"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
@@ -115,10 +151,10 @@ export function TrainingEquipmentFormFields({
                   </FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
-                      <SelectTrigger className="h-8">
+                      <SelectTrigger className="h-8 w-full">
                         <SelectValue placeholder="選択してください">
                           {field.value
-                            ? (toolTypes.find((toolType) => toolType.code === field.value)?.name ??
+                            ? (toolTypes.find((toolType) => toolType.id === field.value)?.name ??
                               field.value)
                             : undefined}
                         </SelectValue>
@@ -126,16 +162,16 @@ export function TrainingEquipmentFormFields({
                     </FormControl>
                     <SelectContent>
                       {toolTypes.map((toolType) => (
-                        <SelectItem key={toolType.id} value={toolType.code}>
+                        <SelectItem key={toolType.id} value={toolType.id}>
                           {toolType.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {isEdit && showToolTypeWarning && (
+                  {isEdit && (
                     <p className="text-warning mt-2 flex items-start gap-1 text-xs">
                       <span className="mt-0.5">⚠</span>
-                      <span>器具種別を変更するとエクササイズ紐づけに影響する可能性があります</span>
+                      <span>器具種別を変更するとエクササイズ紐づけがすべて解除されます</span>
                     </p>
                   )}
                   <FormMessage />
@@ -156,10 +192,18 @@ export function TrainingEquipmentFormFields({
                     <Input
                       type="number"
                       min={1}
+                      // No `max` attribute on purpose: it would trigger the browser's own constraint
+                      // validation, which blocks the submit with a native tooltip instead of the
+                      // inline message this form uses everywhere else. zod enforces the ceiling.
                       placeholder="数量を入力"
                       className="h-8"
-                      value={field.value as number}
-                      onChange={(event) => field.onChange(Number(event.target.value))}
+                      // Keep a cleared field as an empty string (writing 0 back would block re-entry).
+                      // zod then rejects it like a 0 and shows 「数量を入力してください」.
+                      value={field.value == null ? '' : String(field.value)}
+                      onChange={(event) => {
+                        const { value } = event.target;
+                        field.onChange(value === '' ? '' : Number(value));
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
@@ -174,11 +218,18 @@ export function TrainingEquipmentFormFields({
                 <FormItem>
                   <FormLabel>メーカー</FormLabel>
                   <FormControl>
-                    <Input
-                      {...field}
-                      value={field.value ?? ''}
-                      placeholder="メーカーを入力"
-                      className="h-8"
+                    <SearchableSelect<string>
+                      value={field.value || null}
+                      options={manufacturerOptions}
+                      placeholder="メーカーを選択"
+                      searchPlaceholder="メーカー名を検索..."
+                      emptyMessage="該当なし"
+                      clearLabel="選択をクリア"
+                      onSearchChange={setManufacturerSearch}
+                      onSelect={(manufacturer) => field.onChange(manufacturer)}
+                      getOptionKey={(manufacturer) => manufacturer}
+                      getOptionLabel={(manufacturer) => manufacturer}
+                      triggerClassName="h-8 w-full justify-between"
                     />
                   </FormControl>
                   <FormMessage />
@@ -188,7 +239,7 @@ export function TrainingEquipmentFormFields({
 
             <FormField
               control={control}
-              name="model_number"
+              name="model"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>型番</FormLabel>
@@ -198,6 +249,7 @@ export function TrainingEquipmentFormFields({
                       value={field.value ?? ''}
                       placeholder="型番を入力"
                       className="h-8"
+                      maxLength={TRAINING_EQUIPMENT_NAME_MAX_LENGTH}
                     />
                   </FormControl>
                   <FormMessage />
@@ -213,11 +265,11 @@ export function TrainingEquipmentFormFields({
           <CardTitle className="text-base font-semibold">設置情報</CardTitle>
         </CardHeader>
         <CardContent className="px-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
             <FormField
               control={control}
-              name="store_id"
-              render={({ field }) => (
+              name="storeId"
+              render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel>
                     設置店舗
@@ -227,7 +279,9 @@ export function TrainingEquipmentFormFields({
                     <SearchableSelect<Store>
                       value={field.value || null}
                       valueLabel={
-                        isEdit && storeId ? `${storeName || storeId} (${storeId})` : undefined
+                        isEdit && storeId
+                          ? `${storeNameLabel || storeId}${storeCodeLabel ? ` (${storeCodeLabel})` : ''}`
+                          : undefined
                       }
                       options={stores}
                       placeholder="店舗を選択"
@@ -240,10 +294,11 @@ export function TrainingEquipmentFormFields({
                       onOpenChange={setIsStoreOpen}
                       onSearchChange={setStoreSearch}
                       onSelect={(store) => {
-                        field.onChange(store?.store_id ?? '');
+                        // The API's `storeId` is the internal id (`stores.id`); the display code is `store_id`.
+                        field.onChange(store?.id ?? '');
                         onStoreChange?.(store);
                       }}
-                      getOptionKey={(store) => store.store_id}
+                      getOptionKey={(store) => store.id}
                       getOptionLabel={(store) => `${store.name} (${store.store_id})`}
                       getOptionKeywords={(store) =>
                         [store.name, store.store_id, store.id, store.club_code]
@@ -262,10 +317,19 @@ export function TrainingEquipmentFormFields({
                           </span>
                         </div>
                       )}
-                      isLoading={isStoresLoading}
+                      hasError={Boolean(fieldState.error)}
+                      isLoading={isStoresLoading && !isLoadingMoreStores}
+                      hasMore={hasMoreStores}
+                      isLoadingMore={isLoadingMoreStores}
+                      onLoadMore={() => void fetchMoreStores()}
                       triggerClassName="h-8 w-full justify-between"
                     />
                   </FormControl>
+                  {isEdit && (
+                    <p className="text-muted-foreground text-xs">
+                      ※店舗間の移動は「撤去済みに変更 + 新店舗で新規登録」で対応します
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -273,27 +337,26 @@ export function TrainingEquipmentFormFields({
 
             <FormField
               control={control}
-              name="installation_area"
+              name="locationInGym"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs font-medium">設置エリア</FormLabel>
+                  <FormLabel>設置エリア</FormLabel>
                   <Select
                     value={field.value ?? ''}
                     onValueChange={(value) => field.onChange(value || null)}
                   >
                     <FormControl>
-                      <SelectTrigger className="h-8">
+                      <SelectTrigger className="h-8 w-full">
                         <SelectValue placeholder="選択してください">
                           {field.value
-                            ? TRAINING_EQUIPMENT_INSTALLATION_AREA_OPTIONS.find(
-                                (area) => area.value === field.value,
-                              )?.label
+                            ? LOCATION_IN_GYM_OPTIONS.find((area) => area.value === field.value)
+                                ?.label
                             : undefined}
                         </SelectValue>
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {TRAINING_EQUIPMENT_INSTALLATION_AREA_OPTIONS.map((area) => (
+                      {LOCATION_IN_GYM_OPTIONS.map((area) => (
                         <SelectItem key={area.value} value={area.value}>
                           {area.label}
                         </SelectItem>
@@ -307,17 +370,18 @@ export function TrainingEquipmentFormFields({
 
             <FormField
               control={control}
-              name="installed_on"
-              render={({ field }) => (
+              name="installedOn"
+              render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel>設置日</FormLabel>
                   <FormControl>
                     <DatePicker
-                      date={field.value ? new Date(field.value) : undefined}
+                      date={field.value ? parseISO(field.value) : undefined}
                       onDateChange={(date) =>
-                        field.onChange(date ? date.toISOString().slice(0, 10) : null)
+                        field.onChange(date ? formatISODateLocal(date) : null)
                       }
                       placeholder="日付を選択"
+                      hasError={Boolean(fieldState.error)}
                     />
                   </FormControl>
                   <FormMessage />
@@ -334,12 +398,12 @@ export function TrainingEquipmentFormFields({
                 <div className="flex h-8 items-center gap-2">
                   <Badge
                     variant="outline"
-                    className={`gap-1 text-xs font-medium ${getTrainingEquipmentStatusBadgeClass(currentStatus)}`}
+                    className={`gap-1 text-xs font-medium ${getInstallationStatusBadgeClass(currentStatus)}`}
                   >
                     <span
-                      className={`size-2 rounded-full ${getTrainingEquipmentStatusDotClass(currentStatus)}`}
+                      className={`size-2 rounded-full ${getInstallationStatusDotClass(currentStatus)}`}
                     />
-                    {TRAINING_EQUIPMENT_STATUS_LABELS[currentStatus]}
+                    {INSTALLATION_STATUS_LABELS[currentStatus]}
                   </Badge>
                   <p className="text-muted-foreground text-xs">
                     ※設置状態は詳細画面から変更できます
@@ -348,27 +412,23 @@ export function TrainingEquipmentFormFields({
               ) : (
                 <FormField
                   control={control}
-                  name="status"
+                  name="installationStatus"
                   render={({ field }) => (
                     <FormItem>
                       <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl>
-                          <SelectTrigger className="h-8">
+                          <SelectTrigger className="h-8 w-full">
                             <SelectValue placeholder="選択してください">
-                              {field.value
-                                ? TRAINING_EQUIPMENT_STATUS_LABELS[field.value]
-                                : undefined}
+                              {field.value ? INSTALLATION_STATUS_LABELS[field.value] : undefined}
                             </SelectValue>
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Object.entries(TRAINING_EQUIPMENT_STATUS_LABELS).map(
-                            ([value, label]) => (
-                              <SelectItem key={value} value={value}>
-                                {label}
-                              </SelectItem>
-                            ),
-                          )}
+                          {Object.entries(INSTALLATION_STATUS_LABELS).map(([value, label]) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -391,15 +451,16 @@ export function TrainingEquipmentFormFields({
           </p>
           <FormField
             control={control}
-            name="notes"
+            name="note"
             render={({ field }) => (
               <FormItem>
                 <FormControl>
                   <Textarea
                     {...field}
                     value={field.value ?? ''}
-                    className="min-h-[100px] text-sm leading-relaxed"
+                    className="min-h-25 text-sm leading-relaxed"
                     placeholder="備考・メモを入力（任意）"
+                    maxLength={TRAINING_EQUIPMENT_NOTE_MAX_LENGTH}
                   />
                 </FormControl>
                 <FormMessage />

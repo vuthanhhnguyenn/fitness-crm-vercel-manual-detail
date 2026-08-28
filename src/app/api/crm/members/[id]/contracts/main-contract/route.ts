@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { toMainContractResponse } from '@/app/api/_lib/member-contract';
 import { db } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Main contract not found' }, { status: 404 });
     }
 
-    return NextResponse.json(contracts.main_contract);
+    return NextResponse.json(toMainContractResponse(contracts.main_contract));
   } catch {
     return NextResponse.json({ error: 'Failed to fetch main contract' }, { status: 500 });
   }

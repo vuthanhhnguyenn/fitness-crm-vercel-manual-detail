@@ -1,24 +1,15 @@
-'use client';
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 
-import { useRouter } from 'next/navigation';
-
-import { formatDatetimeISO } from '@/utils/format.util';
-
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-import type { GetCrmBlacklistByIdResponse } from '@/lib/api/types.gen';
-import { navigate } from '@/lib/routes/routes.util';
-
 import { BlacklistSourceBadge } from '../../_components/blacklist-source-badge';
-
-type BlacklistDetail = NonNullable<GetCrmBlacklistByIdResponse>['blacklist'];
+import type { BlacklistDetail } from '../../_constants/blacklist.constants';
 
 interface BlacklistDetailInfoProps {
   blacklist: BlacklistDetail;
 }
 
-function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+function InfoRow({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-muted-foreground text-xs">{label}</span>
@@ -27,8 +18,14 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-export function BlacklistDetailInfo({ blacklist }: BlacklistDetailInfoProps) {
-  const router = useRouter();
+/**
+ * FR-058 — 登録理由 / 登録日時 / 登録者, plus メモ across both columns.
+ *
+ * Member identity is deliberately absent: it lives in the head-up card above, so
+ * repeating 会員ID / 氏名 / 店舗名 here would duplicate it. V0 does the same.
+ */
+export function BlacklistDetailInfo({ blacklist }: Readonly<BlacklistDetailInfoProps>) {
+  const isReleased = !blacklist.is_active;
 
   return (
     <Card>
@@ -37,36 +34,41 @@ export function BlacklistDetailInfo({ blacklist }: BlacklistDetailInfoProps) {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-          <InfoRow label="会員ID">
-            <span className="font-mono text-sm font-medium">{blacklist.memberId}</span>
-          </InfoRow>
-          <InfoRow label="氏名">
-            <Button
-              variant="link"
-              className="h-auto p-0 text-sm font-medium"
-              onClick={() => router.push(navigate('/members/[id]', blacklist.memberId))}
-            >
-              {blacklist.memberName}
-            </Button>
-          </InfoRow>
-          <InfoRow label="店舗名">
-            <span>{blacklist.storeName}</span>
-          </InfoRow>
           <InfoRow label="登録理由">
-            <div className="flex flex-col gap-1">
-              <BlacklistSourceBadge source={blacklist.registrationSource} />
-            </div>
+            {/* The registration-path axis. The stored reason categories are never shown (FR-043a). */}
+            <BlacklistSourceBadge source={blacklist.source} />
           </InfoRow>
           <InfoRow label="登録日時">
-            <span>{formatDatetimeISO(blacklist.registeredAt)}</span>
+            <span className="font-medium">
+              {formatDateYYYYMMDD_HHMM(blacklist.registered_at, '—')}
+            </span>
           </InfoRow>
           <InfoRow label="登録者">
-            <span>{blacklist.registeredBy}</span>
+            <span className="font-medium">{blacklist.registered_by.display_name}</span>
           </InfoRow>
+
+          {/**
+           * FR-069b — a released entry has to say who released it and when. Without this
+           * the release facts the contract retains for audit would be invisible, and the
+           * only route to a released entry is its own URL (FR-069a).
+           */}
+          {isReleased && (
+            <>
+              <InfoRow label="解除日時">
+                <span className="font-medium">
+                  {formatDateYYYYMMDD_HHMM(blacklist.removed_at, '—')}
+                </span>
+              </InfoRow>
+              <InfoRow label="解除者">
+                <span className="font-medium">{blacklist.removed_by?.display_name ?? '—'}</span>
+              </InfoRow>
+            </>
+          )}
 
           <div className="col-span-2">
             <InfoRow label="メモ">
-              <span className="text-sm">{blacklist.memo}</span>
+              {/* v0.4 — `memo` is the screen's メモ. Up to v0.3 this slot held 登録理由. */}
+              <span className="text-sm">{blacklist.memo || '—'}</span>
             </InfoRow>
           </div>
         </div>

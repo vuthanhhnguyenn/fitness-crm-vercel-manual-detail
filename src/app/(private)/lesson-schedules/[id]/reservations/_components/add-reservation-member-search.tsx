@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Search, UserRoundPlus } from 'lucide-react';
 
+import { TextWithTooltip } from '@/components/common/text-with-tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -65,14 +66,14 @@ export function AddReservationMemberSearch({
       </div>
 
       {debouncedQuery.length > 0 && (
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
+        <div className="overflow-x-auto rounded-lg border">
+          <Table className="w-full min-w-105 table-fixed">
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="w-[90px] text-xs font-semibold">会員番号</TableHead>
-                <TableHead className="text-xs font-semibold">会員名</TableHead>
-                <TableHead className="text-xs font-semibold">残回数</TableHead>
-                <TableHead className="w-[80px] text-xs font-semibold" />
+                <TableHead className="w-22.5 text-xs font-semibold">会員番号</TableHead>
+                <TableHead className="w-40 text-xs font-semibold">会員名</TableHead>
+                <TableHead className="w-16 text-xs font-semibold">残回数</TableHead>
+                <TableHead className="w-20 text-xs font-semibold" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -85,17 +86,22 @@ export function AddReservationMemberSearch({
               ) : (
                 members.slice(0, 5).map((m) => {
                   const isAdded = addedMemberIds.includes(m.member_id);
-                  const isDisabled = m.remaining_sessions === 0 || m.penalty_active;
                   return (
                     <TableRow key={m.member_id} className={isAdded ? 'bg-success/10' : undefined}>
-                      <TableCell className="text-muted-foreground text-xs">{m.member_id}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">{m.name}</span>
+                      <TableCell className="text-muted-foreground text-xs">
+                        <TextWithTooltip text={m.member_id} className="max-w-[74px] text-xs" />
+                      </TableCell>
+                      <TableCell className="max-w-40">
+                        <div className="flex min-w-0 flex-col">
+                          <TextWithTooltip
+                            text={m.name}
+                            className="max-w-[144px] text-sm font-medium"
+                          />
                           {m.penalty_active && m.penalty_end_date && (
-                            <span className="text-destructive text-[10px]">
-                              ペナルティ中（{m.penalty_end_date}まで）
-                            </span>
+                            <TextWithTooltip
+                              text={`ペナルティ中（${m.penalty_end_date}まで）`}
+                              className="text-destructive max-w-[144px] text-[10px]"
+                            />
                           )}
                         </div>
                       </TableCell>
@@ -118,7 +124,7 @@ export function AddReservationMemberSearch({
                             size="sm"
                             className="h-7 text-xs"
                             onClick={() => onAdd(m)}
-                            disabled={remainingSeats <= 0 || isDisabled}
+                            disabled={remainingSeats <= 0}
                           >
                             <UserRoundPlus className="mr-1 size-3" />
                             追加

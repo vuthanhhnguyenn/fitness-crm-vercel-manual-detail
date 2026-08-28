@@ -4,29 +4,25 @@ import { getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import { ErrorResponseSchema } from '@/app/api/_schemas/auth.schema';
 import {
-  AddTrainingEquipmentExerciseLinksSchema,
-  TrainingEquipmentExerciseLinksResponseSchema,
+  AddEquipmentExerciseLinksRequestSchema,
+  AddEquipmentExerciseLinksResponseSchema,
+  ListEquipmentExerciseLinksResponseSchema,
 } from '@/app/api/_schemas/training-equipment.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
 
-function withExerciseToolName<T extends { exercise_tool_type: string }>(items: T[]) {
-  return items.map((item) => ({
-    ...item,
-    exercise_tool_name:
-      db.toolTypes.getByCode(item.exercise_tool_type)?.name ?? item.exercise_tool_type,
-  }));
-}
+import { assertHqOnly, assertStoreAccess } from '../../_lib/training-equipment.scope';
 
 registerRoute({
   method: 'get',
   path: '/crm/training-equipment/{equipmentId}/exercise-links',
-  summary: 'Get linked exercises',
-  tags: ['Training Equipment'],
+  summary: 'List linked exercises',
+  description: 'E-03 FR-008 機材に紐づいているエクササイズの一覧',
+  tags: ['Training Equipment Management'],
   parameters: [{ name: 'equipmentId', in: 'path', required: true, schema: { type: 'string' } }],
   responses: [
     {
       status: 200,
-      schema: TrainingEquipmentExerciseLinksResponseSchema,
+      schema: ListEquipmentExerciseLinksResponseSchema,
       description: 'Exercise links',
     },
     { status: 404, schema: ErrorResponseSchema, description: 'Not found' },
@@ -36,32 +32,17 @@ registerRoute({
 registerRoute({
   method: 'post',
   path: '/crm/training-equipment/{equipmentId}/exercise-links',
-  summary: 'Add linked exercises',
-  tags: ['Training Equipment'],
+  summary: 'Add exercise links to equipment',
+  description:
+    'E-03 FR-008。器具種別が一致しないエクササイズを含む場合は 422 を返し、`force=true` で承認された場合のみ保存する',
+  tags: ['Training Equipment Management'],
   parameters: [{ name: 'equipmentId', in: 'path', required: true, schema: { type: 'string' } }],
-  requestBody: { schema: AddTrainingEquipmentExerciseLinksSchema },
+  requestBody: { schema: AddEquipmentExerciseLinksRequestSchema },
   responses: [
-    {
-      status: 200,
-      schema: TrainingEquipmentExerciseLinksResponseSchema,
-      description: 'Updated links',
-    },
+    { status: 201, schema: AddEquipmentExerciseLinksResponseSchema, description: 'Links added' },
     { status: 400, schema: ErrorResponseSchema, description: 'Validation failure' },
-  ],
-});
-
-registerRoute({
-  method: 'delete',
-  path: '/crm/training-equipment/{equipmentId}/exercise-links',
-  summary: 'Delete linked exercise',
-  tags: ['Training Equipment'],
-  parameters: [
-    { name: 'equipmentId', in: 'path', required: true, schema: { type: 'string' } },
-    { name: 'exerciseId', in: 'query', required: true, schema: { type: 'string' } },
-  ],
-  responses: [
-    { status: 204, description: 'Deleted' },
     { status: 404, schema: ErrorResponseSchema, description: 'Not found' },
+    { status: 422, schema: ErrorResponseSchema, description: 'Tool-type mismatch not confirmed' },
   ],
 });
 
@@ -73,13 +54,19 @@ export async function GET(
   if (!authResult.ok) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
+
   const { equipmentId } = await params;
   const equipment = db.trainingEquipment.getById(equipmentId);
   if (!equipment) {
-    return NextResponse.json({ error: 'Training equipment not found' }, { status: 404 });
+    return NextResponse.json({ error: '対象の機材が見つかりません' }, { status: 404 });
   }
-  const items = withExerciseToolName(db.trainingEquipment.getLinks(equipmentId));
-  return NextResponse.json({ items });
+
+  const access = assertStoreAccess(authResult.user, equipment.storeId);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
+  }
+
+  return NextResponse.json({ items: db.trainingEquipment.getLinks(equipmentId) });
 }
 
 export async function POST(
@@ -90,79 +77,62 @@ export async function POST(
   if (!authResult.ok) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
+
   const { equipmentId } = await params;
   const equipment = db.trainingEquipment.getById(equipmentId);
   if (!equipment) {
-    return NextResponse.json({ error: 'Training equipment not found' }, { status: 404 });
+    return NextResponse.json({ error: '対象の機材が見つかりません' }, { status: 404 });
+  }
+
+  // Permission matrix: linking / unlinking exercises is HQ-only.
+  const permission = assertHqOnly(authResult.user, 'エクササイズ紐づけの設定');
+  if (!permission.ok) {
+    return NextResponse.json({ error: permission.error }, { status: permission.status });
+  }
+  const access = assertStoreAccess(authResult.user, equipment.storeId);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
   const body = await request.json();
-  const parsed = AddTrainingEquipmentExerciseLinksSchema.safeParse(body);
+  const parsed = AddEquipmentExerciseLinksRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Invalid request body', details: parsed.error.issues.map((issue) => issue.message) },
-      { status: 400 },
-    );
-  }
-
-  const { exercise_ids, force } = parsed.data;
-  const mismatchedExerciseIds = exercise_ids.filter((exerciseId) => {
-    const catalogItem = db.trainingEquipment.getExerciseCatalogItem(exerciseId);
-    return catalogItem !== undefined && catalogItem.tool_type !== equipment.tool_type;
-  });
-
-  if (mismatchedExerciseIds.length > 0 && !force) {
-    return NextResponse.json(
       {
-        error: 'Tool type mismatch requires confirmation',
-        details: mismatchedExerciseIds,
+        error: '入力内容に誤りがあります',
+        details: parsed.error.issues.map((issue) => issue.message),
       },
       { status: 400 },
     );
   }
 
-  const currentLinks = db.trainingEquipment.getLinks(equipmentId);
-  const toAdd = exercise_ids
-    .filter((exerciseId) => !currentLinks.some((link) => link.exercise_id === exerciseId))
-    .map((exerciseId) => {
-      const catalogItem = db.trainingEquipment.getExerciseCatalogItem(exerciseId);
-      const exerciseToolType = catalogItem?.tool_type ?? equipment.tool_type;
-      return {
-        equipment_id: equipmentId,
-        exercise_id: exerciseId,
-        exercise_name: catalogItem?.name ?? `Exercise ${exerciseId}`,
-        exercise_tool_type: exerciseToolType,
-        exercise_tool_name: db.toolTypes.getByCode(exerciseToolType)?.name ?? exerciseToolType,
-        difficulty: catalogItem?.difficulty ?? null,
-        body_part: catalogItem?.body_part ?? null,
-        created_at: new Date().toISOString(),
-      };
-    });
-  db.trainingEquipment.addLinks(toAdd);
+  const { exerciseIds, force } = parsed.data;
+  const mismatched = exerciseIds.filter((exerciseId) => {
+    const candidate = db.trainingEquipment.getExerciseCandidate(exerciseId);
+    return candidate !== undefined && candidate.mstToolId !== equipment.mstToolId;
+  });
 
-  db.trainingEquipment.refreshLinkCount(equipmentId);
-  const items = withExerciseToolName(db.trainingEquipment.getLinks(equipmentId));
-  return NextResponse.json({ items });
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ equipmentId: string }> },
-) {
-  const authResult = getAuthUserFromRequest(request);
-  if (!authResult.ok) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
-  }
-  const { equipmentId } = await params;
-  const exerciseId = request.nextUrl.searchParams.get('exerciseId');
-  if (!exerciseId) {
-    return NextResponse.json({ error: 'exerciseId is required' }, { status: 400 });
+  if (mismatched.length > 0 && !force) {
+    return NextResponse.json(
+      { error: '器具種別が一致しないため確認が必要です', details: mismatched },
+      { status: 422 },
+    );
   }
 
-  const deleted = db.trainingEquipment.deleteLink(equipmentId, exerciseId);
-  if (!deleted) {
-    return NextResponse.json({ error: 'Link not found' }, { status: 404 });
-  }
-  db.trainingEquipment.refreshLinkCount(equipmentId);
-  return new NextResponse(null, { status: 204 });
+  db.trainingEquipment.addLinks(equipmentId, exerciseIds);
+
+  const warnings = mismatched.map(
+    (exerciseId) =>
+      `器具種別が一致しないエクササイズを承認のうえ紐づけました: ${
+        db.trainingEquipment.getExerciseCandidate(exerciseId)?.name ?? exerciseId
+      }`,
+  );
+
+  return NextResponse.json(
+    {
+      links: db.trainingEquipment.getLinks(equipmentId),
+      ...(warnings.length > 0 && { warnings }),
+    },
+    { status: 201 },
+  );
 }

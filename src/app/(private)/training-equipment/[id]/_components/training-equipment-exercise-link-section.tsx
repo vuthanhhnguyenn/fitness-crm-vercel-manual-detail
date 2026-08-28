@@ -1,12 +1,24 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
+
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { Info, Link2, Plus, Search, Trash2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Loading } from '@/components/common/data-state-boundary/loading';
+import { useDebounce } from '@/hooks/use-debounce.hook';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll.hook';
+
+import { DataStateBoundary } from '@/components/common/data-state-boundary';
+import { RoleGatedButton } from '@/components/common/role-gated-button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -49,22 +61,36 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import {
-  deleteCrmTrainingEquipmentByEquipmentIdExerciseLinksMutation,
+  deleteCrmTrainingEquipmentByEquipmentIdExerciseLinksByExerciseIdMutation,
   getCrmTrainingEquipmentByEquipmentIdExerciseLinksOptions,
   getCrmTrainingEquipmentByEquipmentIdExerciseLinksQueryKey,
   getCrmTrainingEquipmentByEquipmentIdQueryKey,
-  getCrmTrainingEquipmentExercisesOptions,
+  getCrmTrainingEquipmentExerciseCandidatesInfiniteOptions,
   getCrmTrainingEquipmentQueryKey,
   postCrmTrainingEquipmentByEquipmentIdExerciseLinksMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { TrainingEquipmentItem } from '@/lib/api/types.gen';
+import type {
+  GetCrmTrainingEquipmentExerciseCandidatesResponse,
+  TrainingEquipmentDetail,
+  TrainingEquipmentExerciseCandidate,
+} from '@/lib/api/types.gen';
+import { navigate } from '@/lib/routes/routes.util';
+
+import { Permission } from '@/types/permission.type';
+
+import { useSubmitGuard } from '../../_hooks/use-submit-guard.hook';
+
+/** Sentinel Select value meaning "all" for difficulty / body part (Radix disallows an empty string). */
+const ALL_OPTION = 'all';
+const CANDIDATE_PAGE_SIZE = 20;
 
 type TrainingEquipmentExerciseLinkSectionProps = {
   equipmentId: string;
-  equipment: TrainingEquipmentItem;
+  equipment: TrainingEquipmentDetail;
   enabled?: boolean;
 };
 
+/** FR-008: viewing, adding and removing exercise links. A tool-type mismatch needs approval. */
 export function TrainingEquipmentExerciseLinkSection({
   equipmentId,
   equipment,
@@ -74,37 +100,104 @@ export function TrainingEquipmentExerciseLinkSection({
   const [addOpen, setAddOpen] = useState(false);
   const [unlinkTargetId, setUnlinkTargetId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [difficultyFilter, setDifficultyFilter] = useState('全難易度');
-  const [bodyPartFilter, setBodyPartFilter] = useState('全部位');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [difficultyFilter, setDifficultyFilter] = useState(ALL_OPTION);
+  const [bodyPartFilter, setBodyPartFilter] = useState(ALL_OPTION);
+  const candidateScrollRef = useRef<HTMLDivElement>(null);
+  // The candidate list swaps out as the search changes, so the selection holds the chosen candidates themselves.
+  const [selectedCandidates, setSelectedCandidates] = useState<
+    Map<string, TrainingEquipmentExerciseCandidate>
+  >(new Map());
   const [mismatchConfirmOpen, setMismatchConfirmOpen] = useState(false);
-  const toggleSelection = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
-  };
-  const selectedCount = selectedIds.length;
-  const clearSelection = () => setSelectedIds([]);
-  const { data: linksRes, isLoading } = useQuery({
-    ...getCrmTrainingEquipmentByEquipmentIdExerciseLinksOptions({
-      path: { equipmentId },
-    }),
+
+  const {
+    data: linksRes,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    ...getCrmTrainingEquipmentByEquipmentIdExerciseLinksOptions({ path: { equipmentId } }),
     enabled,
   });
   const links = useMemo(() => linksRes?.items ?? [], [linksRes?.items]);
-  const { data: exercisesRes } = useQuery({
-    ...getCrmTrainingEquipmentExercisesOptions(),
-    enabled,
+
+  // The candidate list can be the whole catalog, so keyword, difficulty and body part are all
+  // filtered server-side and more rows load via infinite scroll (linked rows are excluded server-side too).
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const {
+    data: candidatesRes,
+    isFetching: isFetchingCandidates,
+    isFetchingNextPage: isLoadingMoreCandidates,
+    hasNextPage: hasMoreCandidates,
+    fetchNextPage: fetchMoreCandidates,
+  } = useInfiniteQuery({
+    ...getCrmTrainingEquipmentExerciseCandidatesInfiniteOptions({
+      query: {
+        limit: CANDIDATE_PAGE_SIZE,
+        keyword: debouncedSearchQuery || undefined,
+        difficulty: difficultyFilter === ALL_OPTION ? undefined : difficultyFilter,
+        bodyPart: bodyPartFilter === ALL_OPTION ? undefined : bodyPartFilter,
+        excludeLinkedEquipmentId: equipmentId,
+      },
+    }),
+    enabled: enabled && addOpen,
+    // Without this the data (and with it the filter option lists) blanks out on every refetch: the
+    // Select then finds no item matching its value and resets itself to 「全難易度」, so choosing a
+    // difficulty or body part immediately undid itself.
+    placeholderData: keepPreviousData,
+    initialPageParam: 1,
+    getNextPageParam: (
+      lastPage: GetCrmTrainingEquipmentExerciseCandidatesResponse,
+      allPages: GetCrmTrainingEquipmentExerciseCandidatesResponse[],
+    ) => {
+      const currentPage = allPages.length;
+      return currentPage < lastPage.pagination.totalPages ? currentPage + 1 : undefined;
+    },
   });
-  const exerciseCatalog = useMemo(() => exercisesRes?.items ?? [], [exercisesRes?.items]);
+  const candidates = useMemo(
+    () => candidatesRes?.pages.flatMap((page) => page.items) ?? [],
+    [candidatesRes],
+  );
+  // The options are derived from the whole catalog, so every page returns the same set.
+  const difficultyOptions = candidatesRes?.pages[0]?.filters.difficulties ?? [];
+  const bodyPartOptions = candidatesRes?.pages[0]?.filters.bodyParts ?? [];
+
+  const candidateSentinelRef = useInfiniteScroll<HTMLTableRowElement>({
+    hasMore: Boolean(hasMoreCandidates),
+    isLoading: isFetchingCandidates,
+    onLoadMore: () => void fetchMoreCandidates(),
+    rootRef: candidateScrollRef,
+    enabled: addOpen,
+  });
+
+  const toggleSelection = (candidate: TrainingEquipmentExerciseCandidate) => {
+    setSelectedCandidates((prev) => {
+      const next = new Map(prev);
+      if (!next.delete(candidate.exerciseId)) next.set(candidate.exerciseId, candidate);
+      return next;
+    });
+  };
+  const selectedIds = useMemo(() => [...selectedCandidates.keys()], [selectedCandidates]);
+  const selectedCount = selectedCandidates.size;
 
   const resetAddForm = () => {
-    clearSelection();
+    setSelectedCandidates(new Map());
     setSearchQuery('');
-    setDifficultyFilter('全難易度');
-    setBodyPartFilter('全部位');
+    setDifficultyFilter(ALL_OPTION);
+    setBodyPartFilter(ALL_OPTION);
     setMismatchConfirmOpen(false);
     setAddOpen(false);
+  };
+
+  const invalidateLinks = () => {
+    queryClient.invalidateQueries({
+      queryKey: getCrmTrainingEquipmentByEquipmentIdExerciseLinksQueryKey({
+        path: { equipmentId },
+      }),
+    });
+    queryClient.invalidateQueries({
+      queryKey: getCrmTrainingEquipmentByEquipmentIdQueryKey({ path: { equipmentId } }),
+    });
+    queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
   };
 
   const addLinksMutation = useMutation({
@@ -112,61 +205,51 @@ export function TrainingEquipmentExerciseLinkSection({
     onSuccess: () => {
       toast.success('エクササイズを追加しました');
       resetAddForm();
-      queryClient.invalidateQueries({
-        queryKey: getCrmTrainingEquipmentByEquipmentIdExerciseLinksQueryKey({
-          path: { equipmentId },
-        }),
-      });
-      queryClient.invalidateQueries({
-        queryKey: getCrmTrainingEquipmentByEquipmentIdQueryKey({ path: { equipmentId } }),
-      });
-      queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
+      invalidateLinks();
     },
-    onError: () => toast.error('エクササイズの追加に失敗しました'),
   });
 
   const unlinkMutation = useMutation({
-    ...deleteCrmTrainingEquipmentByEquipmentIdExerciseLinksMutation(),
+    ...deleteCrmTrainingEquipmentByEquipmentIdExerciseLinksByExerciseIdMutation(),
     onSuccess: () => {
       toast.success('紐づけを解除しました');
-      queryClient.invalidateQueries({
-        queryKey: getCrmTrainingEquipmentByEquipmentIdExerciseLinksQueryKey({
-          path: { equipmentId },
-        }),
-      });
-      queryClient.invalidateQueries({
-        queryKey: getCrmTrainingEquipmentByEquipmentIdQueryKey({ path: { equipmentId } }),
-      });
-      queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
+      invalidateLinks();
     },
-    onError: () => toast.error('紐づけの解除に失敗しました'),
-  });
-
-  const equipmentToolTypeLabel = equipment.tool_name ?? equipment.tool_type;
-  const linkedIds = useMemo(() => new Set(links.map((link) => link.exercise_id)), [links]);
-
-  const filteredCandidates = exerciseCatalog.filter((candidate) => {
-    if (linkedIds.has(candidate.id)) return false;
-    if (searchQuery && !candidate.name.includes(searchQuery)) return false;
-    if (difficultyFilter !== '全難易度' && candidate.difficulty !== difficultyFilter) return false;
-    if (bodyPartFilter !== '全部位' && candidate.body_part !== bodyPartFilter) return false;
-    return true;
   });
 
   const hasSelectedMismatch = useMemo(
     () =>
-      selectedIds.some((id) => {
-        const candidate = exerciseCatalog.find((item) => item.id === id);
-        return candidate !== undefined && candidate.tool_type !== equipment.tool_type;
-      }),
-    [equipment.tool_type, exerciseCatalog, selectedIds],
+      [...selectedCandidates.values()].some(
+        (candidate) => candidate.mstToolId !== equipment.mstToolId,
+      ),
+    [equipment.mstToolId, selectedCandidates],
   );
 
+  const { submitOnce: addOnce, resetSubmitGuard: resetAddGuard } = useSubmitGuard(
+    addLinksMutation.isPending,
+    addLinksMutation.isError,
+  );
+  const { submitOnce: unlinkOnce, resetSubmitGuard: resetUnlinkGuard } = useSubmitGuard(
+    unlinkMutation.isPending,
+    unlinkMutation.isError,
+  );
+
+  // Each reopened confirm is a new attempt: the guard only blocks repeated clicks within one attempt.
+  useEffect(() => {
+    if (addOpen) resetAddGuard();
+  }, [addOpen, resetAddGuard]);
+
+  useEffect(() => {
+    if (unlinkTargetId !== null) resetUnlinkGuard();
+  }, [unlinkTargetId, resetUnlinkGuard]);
+
   const commitAdd = (force = false) => {
-    addLinksMutation.mutate({
-      path: { equipmentId },
-      body: { exercise_ids: selectedIds, ...(force ? { force: true } : {}) },
-    });
+    addOnce(() =>
+      addLinksMutation.mutate({
+        path: { equipmentId },
+        body: { exerciseIds: selectedIds, ...(force ? { force: true } : {}) },
+      }),
+    );
   };
 
   const handleAdd = () => {
@@ -178,8 +261,16 @@ export function TrainingEquipmentExerciseLinkSection({
     commitAdd();
   };
 
-  if (isLoading) {
-    return <Loading />;
+  if (isLoading || isError) {
+    return (
+      <DataStateBoundary
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={false}
+        onRetry={() => refetch()}
+        errorTitle="エクササイズ紐づけの取得に失敗しました"
+      />
+    );
   }
 
   return (
@@ -187,30 +278,42 @@ export function TrainingEquipmentExerciseLinkSection({
       <Alert>
         <Info className="size-4" />
         <AlertDescription className="text-xs">
-          この紐づけは Y-08 エクササイズ管理画面からも編集できます（双方向同期）
+          この紐づけはエクササイズ管理画面からも編集できます（双方向同期）
         </AlertDescription>
       </Alert>
 
       <Card className="gap-0 py-0">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <p className="text-muted-foreground text-sm">
-            この機材（器具種別:{' '}
-            <strong className="text-foreground">{equipmentToolTypeLabel}</strong>
+            この機材（器具種別: <strong className="text-foreground">{equipment.toolName}</strong>
             ）に紐づいているエクササイズです。
           </p>
-          <Button size="sm" className="gap-1" onClick={() => setAddOpen(true)}>
+          <RoleGatedButton
+            requiredPermission={Permission.TrainingEquipmentExerciseLinks}
+            denyTooltip="エクササイズ紐づけの設定権限がありません"
+            size="sm"
+            className="gap-1"
+            onClick={() => setAddOpen(true)}
+          >
             <Plus className="size-4" />
             エクササイズを追加
-          </Button>
+          </RoleGatedButton>
         </div>
 
         {links.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12">
             <Link2 className="text-muted-foreground size-8" />
             <p className="text-muted-foreground text-sm">紐づいているエクササイズはありません</p>
-            <Button size="sm" variant="outline" className="mt-2" onClick={() => setAddOpen(true)}>
+            <RoleGatedButton
+              requiredPermission={Permission.TrainingEquipmentExerciseLinks}
+              denyTooltip="エクササイズ紐づけの設定権限がありません"
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() => setAddOpen(true)}
+            >
               エクササイズを追加する
-            </Button>
+            </RoleGatedButton>
           </div>
         ) : (
           <Table>
@@ -226,40 +329,35 @@ export function TrainingEquipmentExerciseLinkSection({
             </TableHeader>
             <TableBody>
               {links.map((link) => (
-                <TableRow key={link.exercise_id}>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {link.exercise_id}
-                  </TableCell>
-                  <TableCell className="hover:text-primary text-sm font-medium">
-                    {link.exercise_name}
+                <TableRow key={link.exerciseId}>
+                  <TableCell className="text-muted-foreground text-xs">{link.exerciseId}</TableCell>
+                  <TableCell className="text-sm font-medium">
+                    {/* FR-004: clicking the exercise name navigates to the Y-08 exercise detail. */}
+                    <Link
+                      href={navigate('/exercises/[id]', link.exerciseId)}
+                      className="hover:text-primary hover:underline"
+                    >
+                      {link.name}
+                    </Link>
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary" className="text-xs font-normal">
-                      {link.exercise_tool_name}
+                      {link.toolName}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm">{link.difficulty ?? '—'}</TableCell>
-                  <TableCell className="text-sm">{link.body_part ?? '—'}</TableCell>
+                  <TableCell className="text-sm">{link.bodyPart ?? '—'}</TableCell>
                   <TableCell>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive hover:text-destructive size-7"
-                              onClick={() => setUnlinkTargetId(link.exercise_id)}
-                            />
-                          }
-                        >
-                          <Trash2 className="size-4" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="text-xs">紐づけを解除</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <RoleGatedButton
+                      requiredPermission={Permission.TrainingEquipmentExerciseLinks}
+                      denyTooltip="エクササイズ紐づけの解除権限がありません"
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:text-destructive size-7"
+                      onClick={() => setUnlinkTargetId(link.exerciseId)}
+                    >
+                      <Trash2 className="size-4" />
+                    </RoleGatedButton>
                   </TableCell>
                 </TableRow>
               ))}
@@ -269,12 +367,11 @@ export function TrainingEquipmentExerciseLinkSection({
       </Card>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden sm:max-w-[720px]">
+        <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col overflow-hidden sm:max-w-180">
           <DialogHeader className="shrink-0">
             <DialogTitle className="text-base">エクササイズを追加</DialogTitle>
             <DialogDescription>
-              この機材の器具種別「{equipmentToolTypeLabel}
-              」と一致するエクササイズのみ紐付けできます。
+              この機材の器具種別「{equipment.toolName}」と一致するエクササイズのみ紐付けできます。
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-2">
@@ -290,13 +387,16 @@ export function TrainingEquipmentExerciseLinkSection({
               </div>
               <Select
                 value={difficultyFilter}
-                onValueChange={(value) => setDifficultyFilter(value ?? '全難易度')}
+                onValueChange={(value) => setDifficultyFilter(value || ALL_OPTION)}
               >
-                <SelectTrigger className="h-8 w-[120px] text-xs">
-                  <SelectValue />
+                <SelectTrigger className="h-8 w-30 text-xs">
+                  <SelectValue>
+                    {difficultyFilter === ALL_OPTION ? '全難易度' : difficultyFilter}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {['全難易度', '初級', '中級', '上級'].map((item) => (
+                  <SelectItem value={ALL_OPTION}>全難易度</SelectItem>
+                  {difficultyOptions.map((item) => (
                     <SelectItem key={item} value={item}>
                       {item}
                     </SelectItem>
@@ -305,13 +405,16 @@ export function TrainingEquipmentExerciseLinkSection({
               </Select>
               <Select
                 value={bodyPartFilter}
-                onValueChange={(value) => setBodyPartFilter(value ?? '全部位')}
+                onValueChange={(value) => setBodyPartFilter(value || ALL_OPTION)}
               >
-                <SelectTrigger className="h-8 w-[120px] text-xs">
-                  <SelectValue />
+                <SelectTrigger className="h-8 w-30 text-xs">
+                  <SelectValue>
+                    {bodyPartFilter === ALL_OPTION ? '全部位' : bodyPartFilter}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {['全部位', '胸', '背中', '肩', '腕', '脚', '体幹'].map((item) => (
+                  <SelectItem value={ALL_OPTION}>全部位</SelectItem>
+                  {bodyPartOptions.map((item) => (
                     <SelectItem key={item} value={item}>
                       {item}
                     </SelectItem>
@@ -320,49 +423,52 @@ export function TrainingEquipmentExerciseLinkSection({
               </Select>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto rounded-md border">
-              <Table containerClassName="overflow-visible" className="min-w-[600px]">
+            <div
+              ref={candidateScrollRef}
+              className="min-h-0 flex-1 overflow-auto rounded-md border"
+            >
+              <Table containerClassName="overflow-visible" className="min-w-150">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="bg-muted sticky top-0 z-10 w-10 px-4 text-xs font-semibold" />
                     <TableHead className="bg-muted sticky top-0 z-10 text-xs font-semibold">
                       エクササイズ名
                     </TableHead>
-                    <TableHead className="bg-muted sticky top-0 z-10 w-[140px] text-xs font-semibold">
+                    <TableHead className="bg-muted sticky top-0 z-10 w-35 text-xs font-semibold">
                       器具種別
                     </TableHead>
-                    <TableHead className="bg-muted sticky top-0 z-10 w-[72px] text-xs font-semibold">
+                    <TableHead className="bg-muted sticky top-0 z-10 w-18 text-xs font-semibold">
                       難易度
                     </TableHead>
-                    <TableHead className="bg-muted sticky top-0 z-10 w-[72px] text-xs font-semibold">
+                    <TableHead className="bg-muted sticky top-0 z-10 w-18 text-xs font-semibold">
                       部位
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr:last-child]:border-b">
-                  {filteredCandidates.length === 0 ? (
+                  {candidates.length === 0 ? (
                     <TableRow>
                       <TableCell
                         colSpan={5}
                         className="text-muted-foreground py-8 text-center text-sm"
                       >
-                        該当するエクササイズがありません
+                        {isFetchingCandidates ? '検索中...' : '該当するエクササイズがありません'}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredCandidates.map((candidate) => {
-                      const isToolMismatch = candidate.tool_type !== equipment.tool_type;
-                      const isSelected = selectedIds.includes(candidate.id);
+                    candidates.map((candidate) => {
+                      const isToolMismatch = candidate.mstToolId !== equipment.mstToolId;
+                      const isSelected = selectedCandidates.has(candidate.exerciseId);
                       return (
                         <TableRow
-                          key={candidate.id}
+                          key={candidate.exerciseId}
                           className={`cursor-pointer ${isSelected ? 'bg-primary/10' : ''}`}
-                          onClick={() => toggleSelection(candidate.id)}
+                          onClick={() => toggleSelection(candidate)}
                         >
                           <TableCell className="px-4" onClick={(event) => event.stopPropagation()}>
                             <Checkbox
                               checked={isSelected}
-                              onCheckedChange={() => toggleSelection(candidate.id)}
+                              onCheckedChange={() => toggleSelection(candidate)}
                             />
                           </TableCell>
                           <TableCell className="text-sm font-medium">
@@ -380,10 +486,10 @@ export function TrainingEquipmentExerciseLinkSection({
                                         種別不一致
                                       </Badge>
                                     </TooltipTrigger>
-                                    <TooltipContent className="max-w-[220px]">
+                                    <TooltipContent className="max-w-55">
                                       <p className="text-xs">
-                                        このエクササイズの器具種別（{candidate.tool_name}
-                                        ）がこの機材の器具種別（{equipmentToolTypeLabel}
+                                        このエクササイズの器具種別（{candidate.toolName}
+                                        ）がこの機材の器具種別（{equipment.toolName}
                                         ）と異なります
                                       </p>
                                     </TooltipContent>
@@ -394,14 +500,24 @@ export function TrainingEquipmentExerciseLinkSection({
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary" className="text-xs font-normal">
-                              {candidate.tool_name}
+                              {candidate.toolName}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm">{candidate.difficulty}</TableCell>
-                          <TableCell className="text-sm">{candidate.body_part}</TableCell>
+                          <TableCell className="text-sm">{candidate.difficulty ?? '—'}</TableCell>
+                          <TableCell className="text-sm">{candidate.bodyPart ?? '—'}</TableCell>
                         </TableRow>
                       );
                     })
+                  )}
+                  {hasMoreCandidates && (
+                    <TableRow ref={candidateSentinelRef} className="hover:bg-transparent">
+                      <TableCell
+                        colSpan={5}
+                        className="text-muted-foreground py-4 text-center text-xs"
+                      >
+                        {isLoadingMoreCandidates ? '読み込み中...' : ' '}
+                      </TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -437,7 +553,7 @@ export function TrainingEquipmentExerciseLinkSection({
           <AlertDialogHeader>
             <AlertDialogTitle>器具種別が一致していません</AlertDialogTitle>
             <AlertDialogDescription>
-              選択したエクササイズに、この機材の器具種別（{equipmentToolTypeLabel}
+              選択したエクササイズに、この機材の器具種別（{equipment.toolName}
               ）と一致しないものが含まれています。承認した場合のみ保存されます。このまま紐づけますか？
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -471,10 +587,8 @@ export function TrainingEquipmentExerciseLinkSection({
             <AlertDialogAction
               onClick={() => {
                 if (unlinkTargetId) {
-                  unlinkMutation.mutate({
-                    path: { equipmentId },
-                    query: { exerciseId: unlinkTargetId },
-                  });
+                  const exerciseId = unlinkTargetId;
+                  unlinkOnce(() => unlinkMutation.mutate({ path: { equipmentId, exerciseId } }));
                 }
                 setUnlinkTargetId(null);
               }}

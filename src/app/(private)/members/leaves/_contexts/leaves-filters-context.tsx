@@ -2,7 +2,7 @@
 
 import { type ReactNode, createContext, useContext } from 'react';
 
-import type { useLeavesFilters } from '../_hooks/use-leaves-filters';
+import type { useLeavesFilters } from '../_hooks/use-leaves-filters.hook';
 
 export type LeavesFiltersContextValue = ReturnType<typeof useLeavesFilters>;
 

@@ -9,4 +9,10 @@ export type LessonContentDetailsType = {
       import('@/app/api/_schemas/lesson-content-form.schema').CreateLessonContentRequest
     >,
   ): LessonContentDetail | undefined;
+  updateStatus(
+    id: string,
+    status: 'active' | 'inactive',
+    reason?: string | null,
+  ): LessonContentDetail | undefined;
+  delete(id: string, reason: string): boolean;
 };

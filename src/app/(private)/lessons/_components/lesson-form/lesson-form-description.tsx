@@ -7,6 +7,8 @@ import 'react-quill-new/dist/quill.snow.css';
 
 import dynamic from 'next/dynamic';
 
+import { List } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
@@ -38,7 +40,7 @@ const ReactQuillEditor = dynamic(
   { ssr: false },
 );
 
-const QUILL_FORMATS = ['header', 'bold', 'italic', 'underline', 'strike', 'list'];
+const QUILL_FORMATS = ['header', 'bold', 'italic', 'list'];
 
 const HEADING_OPTIONS = [
   { value: 'normal', label: '標準' },
@@ -49,8 +51,6 @@ const HEADING_OPTIONS = [
 const INLINE_BUTTONS = [
   { format: 'bold', label: 'B', className: 'font-bold' },
   { format: 'italic', label: 'I', className: 'italic font-serif' },
-  { format: 'underline', label: 'U', className: 'underline' },
-  { format: 'strike', label: 'S', className: 'line-through' },
 ] as const;
 
 type InlineFormat = (typeof INLINE_BUTTONS)[number]['format'];
@@ -79,26 +79,28 @@ export function LessonFormDescription() {
   const [activeFormats, setActiveFormats] = useState<{
     bold: boolean;
     italic: boolean;
-    underline: boolean;
-    strike: boolean;
+    list: boolean;
     header: string;
   }>({
     bold: false,
     italic: false,
-    underline: false,
-    strike: false,
+    list: false,
     header: 'normal',
   });
 
   const syncActiveFormats = useCallback(() => {
     const editor = quillRef.current?.getEditor();
     if (!editor) return;
-    const current = editor.getFormat();
+    // getFormat() without a range defaults to getSelection(true), which focuses the
+    // editor and scrolls it into view. Read the selection explicitly instead, and skip
+    // the sync while unfocused so blurring (or the initial setContents) can't steal focus.
+    const range = editor.getSelection();
+    if (!range) return;
+    const current = editor.getFormat(range);
     setActiveFormats({
       bold: Boolean(current.bold),
       italic: Boolean(current.italic),
-      underline: Boolean(current.underline),
-      strike: Boolean(current.strike),
+      list: current.list === 'bullet',
       header: current.header ? String(current.header) : 'normal',
     });
   }, []);
@@ -108,12 +110,21 @@ export function LessonFormDescription() {
       const editor = quillRef.current?.getEditor();
       if (!editor) return;
       editor.focus();
-      const current = editor.getFormat();
+      const current = editor.getFormat(editor.getSelection() ?? { index: 0, length: 0 });
       editor.format(format, !current[format]);
       syncActiveFormats();
     },
     [syncActiveFormats],
   );
+
+  const toggleBulletList = useCallback(() => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+    editor.focus();
+    const current = editor.getFormat(editor.getSelection() ?? { index: 0, length: 0 });
+    editor.format('list', current.list === 'bullet' ? false : 'bullet');
+    syncActiveFormats();
+  }, [syncActiveFormats]);
 
   const applyHeading = useCallback(
     (value: string | null) => {
@@ -146,7 +157,7 @@ export function LessonFormDescription() {
               ))}
             </SelectContent>
           </Select>
-          <Separator orientation="vertical" className="mx-1 h-5" />
+          <Separator orientation="vertical" className="mx-1 h-5 self-center!" />
           {INLINE_BUTTONS.map((button) => (
             <Button
               key={button.format}
@@ -154,12 +165,24 @@ export function LessonFormDescription() {
               variant="ghost"
               size="sm"
               data-active={activeFormats[button.format] ? '' : undefined}
-              className={`size-7 p-0 text-xs ${button.className} data-active:bg-accent data-active:text-accent-foreground`}
+              className={`size-8 p-0 text-base ${button.className} data-active:bg-accent data-active:text-accent-foreground`}
               onClick={() => toggleInline(button.format)}
             >
               {button.label}
             </Button>
           ))}
+          <Separator orientation="vertical" className="mx-1 h-5 self-center!" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="箇条書き"
+            data-active={activeFormats.list ? '' : undefined}
+            className="data-active:bg-accent data-active:text-accent-foreground size-8 p-0"
+            onClick={toggleBulletList}
+          >
+            <List className="size-4" />
+          </Button>
         </div>
 
         <FormField

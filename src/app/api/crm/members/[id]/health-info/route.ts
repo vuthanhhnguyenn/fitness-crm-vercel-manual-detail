@@ -72,7 +72,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    const response: UpdateHealthInfoResponse = updatedMember.health_info as any;
+    const response: UpdateHealthInfoResponse = ((
+      updatedMember as { _healthInfo?: UpdateHealthInfoResponse }
+    )._healthInfo ?? {}) as UpdateHealthInfoResponse;
     return NextResponse.json(response);
   } catch {
     return NextResponse.json({ error: 'Failed to update health info' }, { status: 500 });

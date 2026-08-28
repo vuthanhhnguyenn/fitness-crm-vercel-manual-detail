@@ -1,5 +1,11 @@
 import type { StaffPermissionRecord } from '@/app/api/_schemas/position.schema';
-import type { StaffDetail, StaffListItem } from '@/app/api/_schemas/staff.schema';
+import type {
+  CreateStaffsItem,
+  StaffDetail,
+  StaffLinkage,
+  StaffListItem,
+  StaffPermissionHistoryEntry,
+} from '@/app/api/_schemas/staff.schema';
 
 import type { DbType } from '../_db.types';
 import { staffBrandDisplayName } from '../seeds/brand.seed';
@@ -8,6 +14,10 @@ import { defaultPositionIdByRole, positionNameById } from '../seeds/position.see
 // Module-level variables shared between staff_permissions and staffs tables
 const permissionRows: StaffPermissionRecord[] = [];
 let nextStaffPermissionId = 1;
+
+// Module-level storage for permission change history (append-only)
+const permissionHistoryRows: StaffPermissionHistoryEntry[] = [];
+let nextPermissionHistoryId = 1;
 
 function pushStaffPermissions(staffId: string, codes: string[]): void {
   for (const permission_code of codes) {
@@ -124,7 +134,12 @@ export function createStaffTables(getDb: () => DbType) {
           const fullName = `${ln.kanji} ${fn.kanji}`;
           const role = roles[i % roles.length]!;
           const brand = role === 'headquarter' ? 'all' : brands[(i + 1) % brands.length]!;
-          const status = i % 7 === 0 ? 'inactive' : 'active';
+          const isInvited = i % 21 === 0;
+          const status: StaffListItem['status'] = isInvited
+            ? 'invited'
+            : i % 7 === 0
+              ? 'inactive'
+              : 'active';
           const domain = domains[i % domains.length]!;
           const emailName = ln.kanji.toLowerCase().replace(/[^a-z]/g, '');
           const email = `${emailName}${i}@${domain}`;
@@ -134,7 +149,18 @@ export function createStaffTables(getDb: () => DbType) {
           const loginDate = new Date(now);
           loginDate.setDate(loginDate.getDate() - daysAgo);
           loginDate.setHours(8 + (i % 10), (i * 7) % 60, 0, 0);
-          const lastLogin = `${loginDate.getFullYear()}-${String(loginDate.getMonth() + 1).padStart(2, '0')}-${String(loginDate.getDate()).padStart(2, '0')} ${String(loginDate.getHours()).padStart(2, '0')}:${String(loginDate.getMinutes()).padStart(2, '0')}`;
+          const lastLogin = isInvited ? null : loginDate.toISOString();
+          const invitedDate = new Date(now);
+          invitedDate.setDate(invitedDate.getDate() - (i % 15));
+          const invited_at = isInvited ? invitedDate.toISOString() : null;
+          const managed_store_ids =
+            role === 'manager'
+              ? [
+                  seededStores[i % seededStores.length]!.id,
+                  seededStores[(i + 1) % seededStores.length]!.id,
+                ]
+              : undefined;
+          const note = i % 4 === 0 ? `${i}番目のスタッフに関するメモ。` : null;
 
           const birthYear = 1970 + (i % 35);
           const birthMonth = ((i * 3) % 12) + 1;
@@ -189,10 +215,17 @@ export function createStaffTables(getDb: () => DbType) {
             linkage_type: staff_linkage.type,
             linked_store_id:
               staff_linkage.type === 'direct_store' ? staff_linkage.store_id : undefined,
+            linked_store_name:
+              staff_linkage.type === 'direct_store' ? staff_linkage.store_name : undefined,
             linked_fc_company_id:
               staff_linkage.type === 'fc_company' ? staff_linkage.fc_company_id : undefined,
+            linked_fc_company_name:
+              staff_linkage.type === 'fc_company' ? staff_linkage.fc_company_name : undefined,
             status,
             last_login: lastLogin,
+            invited_at,
+            managed_store_ids,
+            deleted_at: null,
           } satisfies StaffListItem);
 
           const scopeCount = role === 'headquarter' ? 1 : 1 + (i % 3);
@@ -231,7 +264,7 @@ export function createStaffTables(getDb: () => DbType) {
               first_name_kana: fn.kana,
               gender: fn.gender,
               birthday,
-              phone: `090-${String(1000 + (i % 9000)).padStart(4, '0')}-${String(1000 + ((i * 3) % 9000)).padStart(4, '0')}`,
+              phone: `090${String(1000 + (i % 9000)).padStart(4, '0')}${String(1000 + ((i * 3) % 9000)).padStart(4, '0')}`,
               email,
               postal_code: postalCode,
               prefecture: prefectures[i % prefectures.length]!,
@@ -255,6 +288,10 @@ export function createStaffTables(getDb: () => DbType) {
             staff_permissions,
             editable_scopes: scopes,
             last_login: lastLogin,
+            invited_at,
+            managed_store_ids,
+            deleted_at: null,
+            note,
             created_at: createdDate.toISOString(),
             updated_at: updatedDate.toISOString(),
           } satisfies StaffDetail;
@@ -262,19 +299,58 @@ export function createStaffTables(getDb: () => DbType) {
 
         getDb().stores.setManagerStaff('store-001', '1');
         getDb().stores.setManagerStaff('store-005', '5');
+
+        const seedHistory = (
+          staff_id: string,
+          changed_at: string,
+          change_description: string,
+          operator_name: string,
+          operator_position: string,
+        ): void => {
+          permissionHistoryRows.push({
+            id: nextPermissionHistoryId++,
+            staff_id,
+            changed_at,
+            operator_name,
+            operator_position,
+            change_description,
+          });
+        };
+        seedHistory(
+          '13',
+          '2026-01-15T10:20:00+09:00',
+          '職位変更: 正社員スタッフ → ブロック長',
+          '田中 太郎',
+          '本部管理者',
+        );
+        seedHistory(
+          '13',
+          '2026-02-03T16:45:00+09:00',
+          '所属変更: 東京本店 → 新宿区新宿店',
+          '田中 太郎',
+          '本部管理者',
+        );
+        seedHistory(
+          '13',
+          '2026-03-10T09:05:00+09:00',
+          'ロール変更: スタッフ → マネージャー',
+          '田中 太郎',
+          '本部管理者',
+        );
       },
 
       getList(): StaffListItem[] {
         this._seed();
-        return [...this._staffs];
+        return this._staffs.filter((s) => !s.deleted_at);
       },
       getById(id: string): StaffListItem | undefined {
         this._seed();
-        return this._staffs.find((s) => s.id === id);
+        return this._staffs.find((s) => s.id === id && !s.deleted_at);
       },
       getDetailById(id: string): StaffDetail | undefined {
         this._seed();
-        return this._details[id];
+        const detail = this._details[id];
+        return detail && !detail.deleted_at ? detail : undefined;
       },
       updateDetail(id: string, patch: Partial<StaffDetail>): StaffDetail | undefined {
         this._seed();
@@ -288,8 +364,23 @@ export function createStaffTables(getDb: () => DbType) {
           );
         }
 
-        const mergedLinkage = patch.staff_linkage
-          ? { ...existing.staff_linkage, ...patch.staff_linkage }
+        const resolvedLinkage = patch.staff_linkage
+          ? patch.staff_linkage.type === 'direct_store'
+            ? ({
+                type: 'direct_store',
+                store_id: patch.staff_linkage.store_id,
+                store_name:
+                  patch.staff_linkage.store_name ??
+                  getDb().stores.getById(patch.staff_linkage.store_id ?? '')?.name,
+              } satisfies StaffDetail['staff_linkage'])
+            : ({
+                type: 'fc_company',
+                fc_company_id: patch.staff_linkage.fc_company_id,
+                fc_company_name:
+                  patch.staff_linkage.fc_company_name ??
+                  getDb().franchiseCompanies.getById(patch.staff_linkage.fc_company_id ?? '')
+                    ?.display_name,
+              } satisfies StaffDetail['staff_linkage'])
           : existing.staff_linkage;
         const position_id = patch.position_id ?? existing.position_id;
         const role = patch.role ?? existing.role;
@@ -323,7 +414,7 @@ export function createStaffTables(getDb: () => DbType) {
                   : existing.permission_settings.additional_permissions,
               }
             : existing.permission_settings,
-          staff_linkage: mergedLinkage,
+          staff_linkage: resolvedLinkage,
           staff_permissions,
           editable_scopes: patch.editable_scopes ?? existing.editable_scopes,
           updated_at: new Date().toISOString(),
@@ -346,97 +437,200 @@ export function createStaffTables(getDb: () => DbType) {
               updated.staff_linkage.type === 'direct_store'
                 ? updated.staff_linkage.store_id
                 : undefined,
+            linked_store_name:
+              updated.staff_linkage.type === 'direct_store'
+                ? updated.staff_linkage.store_name
+                : undefined,
             linked_fc_company_id:
               updated.staff_linkage.type === 'fc_company'
                 ? updated.staff_linkage.fc_company_id
+                : undefined,
+            linked_fc_company_name:
+              updated.staff_linkage.type === 'fc_company'
+                ? updated.staff_linkage.fc_company_name
                 : undefined,
             status: updated.status,
           };
         }
         return updated;
       },
-      create(input: { email: string; role: StaffListItem['role']; brand?: string }): StaffListItem {
+      createBatch(input: {
+        staff: CreateStaffsItem[];
+        role: StaffListItem['role'];
+        position_id?: number;
+        staff_linkage?: StaffLinkage;
+        note?: string;
+      }): StaffListItem[] {
         this._seed();
         getDb().positions._seed();
         getDb().stores._seed();
 
-        const nextId = this._staffs.length + 1;
-        const role = input.role;
-        const position_id = defaultPositionIdByRole(role);
+        const position_id = input.position_id ?? defaultPositionIdByRole(input.role);
         const defaultStore = getDb().stores._rows[0]!;
-        const staff_linkage: StaffDetail['staff_linkage'] = {
+        const staff_linkage: StaffDetail['staff_linkage'] = input.staff_linkage ?? {
           type: 'direct_store',
-          store_id: defaultStore.store_id,
+          store_id: defaultStore.id,
           store_name: defaultStore.name,
         };
+        const now = new Date().toISOString();
 
-        pushStaffPermissions(String(nextId), ['crm.login', 'crm.members.view']);
-        const staff_permissions = permissionRows.filter((r) => r.staff_id === String(nextId));
+        const created: StaffListItem[] = [];
+        for (const row of input.staff) {
+          const nextId = this._staffs.length + 1;
+          pushStaffPermissions(String(nextId), ['crm.login', 'crm.members.view']);
+          const staff_permissions = permissionRows.filter((r) => r.staff_id === String(nextId));
 
-        const assignedBrand = (input.brand ?? 'all') as StaffListItem['brand'];
-        const staff: StaffListItem = {
-          id: String(nextId),
-          staff_id: `STF-${String(nextId).padStart(3, '0')}`,
-          name: input.email.split('@')[0] ?? '新規スタッフ',
-          email: input.email,
-          position_id,
-          position_name: positionNameById(position_id),
-          role,
-          brand: assignedBrand,
-          brand_display_name: staffBrandDisplayName(assignedBrand),
-          linkage_type: staff_linkage.type,
-          linked_store_id: staff_linkage.store_id,
-          status: 'active',
-          last_login: '-',
-        };
-        this._staffs.push(staff);
+          const staff: StaffListItem = {
+            id: String(nextId),
+            staff_id: `STF-${String(nextId).padStart(3, '0')}`,
+            name: `${row.last_name} ${row.first_name}`,
+            email: row.email,
+            position_id,
+            position_name: positionNameById(position_id),
+            role: input.role,
+            brand: 'all',
+            brand_display_name: staffBrandDisplayName('all'),
+            linkage_type: staff_linkage.type,
+            linked_store_id:
+              staff_linkage.type === 'direct_store' ? staff_linkage.store_id : undefined,
+            linked_store_name:
+              staff_linkage.type === 'direct_store' ? staff_linkage.store_name : undefined,
+            linked_fc_company_id:
+              staff_linkage.type === 'fc_company' ? staff_linkage.fc_company_id : undefined,
+            linked_fc_company_name:
+              staff_linkage.type === 'fc_company' ? staff_linkage.fc_company_name : undefined,
+            status: 'invited',
+            last_login: null,
+            invited_at: now,
+            managed_store_ids: input.role === 'manager' ? [] : undefined,
+            deleted_at: null,
+          };
+          this._staffs.push(staff);
 
-        this._details[String(nextId)] = {
-          id: String(nextId),
-          staff_id: staff.staff_id,
-          position_id,
-          role,
-          brand: assignedBrand,
-          brand_display_name: staffBrandDisplayName(assignedBrand),
-          status: 'active',
-          personal_info: {
-            last_name: input.email.split('@')[0] ?? '新規',
-            first_name: 'スタッフ',
-            email: input.email,
-          },
-          login_settings: { login_method: 'email' },
-          permission_settings: {
-            role,
-            additional_permissions: {
-              billing_correction: false,
-              refund_request: false,
-              transfer_request: false,
+          this._details[String(nextId)] = {
+            id: String(nextId),
+            staff_id: staff.staff_id,
+            position_id,
+            role: input.role,
+            brand: 'all',
+            brand_display_name: staffBrandDisplayName('all'),
+            status: 'invited',
+            personal_info: {
+              last_name: row.last_name,
+              first_name: row.first_name,
+              email: row.email,
             },
-          },
-          staff_linkage,
-          staff_permissions,
-          editable_scopes: [
-            {
-              brand: (input.brand ?? 'all') as StaffDetail['editable_scopes'][number]['brand'],
-              target: 'all_stores',
-              start_date: new Date().toISOString().split('T')[0]!,
+            login_settings: { login_method: 'email' },
+            permission_settings: {
+              role: input.role,
+              additional_permissions: {
+                billing_correction: false,
+                refund_request: false,
+                transfer_request: false,
+              },
             },
-          ],
-          last_login: '-',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } satisfies StaffDetail;
+            staff_linkage,
+            staff_permissions,
+            editable_scopes: [
+              {
+                brand: 'all',
+                target: 'all_stores',
+                start_date: now.split('T')[0]!,
+              },
+            ],
+            last_login: null,
+            invited_at: now,
+            managed_store_ids: input.role === 'manager' ? [] : undefined,
+            deleted_at: null,
+            note: input.note ?? null,
+            created_at: now,
+            updated_at: now,
+          } satisfies StaffDetail;
 
-        return staff;
+          created.push(staff);
+        }
+
+        return created;
       },
-      delete(id: string): boolean {
+      softDelete(id: string): boolean {
         this._seed();
-        const idx = this._staffs.findIndex((s) => s.id === id);
-        if (idx === -1) return false;
-        this._staffs.splice(idx, 1);
-        delete this._details[id];
-        getDb().staff_permissions.removeForStaff(id);
+        const detail = this._details[id];
+        if (!detail) return false;
+        const now = new Date().toISOString();
+        this._details[id] = { ...detail, deleted_at: now, updated_at: now };
+        const listIdx = this._staffs.findIndex((s) => s.id === id);
+        if (listIdx !== -1) {
+          this._staffs[listIdx] = { ...this._staffs[listIdx]!, deleted_at: now };
+        }
         return true;
+      },
+      deactivate(
+        id: string,
+        reason: string | undefined,
+        operator: { name: string; position: string },
+      ): StaffDetail | undefined {
+        this._seed();
+        const existing = this._details[id];
+        if (!existing) return undefined;
+        const now = new Date().toISOString();
+        const updated: StaffDetail = { ...existing, status: 'inactive', updated_at: now };
+        this._details[id] = updated;
+        const listIdx = this._staffs.findIndex((s) => s.id === id);
+        if (listIdx !== -1) {
+          this._staffs[listIdx] = { ...this._staffs[listIdx]!, status: 'inactive' };
+        }
+        this.recordPermissionChange(
+          id,
+          reason ? `アカウント無効化: ${reason}` : 'アカウント無効化',
+          operator,
+        );
+        return updated;
+      },
+      activate(id: string, operator: { name: string; position: string }): StaffDetail | undefined {
+        this._seed();
+        const existing = this._details[id];
+        if (!existing) return undefined;
+        const now = new Date().toISOString();
+        const updated: StaffDetail = { ...existing, status: 'active', updated_at: now };
+        this._details[id] = updated;
+        const listIdx = this._staffs.findIndex((s) => s.id === id);
+        if (listIdx !== -1) {
+          this._staffs[listIdx] = { ...this._staffs[listIdx]!, status: 'active' };
+        }
+        this.recordPermissionChange(id, 'アカウント有効化', operator);
+        return updated;
+      },
+      resendInvite(id: string): StaffDetail | undefined {
+        this._seed();
+        const existing = this._details[id];
+        if (!existing || existing.status !== 'invited') return undefined;
+        const now = new Date().toISOString();
+        const updated: StaffDetail = { ...existing, invited_at: now, updated_at: now };
+        this._details[id] = updated;
+        const listIdx = this._staffs.findIndex((s) => s.id === id);
+        if (listIdx !== -1) {
+          this._staffs[listIdx] = { ...this._staffs[listIdx]!, invited_at: now };
+        }
+        return updated;
+      },
+      recordPermissionChange(
+        staff_id: string,
+        change_description: string,
+        operator: { name: string; position: string },
+      ): void {
+        permissionHistoryRows.push({
+          id: nextPermissionHistoryId++,
+          staff_id,
+          changed_at: new Date().toISOString(),
+          operator_name: operator.name,
+          operator_position: operator.position,
+          change_description,
+        });
+      },
+      getPermissionHistory(staff_id: string): StaffPermissionHistoryEntry[] {
+        return permissionHistoryRows
+          .filter((r) => r.staff_id === staff_id)
+          .sort((a, b) => b.changed_at.localeCompare(a.changed_at));
       },
     },
   };

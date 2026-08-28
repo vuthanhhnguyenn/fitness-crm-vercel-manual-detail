@@ -7,10 +7,17 @@ import { Button } from '@/components/ui/button';
 
 import type { LessonScheduleListItem } from '@/lib/api/types.gen';
 
-import { formatBookedMemberNames, formatBookingLabel } from './lesson-schedule-display.util';
+import {
+  formatBookedMemberNames,
+  formatBookingLabel,
+} from '../_utils/lesson-schedule-display.util';
 
 const LESSON_TYPE_STYLES: Record<string, { border: string; label: string; badgeCls: string }> = {
-  studio: { border: 'border-l-info', label: 'スタジオ', badgeCls: 'bg-info/15 text-info' },
+  studio: {
+    border: 'border-l-info',
+    label: 'スタジオ',
+    badgeCls: 'bg-info/15 text-info',
+  },
   personal: {
     border: 'border-l-success',
     label: 'パーソナル',

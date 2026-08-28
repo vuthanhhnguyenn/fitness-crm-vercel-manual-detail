@@ -16,6 +16,7 @@ export const VisitExperienceSchema = z.object({
   status: VisitExperienceStatusSchema,
   bl_match: z.boolean(),
   brand_name: z.string(),
+  store_id: z.string(),
   store_name: z.string(),
   reserved_at: z.string().datetime({ offset: true }),
   visit_start_at: z.string().datetime({ offset: true }).nullable(),
@@ -28,6 +29,7 @@ export const GetVisitExperiencesQuerySchema = z.object({
   status: VisitExperienceStatusSchema.optional(),
   brand_name: z.string().optional(),
   store_name: z.string().optional(),
+  bl_match: z.coerce.boolean().optional(),
   date_range: z.enum(['today', 'last_3_days', 'last_7_days']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce
@@ -40,6 +42,9 @@ export const GetVisitExperiencesQuerySchema = z.object({
 export const GetVisitExperiencesResponseSchema = z.object({
   items: z.array(VisitExperienceSchema),
   total: z.number().int().nonnegative(),
+  // Count before search/status/brand/store/bl_match/date_range filters (store-scope still
+  // applied) — powers the FilterResultBanner's "全N件中" text without a second request.
+  total_all_items: z.number().int().nonnegative(),
   page: z.number().int().min(1),
   limit: z.number().int(),
   total_pages: z.number().int().nonnegative(),
@@ -79,6 +84,9 @@ export const VisitExperienceDetailSchema = VisitExperienceSchema.extend({
   b01_gate: z.string().nullable(),
   b01_entry_at: z.string().datetime({ offset: true }).nullable(),
   b01_exit_at: z.string().datetime({ offset: true }).nullable(),
+  enrolled_at: z.string().datetime({ offset: true }).nullable(),
+  enrolled_application_id: z.string().nullable(),
+  cancelled_at: z.string().datetime({ offset: true }).nullable(),
   timeline: z.array(VisitTimelineEntrySchema),
 });
 

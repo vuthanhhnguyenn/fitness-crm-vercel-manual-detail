@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { OPTION_CONTRACT_OPERATOR_ROLES, getAuthUserFromRequest } from '@/app/api/_lib/auth';
+import { toOptionContractResponse } from '@/app/api/_lib/member-contract';
 import { db } from '@/app/api/_mock-db';
 import {
   AddOptionContractRequestSchema,
@@ -8,6 +10,7 @@ import {
   GetOptionContractsResponseSchema,
 } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { formatISODateLocal } from '@/utils/date.util';
 
 registerRoute({
   method: 'post',
@@ -40,6 +43,16 @@ registerRoute({
       description: 'Bad request',
     },
     {
+      status: 401,
+      schema: ErrorResponseSchema,
+      description: 'Unauthorized',
+    },
+    {
+      status: 403,
+      schema: ErrorResponseSchema,
+      description: 'Role is not allowed to operate option contracts',
+    },
+    {
       status: 404,
       schema: ErrorResponseSchema,
       description: 'Member or contracts not found',
@@ -53,7 +66,7 @@ registerRoute({
 });
 
 function toDateOnly(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return formatISODateLocal(date);
 }
 
 function getFirstDayOfMonth(date: Date): Date {
@@ -66,6 +79,15 @@ function getFirstDayOfNextMonth(date: Date): Date {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    // A-01 権限マトリクス「オプション操作」: Observer / Trainer は操作不可
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    if (!OPTION_CONTRACT_OPERATOR_ROLES.includes(authResult.user.role)) {
+      return NextResponse.json({ error: 'オプション操作の権限がありません' }, { status: 403 });
+    }
+
     const { id } = await params;
     const member = db.members.get(id);
     if (!member) {
@@ -98,11 +120,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Option already contracted' }, { status: 400 });
     }
 
+    const { apply_from, start_date } = validationResult.data;
+
+    // A-01 FR-007: 日割り対象のオプションのみ月途中の任意日から開始できる
+    if (apply_from === 'specific_date' && !optionMaster.prorated_enabled) {
+      return NextResponse.json(
+        { error: 'このオプションは日割り対象外のため開始日を指定できません' },
+        { status: 400 },
+      );
+    }
+
     const now = new Date();
     const startDate =
-      validationResult.data.apply_from === 'today' ? now : getFirstDayOfNextMonth(now);
-    const nextBillingBase =
-      validationResult.data.apply_from === 'today' ? now : getFirstDayOfMonth(startDate);
+      apply_from === 'today'
+        ? now
+        : apply_from === 'specific_date' && start_date
+          ? new Date(`${start_date}T00:00:00`)
+          : getFirstDayOfNextMonth(now);
+    const isMidMonthStart = apply_from === 'today' || apply_from === 'specific_date';
+    const nextBillingBase = isMidMonthStart ? startDate : getFirstDayOfMonth(startDate);
     const nextBillingDate = getFirstDayOfNextMonth(nextBillingBase);
     const nowIso = now.toISOString();
 
@@ -115,7 +151,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     };
 
     db.contracts.create({
-      contract_id: member.profile.contract_id || `CONTRACT-${id}`,
+      contract_id: member.currentMainContract?.contractId || `CONTRACT-${id}`,
       member_id: id,
       data: {
         ...currentContracts,
@@ -126,16 +162,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             option_name: optionMaster.name,
             action_type: 'add',
             notes:
-              validationResult.data.apply_from === 'today'
+              apply_from === 'today'
                 ? 'オプション追加（即時）'
-                : 'オプション追加（翌月）',
+                : apply_from === 'specific_date'
+                  ? `オプション追加（日割り・${toDateOnly(startDate)}開始）`
+                  : 'オプション追加（翌月）',
           },
           ...currentContracts.option_change_history,
         ],
       },
     });
 
-    return NextResponse.json(newOptionContract);
+    return NextResponse.json(toOptionContractResponse(newOptionContract));
   } catch {
     return NextResponse.json({ error: 'Failed to add option contract' }, { status: 500 });
   }
@@ -188,7 +226,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Contracts not found' }, { status: 404 });
     }
 
-    return NextResponse.json(contracts.option_contracts ?? []);
+    const optionContracts = (contracts.option_contracts ?? []).map(toOptionContractResponse);
+
+    return NextResponse.json(optionContracts);
   } catch {
     return NextResponse.json({ error: 'Failed to fetch option contracts' }, { status: 500 });
   }

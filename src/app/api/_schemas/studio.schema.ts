@@ -1,3 +1,4 @@
+import { TEXT_MAX_LENGTH } from '@/constants/app.constants';
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
@@ -21,6 +22,12 @@ export const StudioListItemSchema = z
     store_name: z.string().openapi({ example: '渋谷店' }),
     studio_type: StudioTypeSchema,
     capacity: z.number().int().min(1).max(1000).openapi({ example: 30 }),
+    buffer_value: z
+      .number()
+      .int()
+      .min(0)
+      .max(500)
+      .openapi({ example: 2, description: 'バッファ値' }),
     available_hours: z.string().openapi({ example: '10:00–21:00' }),
     brand: BrandSchema,
     status: StudioStatusSchema,
@@ -61,10 +68,6 @@ export const GetStudiosQuerySchema = z
 
 // ─── Studio Create/Edit Schemas (FR-002, FR-004) ──────────────────────────
 
-export const StudioFormTypeSchema = z
-  .enum(['normal', 'hot_yoga', 'virtual'])
-  .openapi({ example: 'normal', description: 'スタジオ区分' });
-
 export const StudioLayoutCellKindSchema = z
   .enum(['normal_seat', 'equipment_seat', 'fixed_object', 'empty'])
   .openapi({ example: 'normal_seat', description: 'Cell type in layout grid' });
@@ -100,9 +103,12 @@ export const StudioImagePayloadSchema = z
 
 export const CreateStudioPayloadSchema = z
   .object({
-    name: z.string().min(1, 'スタジオ名は必須です。').max(100),
-    store_id: z.string().min(1, '店舗は必須です。'),
-    studio_type: StudioFormTypeSchema,
+    name: z
+      .string()
+      .min(1, 'スタジオ名は必須です。')
+      .max(TEXT_MAX_LENGTH, `スタジオ名は${TEXT_MAX_LENGTH}文字以内で入力してください。`),
+    store_id: z.string().min(1, '店舗名は必須です。'),
+    studio_type: StudioTypeSchema,
     capacity: z.number().int().min(1, '収容人数は必須です。').max(500),
     buffer_value: z.number().int().min(0).max(500).default(0),
     operating_hours: z.string().regex(/^\d{2}:\d{2}~\d{2}:\d{2}$/, {

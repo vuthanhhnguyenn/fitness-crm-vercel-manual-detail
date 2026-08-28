@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BarChart3,
   Calendar as CalendarIcon,
+  TrendingDown,
   TrendingUp,
   Users,
 } from 'lucide-react';
@@ -18,6 +19,8 @@ interface KpiSummaryProps {
 
 export function KpiSummary({ kpi }: KpiSummaryProps) {
   const rate = Math.round(kpi.occupancy_rate);
+  const change = Math.round(kpi.occupancy_rate_change_pct * 10) / 10;
+  const totalChanges = kpi.cancelled_count + kpi.time_changed_count + kpi.instructor_changed_count;
 
   return (
     <div className="grid shrink-0 grid-cols-2 gap-4 md:grid-cols-4">
@@ -32,7 +35,9 @@ export function KpiSummary({ kpi }: KpiSummaryProps) {
             {kpi.total_lessons}
             <span className="text-muted-foreground ml-1 text-sm font-normal">コマ</span>
           </p>
-          <p className="text-muted-foreground mt-1 text-[11px]">定員 {kpi.total_capacity}名</p>
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            スタジオ {kpi.studio_lesson_count} / パーソナル {kpi.personal_lesson_count}
+          </p>
         </CardContent>
       </Card>
 
@@ -54,9 +59,16 @@ export function KpiSummary({ kpi }: KpiSummaryProps) {
                 style={{ width: `${Math.min(rate, 100)}%` }}
               />
             </div>
-            <span className="text-success flex items-center gap-0.5 text-[11px]">
-              <TrendingUp className="size-3" />
-              {kpi.total_booked}/{kpi.total_capacity}
+            <span
+              className={`flex items-center gap-0.5 text-[11px] ${change >= 0 ? 'text-success' : 'text-destructive'}`}
+            >
+              {change >= 0 ? (
+                <TrendingUp className="size-3" />
+              ) : (
+                <TrendingDown className="size-3" />
+              )}
+              {change >= 0 ? '+' : ''}
+              {change}%
             </span>
           </div>
         </CardContent>
@@ -70,28 +82,30 @@ export function KpiSummary({ kpi }: KpiSummaryProps) {
             <AlertTriangle className="text-warning size-4" />
           </div>
           <p className="text-2xl font-bold">
-            {kpi.cancelled_count}
+            {totalChanges}
             <span className="text-muted-foreground ml-1 text-sm font-normal">件</span>
           </p>
           <div className="text-muted-foreground mt-1 flex items-center gap-2 text-[11px]">
             <span>キャンセル {kpi.cancelled_count}</span>
+            <span>時間変更 {kpi.time_changed_count}</span>
+            <span>担当変更 {kpi.instructor_changed_count}</span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Card 4: アラート */}
+      {/* Card 4: 本日の担当スタッフ */}
       <Card>
         <CardContent className="px-4">
           <div className="mb-1 flex items-center justify-between">
-            <span className="text-muted-foreground text-xs">要対応アラート</span>
+            <span className="text-muted-foreground text-xs">本日の担当スタッフ</span>
             <Users className="text-info size-4" />
           </div>
-          <p className={`text-2xl font-bold ${kpi.alert_count > 0 ? 'text-destructive' : ''}`}>
-            {kpi.alert_count}
-            <span className="text-muted-foreground ml-1 text-sm font-normal">件</span>
+          <p className="text-2xl font-bold">
+            {kpi.assigned_staff_count}
+            <span className="text-muted-foreground ml-1 text-sm font-normal">名</span>
           </p>
           <p className="text-muted-foreground mt-1 text-[11px]">
-            {kpi.alert_count > 0 ? '確認が必要です' : '異常なし'}
+            インストラクター {kpi.instructor_staff_count} / トレーナー {kpi.trainer_staff_count}
           </p>
         </CardContent>
       </Card>

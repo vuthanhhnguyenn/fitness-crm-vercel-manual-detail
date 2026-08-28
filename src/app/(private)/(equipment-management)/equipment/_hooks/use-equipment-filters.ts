@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import type { GetCrmEquipmentData } from '@/lib/api/types.gen';
 
@@ -49,20 +49,9 @@ export function useEquipmentFilters() {
     },
   );
 
-  const [searchInput, setSearchInput] = useState(() => filters.equipment_search);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (searchInput !== filters.equipment_search) {
-        setFilters({
-          equipment_search: searchInput || null,
-          equipment_page: 1,
-        });
-      }
-    }, 300);
-
-    return () => window.clearTimeout(timer);
-  }, [filters.equipment_search, searchInput, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(filters.equipment_search, (value) =>
+    setFilters({ equipment_search: value || null, equipment_page: 1 }),
+  );
 
   const clearFilterSelects = () => {
     setFilters({

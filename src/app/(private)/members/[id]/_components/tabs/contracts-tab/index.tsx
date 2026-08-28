@@ -1,60 +1,59 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import type { GetMemberDetailResponse } from '@/lib/api/types.gen';
 
-import { getCrmMembersByIdContractsSummaryOptions } from '@/lib/api/@tanstack/react-query.gen';
-import type { GetCrmMembersByIdResponse } from '@/lib/api/types.gen';
-
-import { ActiveCampaignsCard, CampaignHistoryCard } from './campaigns-card';
+import { CampaignsCard } from './campaigns-card';
 import { ContractSummaryCard } from './contract-summary-card';
 import { DayPassHistoryCard } from './day-pass-history-card';
+import { FeeAdjustmentCard } from './fee-adjustment-card';
 import { MainContractCard } from './main-contract-card';
+import { MemberSuspensionHistoryStrip } from './member-suspension-history-strip';
 import { OptionContractsCard } from './option-contracts-card';
-import { UsageStatusCard } from './usage-status-card';
 
-type MemberStatus = GetCrmMembersByIdResponse['profile']['status'];
+type MemberStatus = GetMemberDetailResponse['memberStatus'];
 
 interface ContractsTabProps {
   memberId: string;
   memberStatus?: MemberStatus;
+  /** member.constraints from the member-detail bundle (unpaid fee, cancellation-fee period, etc.) */
+  constraints?: GetMemberDetailResponse['constraints'];
 }
 
-export function ContractsTab({ memberId, memberStatus }: ContractsTabProps) {
-  const { data } = useQuery(
-    getCrmMembersByIdContractsSummaryOptions({
-      path: { id: memberId },
-    }),
-  );
-
+export function ContractsTab({ memberId, memberStatus, constraints }: ContractsTabProps) {
   const isOnLeave = memberStatus === 'suspended';
   const isRetirePending = memberStatus === 'pending_withdrawal';
-  const hasUnpaidFee = (data?.unpaid_amount ?? 0) > 0;
+  // Use member.constraints from the member-detail bundle as the single source of truth for the
+  // unpaid / cancellation-period flags (deriving them from another query lifts the restriction
+  // while that query is still loading)
+  const hasUnpaidFee = constraints?.hasUnpaidFee ?? false;
+  const inCancellationPeriod = constraints?.inCancellationPeriod ?? false;
 
   return (
-    <div className="flex gap-4">
+    <div className="flex flex-col gap-4 md:flex-row">
       {/* Left Column (60%) */}
-      <div className="flex w-[60%] flex-col gap-4">
+      <div className="flex w-full flex-col gap-4 md:w-[60%]">
         <MainContractCard memberId={memberId} />
+
+        <FeeAdjustmentCard memberId={memberId} />
 
         <OptionContractsCard
           memberId={memberId}
           isOnLeave={isOnLeave}
           isRetirePending={isRetirePending}
           hasUnpaidFee={hasUnpaidFee}
+          inCancellationPeriod={inCancellationPeriod}
         />
 
-        <ActiveCampaignsCard memberId={memberId} />
-
-        <CampaignHistoryCard memberId={memberId} />
+        <CampaignsCard memberId={memberId} />
 
         <DayPassHistoryCard memberId={memberId} />
       </div>
 
       {/* Right Column (40%) */}
-      <div className="w-[40%]">
-        <div className="sticky flex flex-col gap-4">
+      <div className="w-full md:w-[40%]">
+        <div className="sticky top-0 flex flex-col gap-4">
           <ContractSummaryCard memberId={memberId} />
-          <UsageStatusCard memberId={memberId} />
+          <MemberSuspensionHistoryStrip memberId={memberId} />
         </div>
       </div>
     </div>

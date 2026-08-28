@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
   CreateStudioPayloadSchema,
@@ -43,6 +44,11 @@ registerRoute({
 
 export async function GET(request: NextRequest) {
   try {
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const queryObj: Record<string, string | undefined> = {};
     searchParams.forEach((value, key) => {
@@ -56,11 +62,12 @@ export async function GET(request: NextRequest) {
     }
 
     const query: GetStudiosQuery = validationResult.data;
-    // Phase 1 mock: return all studios (role scoping will be added in Phase 2)
-    const mockRole: StaffRole = 'headquarter';
-    const mockStoreIds: string[] = [];
+    const role = authResult.user.role.toLowerCase() as StaffRole;
+    // null = unrestricted (system/headquarter); the role check inside db.studios.list
+    // already bypasses store filtering for them, so [] is a safe placeholder here.
+    const storeIds = getAllowedStoreIds(authResult.user) ?? [];
 
-    const response = db.studios.list(query, mockRole, mockStoreIds);
+    const response = db.studios.list(query, role, storeIds);
     return NextResponse.json(response);
   } catch (error) {
     console.error('GET /api/crm/studios error:', error);

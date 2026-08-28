@@ -7,6 +7,7 @@ import type ReactQuill from 'react-quill-new';
 import dynamic from 'next/dynamic';
 
 import { RoleGatedButton } from '@/components/common/role-gated-button';
+import { TEXT_MAX_LENGTH, TEXTAREA_MAX_LENGTH } from '@/constants/app.constants';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -173,6 +174,7 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
                   {...field}
                   placeholder="例: 夏キャンペーン開催中！"
                   className="max-w-[480px]"
+                  maxLength={TEXT_MAX_LENGTH}
                 />
               </FormControl>
               <FormMessage />
@@ -194,6 +196,7 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
                   {...field}
                   placeholder="例: 【JOYFIT】夏キャンペーンのご案内"
                   className="max-w-[480px]"
+                  maxLength={TEXT_MAX_LENGTH}
                 />
               </FormControl>
               <FormMessage />
@@ -211,7 +214,11 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
                 通知タイトル <span className="text-destructive">*</span>
               </FormLabel>
               <FormControl>
-                <Input {...field} placeholder="例: 夏キャンペーン開催中！" />
+                <Input
+                  {...field}
+                  placeholder="例: 夏キャンペーン開催中！"
+                  maxLength={TEXT_MAX_LENGTH}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -238,6 +245,11 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
             </div>
             <FormControl>
               {channel === 'email' ? (
+                // ReactQuill's rich-text editor has no `maxLength` prop — the
+                // 10 000-char limit is enforced server-side via zod
+                // (ManualNotificationContentsSchema.email.body) and on the
+                // クライアント form schema. The editor keeps growing while
+                // typing; we only guard it on submit.
                 <div className="[&_.ql-container]:border-input [&_.ql-container]:rounded-lg [&_.ql-container]:border [&_.ql-editor]:min-h-[160px] [&_.ql-editor]:text-sm">
                   <RichTextEditor
                     theme="snow"
@@ -260,6 +272,7 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
                         : '例: 7月末まで入会金無料！詳細はこちらからご確認ください。'
                   }
                   className="min-h-28 resize-y"
+                  maxLength={channel === 'sms' ? 670 : TEXTAREA_MAX_LENGTH}
                 />
               )}
             </FormControl>
@@ -281,7 +294,12 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
               <FormLabel>リンクURL</FormLabel>
               <FormDescription>タップ時の遷移先URL（任意）</FormDescription>
               <FormControl>
-                <Input {...field} placeholder="https://..." className="max-w-[480px]" />
+                <Input
+                  {...field}
+                  placeholder="https://..."
+                  className="max-w-[480px]"
+                  maxLength={TEXT_MAX_LENGTH}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

@@ -30,7 +30,7 @@ export function useManualNotificationFilters() {
       sort: parseAsStringEnum([...SORT_OPTIONS]).withDefault('updatedAt'),
       order: parseAsStringEnum(['asc', 'desc']).withDefault('desc'),
     },
-    { history: 'push', shallow: true },
+    { history: 'push', shallow: false },
   );
 
   const [searchInput, setSearchInputState] = useState(() => filters.q);

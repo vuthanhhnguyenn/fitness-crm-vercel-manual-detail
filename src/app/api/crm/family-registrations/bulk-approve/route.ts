@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
       const now = new Date().toISOString();
       const today = now.slice(0, 10);
       db.contracts.create({
-        contract_id: `CONTRACT-${newMember.basic_info.id}`,
-        member_id: newMember.basic_info.id,
+        contract_id: `CONTRACT-${newMember.memberId}`,
+        member_id: newMember.memberId,
         data: {
           ...primaryContract,
           main_contract: {
@@ -79,17 +79,17 @@ export async function POST(request: NextRequest) {
     // Link the new member as a family child of the primary member
     db.family.linkChildRelationship(
       existing.primary_member_id,
-      newMember.basic_info.id,
+      newMember.memberId,
       existing.relationship,
     );
 
     // Update registration status and store the generated child_member_id
     db.family.updateRegistrationStatus(id, 'completed', {
       staff_id: staff,
-      child_member_id: newMember.basic_info.id,
+      child_member_id: newMember.memberId,
     });
 
-    return { id, success: true, status: 'completed' as const, member_id: newMember.basic_info.id };
+    return { id, success: true, status: 'completed' as const, member_id: newMember.memberId };
   });
 
   return NextResponse.json({

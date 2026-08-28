@@ -475,7 +475,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button relative flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground data-active:before:absolute data-active:before:left-0 data-active:before:top-1 data-active:before:bottom-1 data-active:before:w-0.5 data-active:before:rounded-full data-active:before:bg-brand-accent [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {
@@ -641,7 +641,8 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
       data-slot="sidebar-menu-sub"
       data-sidebar="menu-sub"
       className={cn(
-        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border px-2.5 py-0.5 group-data-[collapsible=icon]:hidden",
+        "relative mx-3.5 mr-0 flex min-w-0 translate-x-px flex-col gap-1 pl-2.5 pr-0 py-0.5 group-data-[collapsible=icon]:hidden",
+        "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-sidebar-border before:z-0",
         className
       )}
       {...props}
@@ -651,15 +652,29 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
 
 function SidebarMenuSubItem({
   className,
+  children,
   ...props
 }: React.ComponentProps<"li">) {
   return (
     <li
       data-slot="sidebar-menu-sub-item"
       data-sidebar="menu-sub-item"
-      className={cn("group/menu-sub-item relative", className)}
+      className={cn(
+        "group/menu-sub-item relative -ml-[10px] pl-[10px]",
+        className
+      )}
       {...props}
-    />
+    >
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0 bottom-0 z-[5] w-0.5 bg-sidebar opacity-0 group-has-data-active/menu-sub-item:opacity-100"
+      />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-1 bottom-1 z-10 w-0.5 rounded-full bg-brand-accent opacity-0 group-has-data-active/menu-sub-item:opacity-100"
+      />
+      {children}
+    </li>
   )
 }
 

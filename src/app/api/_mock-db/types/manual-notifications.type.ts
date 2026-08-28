@@ -34,6 +34,7 @@ export type ManualNotificationsType = {
   _rows: ManualNotificationRow[];
   _seeded: boolean;
   _seed(): void;
+  _fillRealTargetCounts(): void;
   getList(): ManualNotificationRow[];
   getById(id: string): ManualNotificationRow | undefined;
   estimateTargetCount(target: ManualNotificationTargetInput): number;

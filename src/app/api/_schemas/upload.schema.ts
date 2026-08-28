@@ -10,7 +10,7 @@ export const PresignUploadRequestSchema = z
       description: 'Category of the file being uploaded',
     }),
     content_type: z
-      .enum(['image/jpeg', 'image/png', 'application/pdf'])
+      .enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
       .openapi({ example: 'image/jpeg', description: 'MIME type of the file' }),
   })
   .openapi({ title: 'PresignUploadRequest' });

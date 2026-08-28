@@ -1,6 +1,6 @@
 'use client';
 
-import { useForm, useFormState } from 'react-hook-form';
+import { useForm, useFormState, useWatch } from 'react-hook-form';
 
 import { useParams, useRouter } from 'next/navigation';
 
@@ -8,10 +8,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes.hook';
 
 import { BreadcrumbNav } from '@/components/common/breadcrumb-nav';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
+import { DiscardChangesDialog } from '@/components/common/discard-changes-dialog';
 import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
 
@@ -25,6 +26,8 @@ import type { GetCrmLockersByIdResponse } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import { LockerForm } from '../../_components/locker-form';
+import { useLockerFormInvalidHandler } from '../../_hooks/use-locker-form-invalid-handler.hook';
+import { useLockerLocationDuplicate } from '../../_hooks/use-locker-location-duplicate.hook';
 import {
   type LockerFormSubmitValues,
   type LockerFormValues,
@@ -40,7 +43,7 @@ type LockerDetail = NonNullable<GetCrmLockersByIdResponse>['locker'];
 function LockerEditForm({ locker, id }: { locker: LockerDetail; id: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const scrollToFirstError = useScrollToFirstError();
+  const handleInvalid = useLockerFormInvalidHandler();
 
   const form = useForm<LockerFormValues, unknown, LockerFormSubmitValues>({
     resolver: zodResolver(lockerFormSchema) as never,
@@ -49,6 +52,19 @@ function LockerEditForm({ locker, id }: { locker: LockerDetail; id: string }) {
   });
 
   const { isDirty } = useFormState({ control: form.control });
+  const storeId = useWatch({ control: form.control, name: 'store_id' });
+  const locationSymbol = useWatch({ control: form.control, name: 'location_symbol' });
+
+  // FR-001 異常系: a symbol already taken in the same store must not reach the API.
+  // The locker's own symbol is excluded so editing without changing it stays valid.
+  const isLocationDuplicate = useLockerLocationDuplicate({
+    storeId,
+    locationSymbol,
+    excludeLockerId: id,
+  });
+
+  const { confirmDiscard, discardDialogOpen, handleDiscardConfirm, handleDiscardCancel } =
+    useUnsavedChanges(isDirty);
 
   const patchMutation = useMutation({
     ...patchCrmLockersByIdMutation(),
@@ -57,14 +73,18 @@ function LockerEditForm({ locker, id }: { locker: LockerDetail; id: string }) {
         queryClient.invalidateQueries({ queryKey: getCrmLockersByIdQueryKey({ path: { id } }) }),
         queryClient.invalidateQueries({
           queryKey: getCrmLockersQueryKey(),
-          refetchType: 'all',
         }),
       ]);
       toast.success(res.message || 'ロッカー情報を更新しました');
       router.push(navigate('/lockers/[id]', res.locker.id));
     },
-    onError: () => {
-      toast.error('ロッカー情報の更新に失敗しました');
+    onError: (error) => {
+      // Surface the API's own reason (e.g. the 409 location-symbol conflict).
+      const message =
+        error && typeof error === 'object' && 'error' in error
+          ? String((error as { error?: string }).error)
+          : 'ロッカー情報の更新に失敗しました';
+      toast.error(message);
     },
   });
 
@@ -76,9 +96,9 @@ function LockerEditForm({ locker, id }: { locker: LockerDetail; id: string }) {
   };
 
   const handleSubmit = form.handleSubmit((values) => {
-    if (!isDirty) return;
+    if (!isDirty || isLocationDuplicate) return;
     onSubmit(values);
-  }, scrollToFirstError);
+  }, handleInvalid);
 
   return (
     <div>
@@ -107,20 +127,27 @@ function LockerEditForm({ locker, id }: { locker: LockerDetail; id: string }) {
             type="button"
             variant="outline"
             size="lg"
-            onClick={() => router.push(navigate('/lockers/[id]', id))}
+            onClick={() => confirmDiscard(() => router.push(navigate('/lockers/[id]', id)))}
           >
             キャンセル
           </Button>
           <Button
             type="button"
             size="lg"
-            disabled={!isDirty || patchMutation.isPending}
+            disabled={!isDirty || patchMutation.isPending || isLocationDuplicate}
             onClick={handleSubmit}
           >
             {patchMutation.isPending ? '保存中...' : '変更を保存する'}
           </Button>
         </div>
       </div>
+
+      <DiscardChangesDialog
+        open={discardDialogOpen}
+        onOpenChange={handleDiscardCancel}
+        onCancel={handleDiscardCancel}
+        onConfirm={handleDiscardConfirm}
+      />
     </div>
   );
 }

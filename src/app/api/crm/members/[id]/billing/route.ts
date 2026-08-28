@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { MOCK_BILLING_LIST } from '@/app/api/_mock-db';
+import { getBillingListForMember } from '@/app/api/_mock-db';
 import { ErrorResponseSchema, GetBillingResponseSchema } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
 import { z } from 'zod';
@@ -67,7 +67,7 @@ const BillingQuerySchema = z.object({
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await params; // Verify params can be awaited (member exists check moved to middleware)
+    const { id } = await params;
 
     // Parse and validate query parameters
     const query = Object.fromEntries(_request.nextUrl.searchParams);
@@ -85,14 +85,18 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const { page, limit } = queryResult.data;
 
     // Apply pagination
-    const total = MOCK_BILLING_LIST.length;
+    const billingList = getBillingListForMember(id);
+    const total = billingList.length;
     const startIdx = (page - 1) * limit;
     const endIdx = startIdx + limit;
-    const items = MOCK_BILLING_LIST.slice(startIdx, endIdx);
+    const items = billingList.slice(startIdx, endIdx);
 
     return NextResponse.json(
       {
-        items: items.map((item) => ({
+        items: items.map((item, index) => ({
+          // Mock: the seed rows carry no primary key, so derive a stable id from the
+          // member + position in the (deterministically ordered) billing list.
+          id: `billing-${id}-${startIdx + index}`,
           month: item.month,
           type: item.type,
           amount: item.amount,

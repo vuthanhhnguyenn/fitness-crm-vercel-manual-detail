@@ -1,10 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 
 import { PREFECTURES } from '@/constants/app.constants';
+import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { AlertTriangle, Check } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -17,7 +21,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { STAFF_ROLE_LABELS, StaffRole } from '../../../_constants/constants';
+import { getCrmStaffsOptions } from '@/lib/api/@tanstack/react-query.gen';
+
 import type { StaffEditFormValues } from '../_schemas/staff-edit-form.schema';
 
 const GENDER_OPTIONS = [
@@ -26,8 +31,25 @@ const GENDER_OPTIONS = [
   { value: 'other', label: 'その他' },
 ];
 
-export function PersonalInfoSection() {
+interface PersonalInfoSectionProps {
+  staffId: string;
+}
+
+export function PersonalInfoSection({ staffId }: PersonalInfoSectionProps) {
   const form = useFormContext<StaffEditFormValues>();
+  const [emailCheckStatus, setEmailCheckStatus] = useState<null | 'ok' | 'duplicate'>(null);
+
+  // 重複確認 (PAR087/088) — checked against other accounts' emails, excluding this staff's own
+  const { data: allStaffsRes } = useQuery(getCrmStaffsOptions({ query: { page: 1, limit: 500 } }));
+
+  const handleEmailCheck = () => {
+    const email = form.getValues('email').trim().toLowerCase();
+    const isDuplicate = (allStaffsRes?.staffs ?? []).some(
+      (s) => s.id !== staffId && s.email.toLowerCase() === email,
+    );
+    setEmailCheckStatus(isDuplicate ? 'duplicate' : 'ok');
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -44,7 +66,7 @@ export function PersonalInfoSection() {
                 名前（姓）<span className="text-destructive ml-0.5">*</span>
               </FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input maxLength={255} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -59,7 +81,7 @@ export function PersonalInfoSection() {
                 名前（名）<span className="text-destructive ml-0.5">*</span>
               </FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input maxLength={255} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -141,37 +163,6 @@ export function PersonalInfoSection() {
           )}
         />
 
-        {/* Row 4: ロール — left col only (half width) */}
-        <FormField
-          control={form.control}
-          name="role"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>
-                ロール<span className="text-destructive ml-0.5">*</span>
-              </FormLabel>
-              <Select value={field.value} onValueChange={field.onChange} items={STAFF_ROLE_LABELS}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="選択" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {Object.entries(STAFF_ROLE_LABELS)
-                    .filter(([value]) => value !== StaffRole.SYSTEM)
-                    .map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <div />
-
         {/* Row 5: 携帯電話番号 — left col only (half width) */}
         <FormField
           control={form.control}
@@ -189,18 +180,50 @@ export function PersonalInfoSection() {
         {/* empty right col */}
         <div />
 
-        {/* Row 6: メールアドレス — left col only (half width), required */}
+        {/* Row 6: メールアドレス（ログインID） — left col only (half width), required + 重複確認 */}
         <FormField
           control={form.control}
           name="email"
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                メールアドレス<span className="text-destructive ml-0.5">*</span>
+                メールアドレス（ログインID）<span className="text-destructive ml-0.5">*</span>
               </FormLabel>
-              <FormControl>
-                <Input type="email" {...field} />
-              </FormControl>
+              <div className="flex items-center gap-2">
+                <FormControl>
+                  <Input
+                    type="email"
+                    className="flex-1"
+                    {...field}
+                    onChange={(e) => {
+                      field.onChange(e);
+                      setEmailCheckStatus(null);
+                    }}
+                  />
+                </FormControl>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0"
+                  onClick={handleEmailCheck}
+                  disabled={!field.value}
+                >
+                  重複確認
+                </Button>
+              </div>
+              {emailCheckStatus === 'ok' && (
+                <p className="text-success flex items-center gap-1 text-xs">
+                  <Check className="size-3" />
+                  このメールアドレスは使用可能です
+                </p>
+              )}
+              {emailCheckStatus === 'duplicate' && (
+                <p className="text-destructive flex items-center gap-1 text-xs">
+                  <AlertTriangle className="size-3" />
+                  このメールアドレスはすでに登録されています
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}

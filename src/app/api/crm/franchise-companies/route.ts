@@ -50,6 +50,10 @@ registerRoute({
   ],
 });
 
+function countManagedStores(companyId: string): number {
+  return db.stores.getList().filter((store) => store.fc_company_id === companyId).length;
+}
+
 function sortCompanies(
   companies: FranchiseCompanyListItem[],
   sortBy: GetFranchiseCompaniesQuery['sort_by'],
@@ -102,7 +106,7 @@ export async function GET(request: NextRequest) {
       id: company.id,
       display_name: company.display_name,
       type: company.type,
-      managed_store_count: company.managed_store_count,
+      managed_store_count: countManagedStores(company.id),
       status: company.status,
     }));
 
@@ -112,7 +116,11 @@ export async function GET(request: NextRequest) {
 
     if (query.search) {
       const keyword = query.search.toLowerCase().trim();
-      filtered = filtered.filter((item) => item.display_name.toLowerCase().includes(keyword));
+      filtered = filtered.filter(
+        (item) =>
+          item.display_name.toLowerCase().includes(keyword) ||
+          item.id.toLowerCase().includes(keyword),
+      );
     }
 
     if (query.company_type) {

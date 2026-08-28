@@ -45,10 +45,9 @@ export function LockerDeleteDialog({
     ...deleteCrmLockersByIdMutation(),
     onSuccess: (data) => {
       toast.success(data.message || 'ロッカーを削除しました');
-      queryClient.invalidateQueries({ queryKey: getCrmLockersQueryKey(), refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: getCrmLockersQueryKey() });
       queryClient.invalidateQueries({
         queryKey: getCrmLockersSummaryQueryKey(),
-        refetchType: 'all',
       });
       onOpenChange(false);
       router.push(navigate('/lockers'));

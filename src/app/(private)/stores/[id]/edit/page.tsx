@@ -92,7 +92,6 @@ export default function StoreEditPage() {
         queryClient.invalidateQueries({ queryKey: getCrmStoresByIdQueryKey({ path: { id } }) }),
         queryClient.invalidateQueries({
           queryKey: getCrmStoresQueryKey(),
-          refetchType: 'all',
         }),
       ]);
       toast.success('店舗情報を更新しました');

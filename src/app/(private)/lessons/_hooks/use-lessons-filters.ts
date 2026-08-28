@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-
+import { ALL_STORES, useCurrentStore } from '@/contexts/current-store.context';
 import {
   parseAsArrayOf,
   parseAsBoolean,
@@ -8,6 +7,8 @@ import {
   parseAsStringEnum,
   useQueryStates,
 } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import type {
   GetCrmLessonContentsData,
@@ -28,6 +29,11 @@ type LessonContentsQuery = NonNullable<GetCrmLessonContentsData['query']>;
 type PersonalPlansQuery = NonNullable<GetCrmPersonalPlansData['query']>;
 
 export function useLessonsFilters() {
+  // Rows are scoped to the header's store-context selector, mirroring
+  // entry-exit-section.tsx's effective-store-id pattern: "all stores" applies no filter.
+  const { currentStoreId } = useCurrentStore();
+  const effectiveStoreId = currentStoreId === ALL_STORES ? undefined : currentStoreId;
+
   const [filters, setFilters] = useQueryStates(
     {
       tab: parseAsStringEnum<LessonTab>(TAB_VALUES).withDefault('studio'),
@@ -39,7 +45,6 @@ export function useLessonsFilters() {
         [],
       ),
       include_deleted: parseAsBoolean.withDefault(false),
-      store_id: parseAsString.withDefault(''),
       sort_by: parseAsString.withDefault(DEFAULT_SORT_BY),
       sort_order: parseAsStringEnum<'asc' | 'desc'>(['asc', 'desc']).withDefault(
         DEFAULT_SORT_ORDER,
@@ -52,41 +57,32 @@ export function useLessonsFilters() {
     },
   );
 
-  // Local search input mirrors the URL param and is debounced into it.
-  const [searchInput, setSearchInput] = useState(() => filters.search);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(filters.search, (value) =>
+    setFilters({ search: value || null, page: 1 }),
+  );
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput !== filters.search) {
-        setFilters({ search: searchInput || null, page: 1 });
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchInput, filters.search, setFilters]);
-
+  // "すべてクリア" resets the detailed filters only — the search box is a separate
+  // control and its typed text is intentionally left untouched (contrast with changeTab below).
   const resetPayload = {
-    search: null,
     lesson_category: null,
     category: null,
     brand: null,
     status: null,
     include_deleted: null,
-    store_id: null,
     sort_by: DEFAULT_SORT_BY,
     sort_order: DEFAULT_SORT_ORDER,
     page: 1,
   };
 
   const clearFilters = () => {
-    setSearchInput('');
     setFilters({ ...resetPayload });
   };
 
-  // Switching tabs resets every filter so the studio/personal/bodycare tabs
-  // never share filter state (their category axes are not interchangeable).
+  // Switching tabs resets every filter, including search, so the studio/personal/bodycare
+  // tabs never share filter state (their category axes are not interchangeable).
   const changeTab = (tab: LessonTab) => {
     setSearchInput('');
-    setFilters({ tab, ...resetPayload });
+    setFilters({ tab, search: null, ...resetPayload });
   };
 
   const hasActiveFilters: boolean =
@@ -95,8 +91,7 @@ export function useLessonsFilters() {
     filters.category.length > 0 ||
     filters.brand.length > 0 ||
     filters.status.length > 0 ||
-    filters.include_deleted ||
-    filters.store_id.length > 0;
+    filters.include_deleted;
 
   const setCurrentPage = (nextPage: number) => setFilters({ page: nextPage });
 
@@ -113,7 +108,7 @@ export function useLessonsFilters() {
     brand: filters.brand.length > 0 ? filters.brand : undefined,
     status: filters.status.length > 0 ? filters.status : undefined,
     include_deleted: filters.include_deleted || undefined,
-    store_id: filters.store_id || undefined,
+    store_id: effectiveStoreId,
     sort_by: filters.sort_by as LessonContentsQuery['sort_by'],
     sort_order: filters.sort_order,
   });
@@ -126,7 +121,7 @@ export function useLessonsFilters() {
     brand: filters.brand.length > 0 ? filters.brand : undefined,
     status: filters.status.length > 0 ? filters.status : undefined,
     include_deleted: filters.include_deleted || undefined,
-    store_id: filters.store_id || undefined,
+    store_id: effectiveStoreId,
     sort_by: filters.sort_by as PersonalPlansQuery['sort_by'],
     sort_order: filters.sort_order,
   });

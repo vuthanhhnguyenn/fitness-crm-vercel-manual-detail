@@ -1,6 +1,6 @@
 'use client';
 
-import { useFieldArray, useFormContext } from 'react-hook-form';
+import { useFieldArray, useFormContext, useWatch } from 'react-hook-form';
 
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -27,11 +27,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { getCrmPositionsOptions } from '@/lib/api/@tanstack/react-query.gen';
 
-import { STAFF_BRAND_LABELS } from '../../../_constants/constants';
-import { staffRoleFromPositionRoleCategory } from '../../../_utils/position-role.util';
+import { STAFF_BRAND_LABELS, STAFF_ROLE_LABELS, StaffRole } from '../../../_constants/constants';
 import type { StaffEditFormValues } from '../_schemas/staff-edit-form.schema';
 
 const STORES = [
@@ -42,14 +42,20 @@ const STORES = [
   { value: 'store-004', label: 'FIT365八潮店' },
 ];
 
-export function PermissionSettingsSection() {
+interface PermissionSettingsSectionProps {
+  /** ロール変更権限: HQ/System のみ — src: staff-form.tsx L753-792 */
+  canChangeRole: boolean;
+}
+
+export function PermissionSettingsSection({ canChangeRole }: PermissionSettingsSectionProps) {
   const form = useFormContext<StaffEditFormValues>();
   const { data: positionsRes, isLoading: positionsLoading } = useQuery({
-    ...getCrmPositionsOptions(),
+    ...getCrmPositionsOptions({ query: { limit: 200 } }),
   });
-  const positions = positionsRes?.positions ?? [];
-  const positionId = form.watch('position_id');
+  const positions = positionsRes?.items ?? [];
+  const positionId = useWatch({ control: form.control, name: 'position_id' });
   const positionInList = positions.some((p) => p.id === positionId);
+  const role = useWatch({ control: form.control, name: 'role' });
 
   const { fields, append, remove } = useFieldArray({
     name: 'editable_scopes',
@@ -62,7 +68,72 @@ export function PermissionSettingsSection() {
         <CardTitle>権限設定</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* ─── 職位 (API master, required, left half) — syncs permission_settings.role ─── */}
+        {/* ─── ロール — HQ/System のみ変更可、それ以外は disabled + tooltip ─── */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="role"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  ロール<span className="text-destructive ml-0.5">*</span>
+                </FormLabel>
+                {canChangeRole ? (
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => {
+                      field.onChange(value);
+                      // setValue(..., undefined) falls back to the loaded defaultValue in RHF —
+                      // use 0 (fails the positive() schema, matches no real position) to force re-selection.
+                      form.setValue('position_id', 0, { shouldDirty: true });
+                    }}
+                    items={STAFF_ROLE_LABELS}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="選択" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {Object.entries(STAFF_ROLE_LABELS)
+                        .filter(([value]) => value !== StaffRole.SYSTEM)
+                        .map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger render={<span className="inline-flex w-full" />}>
+                        <Select value={role} disabled items={STAFF_ROLE_LABELS}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="選択" />
+                            </SelectTrigger>
+                          </FormControl>
+                        </Select>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">ロール変更は本部権限が必要です</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <p className="text-muted-foreground text-xs">
+                  {canChangeRole
+                    ? 'ロールによって利用できる機能の範囲が決まります。変更は次回ログインから反映されます'
+                    : 'ロール変更は本部のみ可能です。職位の割り当てのみ変更できます'}
+                </p>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* ─── 職位 (API master, required, left half) ─── */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField
             control={form.control}
@@ -73,15 +144,12 @@ export function PermissionSettingsSection() {
                   職位<span className="text-destructive ml-0.5">*</span>
                 </FormLabel>
                 <Select
+                  key={role}
                   value={field.value != null ? String(field.value) : ''}
                   onValueChange={(value) => {
                     const strValue = value ?? '';
                     const id = Number.parseInt(strValue, 10);
                     field.onChange(Number.isNaN(id) ? undefined : id);
-                    const pos = positions.find((p) => p.id === id);
-                    if (pos) {
-                      form.setValue('role', staffRoleFromPositionRoleCategory(pos.role));
-                    }
                   }}
                   disabled={positionsLoading}
                 >
@@ -105,11 +173,13 @@ export function PermissionSettingsSection() {
                         {positionsLoading ? '読み込み中…' : `職位 #${field.value}`}
                       </SelectItem>
                     ) : null}
-                    {positions.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.position_name}
-                      </SelectItem>
-                    ))}
+                    {positions
+                      .filter((p) => p.role === role)
+                      .map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {p.position_name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />

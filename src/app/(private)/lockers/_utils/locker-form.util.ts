@@ -21,11 +21,12 @@ export const emptyLockerFormDefaults: LockerFormValues = {
   image_url: null,
   shape: '' as LockerShape,
   slot_numbering_pattern: LockerNumberingPattern.TOP_LEFT_TO_RIGHT,
-  start_number: 1,
   option_type: LockerOptionType.NONE,
   contract_type_code: null,
+  bottom_contract_type_code: null,
   default_open_type: LockerSlotOpenType.DOOR,
   default_lock_type: LockerLockType.DIAL,
+  default_slot_size: { width_cm: '', height_cm: '', depth_cm: '' },
   slot_lock_settings: [],
 };
 
@@ -41,11 +42,16 @@ export function lockerDetailToFormValues(locker: LockerDetail): LockerFormValues
     image_url: locker.image_url,
     shape: locker.shape,
     slot_numbering_pattern: locker.slot_numbering_pattern,
-    start_number: locker.start_number,
     option_type: locker.option_type,
     contract_type_code: locker.contract_type_code,
+    bottom_contract_type_code: locker.bottom_contract_type_code,
     default_open_type: locker.default_open_type,
     default_lock_type: locker.default_lock_type,
+    default_slot_size: {
+      width_cm: String(locker.default_slot_size.width_cm),
+      height_cm: String(locker.default_slot_size.height_cm),
+      depth_cm: String(locker.default_slot_size.depth_cm),
+    },
     slot_lock_settings: (locker.slot_lock_settings ?? []).map((setting) => ({
       slot_number: setting.slot_number,
       lock_type: setting.lock_type,
@@ -64,12 +70,16 @@ export function lockerFormValuesToCreateBody(values: LockerFormSubmitValues) {
     image_url: values.image_url ?? null,
     shape: values.shape,
     slot_numbering_pattern: values.slot_numbering_pattern,
-    start_number: values.start_number,
     option_type: values.option_type,
     contract_type_code:
       values.option_type === LockerOptionType.NONE ? null : (values.contract_type_code ?? null),
+    bottom_contract_type_code:
+      values.option_type === LockerOptionType.NONE
+        ? null
+        : (values.bottom_contract_type_code ?? null),
     default_open_type: values.default_open_type,
     default_lock_type: values.default_lock_type,
+    default_slot_size: values.default_slot_size,
     slot_lock_settings: values.slot_lock_settings.map((setting) => ({
       slot_number: setting.slot_number,
       lock_type: setting.lock_type,
@@ -87,11 +97,12 @@ export function lockerFormValuesToUpdateBody(values: LockerFormSubmitValues) {
     note,
     image_url,
     slot_numbering_pattern,
-    start_number,
     option_type,
     contract_type_code,
+    bottom_contract_type_code,
     default_open_type,
     default_lock_type,
+    default_slot_size,
     slot_lock_settings,
   } = lockerFormValuesToCreateBody(values);
 
@@ -102,11 +113,12 @@ export function lockerFormValuesToUpdateBody(values: LockerFormSubmitValues) {
     note,
     image_url,
     slot_numbering_pattern,
-    start_number,
     option_type,
     contract_type_code,
+    bottom_contract_type_code,
     default_open_type,
     default_lock_type,
+    default_slot_size,
     slot_lock_settings,
   };
 }

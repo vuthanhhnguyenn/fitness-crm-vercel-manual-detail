@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { toPendingPlanChangeResponse } from '@/app/api/_lib/member-contract';
 import { db } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
@@ -99,7 +100,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    return NextResponse.json(member as GetMemberDetailResponse);
+    // A-01 FR-013a: the pending plan change lives on the contract row, so the bundle picks it up
+    // here — that way the head-up card and the 主契約 card read the same state.
+    // `family` is derived from the relationship table rather than stored on the member
+    // row, so it stays correct after members are added or removed (QA02 §2.1).
+    const detail = {
+      ...(member as GetMemberDetailResponse),
+      family: db.members.buildFamilyBundle(id),
+    };
+    const pendingPlanChange = toPendingPlanChangeResponse(
+      db.contracts.getByMemberId(id)?.main_contract.pending_plan_change,
+    );
+    if (pendingPlanChange && detail.currentMainContract) {
+      return NextResponse.json({
+        ...detail,
+        currentMainContract: { ...detail.currentMainContract, pendingPlanChange },
+      } satisfies GetMemberDetailResponse);
+    }
+
+    return NextResponse.json(detail);
   } catch (error) {
     console.error('Error fetching member detail:', error);
     return NextResponse.json({ error: 'Failed to fetch member detail' }, { status: 500 });

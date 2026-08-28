@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { db } from '@/app/api/_mock-db';
+import { db, joinJapaneseName } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
   GetFamilyRegistrationsSummaryQuerySchema,
@@ -82,11 +82,9 @@ export async function GET(request: NextRequest) {
 
   // 家族会員比率 = 有効な家族会員数 / 有効な全会員数
   db.members._seed();
-  const activeMembers = db.members._members.filter((m) => m.profile.status === 'active');
+  const activeMembers = db.members._members.filter((m) => m.memberStatus === 'active');
   const totalActiveMembers = activeMembers.length;
-  const familyActiveMembers = activeMembers.filter(
-    (m) => m.profile.member_type === 'family',
-  ).length;
+  const familyActiveMembers = activeMembers.filter((m) => m.memberType === 'family').length;
   const family_member_ratio =
     totalActiveMembers > 0
       ? Math.round((familyActiveMembers / totalActiveMembers) * 1000) / 1000
@@ -115,7 +113,9 @@ export async function GET(request: NextRequest) {
       const primary = db.members.get(id);
       return {
         primary_member_id: id,
-        primary_member_name: primary?.basic_info.name_kanji ?? '',
+        primary_member_name: primary
+          ? joinJapaneseName(primary.personalInfo.lastName, primary.personalInfo.firstName)
+          : '',
         family_count: count,
       };
     });

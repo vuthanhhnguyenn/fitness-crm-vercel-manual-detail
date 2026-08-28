@@ -75,10 +75,38 @@ export const LessonScheduleListItemSchema = z
     payment_status: PaymentStatusSchema,
     status: LessonScheduleStatusSchema,
     is_alert: z.boolean().openapi({ example: false, description: '要対応アラート' }),
+    is_public: z
+      .boolean()
+      .openapi({ example: true, description: '公開設定（true: 公開, false: 内部/非公開枠）' }),
+    last_change_type: z
+      .enum(['time', 'instructor'])
+      .nullable()
+      .optional()
+      .openapi({ description: '本日適用された直近の変更種別（KPIの内訳集計専用）' }),
     booked_members: z
       .array(BookedMemberSchema)
       .optional()
       .openapi({ description: '予約会員リスト（my_schedule軸のみ）' }),
+    cancel_reason: z
+      .string()
+      .nullable()
+      .optional()
+      .openapi({ description: '中止理由コード（status=cancelledの場合のみ設定）' }),
+    cancel_reason_detail: z
+      .string()
+      .nullable()
+      .optional()
+      .openapi({ description: '中止理由の詳細（status=cancelledの場合のみ設定）' }),
+    cancelled_at: z
+      .string()
+      .nullable()
+      .optional()
+      .openapi({ description: '中止日時 ISO8601（status=cancelledの場合のみ設定）' }),
+    cancelled_by: z
+      .string()
+      .nullable()
+      .optional()
+      .openapi({ description: '中止操作を行った担当者名（status=cancelledの場合のみ設定）' }),
   })
   .openapi({ title: 'LessonScheduleListItem', description: 'レッスンスケジュール一覧アイテム' });
 
@@ -97,16 +125,49 @@ export const LessonScheduleKpiSummarySchema = z
       .nonnegative()
       .openapi({ example: 240, description: '定員総数' }),
     occupancy_rate: z.number().nonnegative().openapi({ example: 75.0, description: '稼働率（%）' }),
-    alert_count: z
-      .number()
-      .int()
-      .nonnegative()
-      .openapi({ example: 3, description: 'アラート件数' }),
     cancelled_count: z
       .number()
       .int()
       .nonnegative()
       .openapi({ example: 1, description: 'キャンセル数' }),
+    studio_lesson_count: z
+      .number()
+      .int()
+      .nonnegative()
+      .openapi({ example: 4, description: 'スタジオレッスン数' }),
+    personal_lesson_count: z
+      .number()
+      .int()
+      .nonnegative()
+      .openapi({ example: 2, description: 'パーソナルレッスン数' }),
+    occupancy_rate_change_pct: z
+      .number()
+      .openapi({ example: 3.0, description: '予約充足率の前週比（ポイント差）' }),
+    time_changed_count: z
+      .number()
+      .int()
+      .nonnegative()
+      .openapi({ example: 3, description: '本日の時間変更件数' }),
+    instructor_changed_count: z
+      .number()
+      .int()
+      .nonnegative()
+      .openapi({ example: 2, description: '本日の担当変更件数' }),
+    assigned_staff_count: z
+      .number()
+      .int()
+      .nonnegative()
+      .openapi({ example: 5, description: '本日の担当スタッフ総数' }),
+    instructor_staff_count: z
+      .number()
+      .int()
+      .nonnegative()
+      .openapi({ example: 3, description: '本日の担当スタッフ内インストラクター数' }),
+    trainer_staff_count: z
+      .number()
+      .int()
+      .nonnegative()
+      .openapi({ example: 2, description: '本日の担当スタッフ内トレーナー数' }),
   })
   .openapi({ title: 'LessonScheduleKpiSummary', description: 'レッスンKPIサマリー' });
 
@@ -470,6 +531,21 @@ export const InstructorListItemSchema = z
     store_id: z.string().openapi({ description: '店舗ID' }),
     role: z.string().openapi({ description: '役割' }),
     photo_url: z.string().optional().openapi({ description: 'プロフィール画像URL' }),
+    nickname: z.string().nullable().optional().openapi({ description: 'ニックネーム（D-04）' }),
+    romaji_name: z.string().nullable().optional().openapi({ description: '英字表記（D-04）' }),
+    role_classifications: z
+      .array(z.enum(['trainer', 'instructor', 'body_care_therapist']))
+      .optional()
+      .openapi({ description: '役割区分（D-04）' }),
+    tab: z.enum(['studio', 'pt']).optional().openapi({ description: '一覧タブ区分（D-04）' }),
+    brands: z
+      .array(z.enum(['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus', 'fit365']))
+      .optional()
+      .openapi({ description: '割当スケジュールから導出されるブランド（D-04）' }),
+    status: z
+      .enum(['active', 'inactive'])
+      .optional()
+      .openapi({ description: '指導者ステータス（D-04）' }),
   })
   .openapi({ title: 'InstructorListItem', description: 'インストラクター一覧アイテム' });
 
@@ -477,6 +553,19 @@ export const GetInstructorsQuerySchema = z
   .object({
     store_id: z.string().optional().openapi({ description: '店舗IDでフィルタ' }),
     role: z.string().optional().openapi({ description: '役割でフィルタ' }),
+    tab: z.enum(['studio', 'pt']).optional().openapi({ description: '一覧タブでフィルタ（D-04）' }),
+    search: z
+      .string()
+      .optional()
+      .openapi({ description: '氏名・ニックネーム・英字表記・IDで検索（D-04）' }),
+    brand: z
+      .enum(['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus', 'fit365'])
+      .optional()
+      .openapi({ description: 'ブランドでフィルタ（D-04）' }),
+    status: z
+      .enum(['active', 'inactive'])
+      .optional()
+      .openapi({ description: 'ステータスでフィルタ（D-04）' }),
   })
   .openapi({ title: 'GetInstructorsQuery', description: 'インストラクター一覧クエリ' });
 
@@ -549,6 +638,64 @@ export const StoreHolidaysResponseSchema = z
   .openapi({ title: 'StoreHolidaysResponse', description: '店舗休業日レスポンス' });
 
 // ---------------------------------------------------------------------------
+// Manual Reservation (D-01 FR-006, Mode B input)
+// ---------------------------------------------------------------------------
+
+export const ManualReservationPlanSchema = z.enum(['monthly', 'per_use']).openapi({
+  title: 'ManualReservationPlan',
+  description: '会員プラン種別（月次プラン/都度払い）',
+});
+
+export const ManualReservationCourseSchema = z
+  .enum(['monthly', 'single_30', 'single_60'])
+  .openapi({ title: 'ManualReservationCourse', description: 'コース種別' });
+
+export const ManualReservationMemberSchema = z
+  .object({
+    member_id: z.string().openapi({ example: 'M-1024', description: '会員ID' }),
+    name: z.string().openapi({ example: '田中 花子', description: '会員氏名' }),
+    plan: ManualReservationPlanSchema,
+    remaining: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ example: 3, description: '残回数（都度払いはnull）' }),
+    penalty_until: z
+      .string()
+      .nullable()
+      .openapi({ example: null, description: '予約不可期間の終了日（該当なしはnull）' }),
+  })
+  .openapi({ title: 'ManualReservationMember', description: '手動予約対象会員' });
+
+export const GetManualReservationMembersResponseSchema = z
+  .object({
+    members: z.array(ManualReservationMemberSchema),
+  })
+  .openapi({
+    title: 'GetManualReservationMembersResponse',
+    description: '手動予約対象会員一覧レスポンス',
+  });
+
+export const CreateManualReservationRequestSchema = z
+  .object({
+    member_id: z.string().min(1).openapi({ example: 'M-1024', description: '会員ID' }),
+    schedule_id: z.string().min(1).openapi({ example: 'LS0001', description: 'セッション枠ID' }),
+    course: ManualReservationCourseSchema,
+    note: z.string().max(1000).optional().openapi({ description: '備考' }),
+  })
+  .openapi({ title: 'CreateManualReservationRequest', description: '手動予約登録リクエスト' });
+
+export const CreateManualReservationResponseSchema = z
+  .object({
+    message: z.string().openapi({ example: '予約を登録しました' }),
+    description: z.string().openapi({
+      example:
+        '田中 花子 様の予約をスケジュールに反映しました。モバイルアプリへ予約確定通知を送信します',
+    }),
+  })
+  .openapi({ title: 'CreateManualReservationResponse', description: '手動予約登録レスポンス' });
+
+// ---------------------------------------------------------------------------
 // Inferred types
 // ---------------------------------------------------------------------------
 
@@ -582,6 +729,14 @@ export type CreateTemplateResponse = z.infer<typeof CreateTemplateResponseSchema
 export type DeleteTemplateResponse = z.infer<typeof DeleteTemplateResponseSchema>;
 export type InstructorAvailabilityQuery = z.infer<typeof InstructorAvailabilityQuerySchema>;
 export type InstructorAvailabilityResponse = z.infer<typeof InstructorAvailabilityResponseSchema>;
+export type ManualReservationPlan = z.infer<typeof ManualReservationPlanSchema>;
+export type ManualReservationCourse = z.infer<typeof ManualReservationCourseSchema>;
+export type ManualReservationMember = z.infer<typeof ManualReservationMemberSchema>;
+export type GetManualReservationMembersResponse = z.infer<
+  typeof GetManualReservationMembersResponseSchema
+>;
+export type CreateManualReservationRequest = z.infer<typeof CreateManualReservationRequestSchema>;
+export type CreateManualReservationResponse = z.infer<typeof CreateManualReservationResponseSchema>;
 export type StoreHolidaysQuery = z.infer<typeof StoreHolidaysQuerySchema>;
 export type StoreHolidaysResponse = z.infer<typeof StoreHolidaysResponseSchema>;
 export type StudioListItem = z.infer<typeof StudioListItemSchema>;

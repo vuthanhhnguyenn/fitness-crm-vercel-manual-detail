@@ -6,4 +6,5 @@ export type SurveyReportingType = {
   _seed(): void;
   getAll(): SurveyResponseDetail[];
   getById(id: string): SurveyResponseDetail | undefined;
+  getByMemberId(memberId: string): SurveyResponseDetail[];
 };

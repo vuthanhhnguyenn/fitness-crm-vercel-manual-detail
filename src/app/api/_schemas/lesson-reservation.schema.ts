@@ -17,6 +17,14 @@ export const CancelTypeSchema = z
   .enum(['member', 'staff', 'instructor'])
   .openapi({ title: 'CancelType', description: 'キャンセル種別' });
 
+export const LessonHistoryEntrySchema = z
+  .object({
+    date: z.string().openapi({ example: '2026-06-10', description: '実施日' }),
+    lesson_name: z.string().openapi({ example: 'ヨガ基礎クラス', description: 'レッスン名' }),
+    attendance: z.enum(['attended', 'absent']).openapi({ description: '出席/欠席' }),
+  })
+  .openapi({ title: 'LessonHistoryEntry', description: 'レッスン履歴（自分担当分）の1件' });
+
 export const ReservationSchema = z
   .object({
     id: z.string().openapi({ example: 'R001', description: '予約ID' }),
@@ -34,6 +42,24 @@ export const ReservationSchema = z
     penalty_end_date: z.string().nullable().openapi({ description: 'ペナルティ終了日' }),
     remaining_sessions: z.number().int().openapi({ example: 5, description: '残りセッション数' }),
     sent_notification: z.boolean().default(false).openapi({ description: '通知送信済み' }),
+    // FR-015 limited-profile fields (Trainer-visible only; no PII beyond this).
+    age: z.number().int().optional().openapi({ example: 32, description: '年齢' }),
+    gender: z.enum(['male', 'female']).optional().openapi({ description: '性別' }),
+    visit_frequency: z
+      .string()
+      .optional()
+      .openapi({ example: '週2〜3回', description: '来館頻度' }),
+    last_visit_date: z
+      .string()
+      .optional()
+      .openapi({ example: '2026-06-20', description: '最終来館日' }),
+    lesson_history: z
+      .array(LessonHistoryEntrySchema)
+      .optional()
+      .openapi({ description: '自分（担当講師）が指導したレッスンの履歴' }),
+    height_cm: z.number().optional().openapi({ example: 162, description: '身長（cm）' }),
+    weight_kg: z.number().optional().openapi({ example: 54, description: '体重（kg）' }),
+    body_fat_pct: z.number().optional().openapi({ example: 24, description: '体脂肪率（%）' }),
   })
   .openapi({ title: 'Reservation', description: '予約' });
 
@@ -100,6 +126,7 @@ export const StudioSpaceSchema = z
     col: z.number().int().openapi({ example: 0, description: 'グリッド列' }),
     type: StudioSpaceTypeSchema,
     reservation_id: z.string().nullable().openapi({ description: '予約ID' }),
+    member_id: z.string().nullable().optional().openapi({ description: '会員ID' }),
     member_name: z.string().nullable().openapi({ description: '会員名' }),
   })
   .openapi({ title: 'StudioSpace', description: 'スタジオスペース' });
@@ -197,6 +224,7 @@ export const CancelLessonRequestSchema = z
     send_notification: z.boolean().default(false),
     process_refund: z.boolean().default(false),
     notify_instructor: z.boolean().default(false),
+    cancelled_by: z.string().optional().openapi({ description: '中止操作を行った担当者名' }),
   })
   .openapi({ title: 'CancelLessonRequest', description: 'レッスンキャンセルリクエスト' });
 
@@ -226,6 +254,11 @@ export const SessionMemoSchema = z
 export const CreateMemoRequestSchema = z
   .object({
     content: z.string().min(1).max(1000).openapi({ description: 'メモ内容' }),
+    author_id: z.string().optional().openapi({ description: '作成者ID（現在のログインユーザー）' }),
+    author_name: z
+      .string()
+      .optional()
+      .openapi({ description: '作成者名（現在のログインユーザー）' }),
   })
   .openapi({ title: 'CreateMemoRequest', description: 'メモ作成リクエスト' });
 
@@ -239,6 +272,7 @@ export type ReservationStatus = z.infer<typeof ReservationStatusSchema>;
 export type AttendanceStatus = z.infer<typeof AttendanceStatusSchema>;
 export type CancelType = z.infer<typeof CancelTypeSchema>;
 export type Reservation = z.infer<typeof ReservationSchema>;
+export type LessonHistoryEntry = z.infer<typeof LessonHistoryEntrySchema>;
 export type ReservationListResponse = z.infer<typeof ReservationListResponseSchema>;
 export type ReservationsQuery = z.infer<typeof ReservationsQuerySchema>;
 export type AddReservationRequest = z.infer<typeof AddReservationRequestSchema>;

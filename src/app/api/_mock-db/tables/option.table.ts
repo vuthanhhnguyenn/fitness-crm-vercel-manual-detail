@@ -13,14 +13,19 @@ import type {
 import type { SurveyResponseDetail } from '@/app/api/_schemas/survey-reporting.schema';
 import type {
   SurveyQuestion,
+  SurveyStoreVisibility,
+  SurveyStoreVisibilityQuestion,
   SurveyTemplateChangeHistoryItem,
   SurveyTemplateDetail,
   SurveyTemplateListItem,
   SurveyTemplateStatus,
   SurveyTemplateUpsertBody,
+  UpdateSurveyStoreVisibilityBody,
 } from '@/app/api/_schemas/survey.schema';
 
+import type { DbType } from '../_db.types';
 import { LOCKER_CONTRACT_TYPE_DESCRIPTIONS } from '../seeds/locker.seed';
+import { joinJapaneseName } from '../seeds/membership.seed';
 import {
   SEED_OPTION_DISCOUNT_CHANGE_HISTORY,
   SEED_OPTION_DISCOUNT_ROWS,
@@ -34,7 +39,54 @@ import {
   toSurveyTemplateListItem,
 } from '../seeds/survey.seed';
 
-export function createOptionTables() {
+/** Anchor for answer timestamps; generated backwards from a fixed date to keep the mock deterministic. */
+const SURVEY_RESPONSE_ANCHOR = new Date(2026, 2, 10, 14, 32);
+
+const SURVEY_FREE_TEXT_SAMPLES = [
+  '清潔さと通いやすさ',
+  '夜の混雑が少し気になります',
+  'スタッフの対応が丁寧で助かっています',
+  'マシンの種類をもう少し増やしてほしいです',
+  '朝の時間帯の混雑緩和',
+];
+
+function formatSurveyResponseDate(offset: number): string {
+  const dayOffset = offset % 180;
+  const date = new Date(SURVEY_RESPONSE_ANCHOR.getTime() - dayOffset * 24 * 60 * 60 * 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const minutes = (date.getMinutes() + offset) % 60;
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(minutes)}`;
+}
+
+function buildSurveyAnswerValues(question: SurveyQuestion, seed: number): string[] {
+  if (question.format === 'free_text' || question.choices.length === 0) {
+    return [SURVEY_FREE_TEXT_SAMPLES[(seed + question.no) % SURVEY_FREE_TEXT_SAMPLES.length]!];
+  }
+
+  const first = question.choices[(seed + question.no) % question.choices.length]!;
+  if (question.format !== 'multiple_choice' || question.choices.length < 2) {
+    return [first.text];
+  }
+
+  const second = question.choices[(seed + question.no + 1) % question.choices.length]!;
+  return [first.text, second.text];
+}
+
+/** Generate answers from the question master; uses the real choices because the reporting screen matches on choice text. */
+function buildSurveyResponseAnswers(
+  questions: SurveyQuestion[],
+  answeredCount: number,
+  seed: number,
+): SurveyResponseDetail['answers'] {
+  return questions.slice(0, answeredCount).map((question) => ({
+    question_no: question.no,
+    question: question.content,
+    format: question.format,
+    answer: buildSurveyAnswerValues(question, seed),
+  }));
+}
+
+export function createOptionTables(getDb: () => DbType) {
   return {
     optionMasters: {
       _rows: [] as OptionMasterDetail[],
@@ -446,7 +498,7 @@ export function createOptionTables() {
           {
             id: 'OP037',
             name: 'スタンダードロッカー',
-            code: 'LK-3x6-STANDARD-001',
+            code: 'LK-3x7-STANDARD-001',
             category: 'locker_option',
             brand: 'fit365',
             option_type: 'standard',
@@ -483,8 +535,8 @@ export function createOptionTables() {
           },
           {
             id: 'OP039',
-            name: '3x6 プレミアム',
-            code: 'LK-3x6-PREMIUM-001',
+            name: '3x7 プレミアム',
+            code: 'LK-3x7-PREMIUM-001',
             category: 'locker_option',
             brand: 'joyfit',
             option_type: 'standard',
@@ -502,8 +554,8 @@ export function createOptionTables() {
           },
           {
             id: 'OP040',
-            name: '2x10 スタンダード',
-            code: 'LK-2x10-STANDARD-001',
+            name: '3x5 スタンダード',
+            code: 'LK-3x5-STANDARD-001',
             category: 'locker_option',
             brand: 'fit365',
             option_type: 'standard',
@@ -521,8 +573,8 @@ export function createOptionTables() {
           },
           {
             id: 'OP041',
-            name: '2x4 スタンダード',
-            code: 'LK-2x4-STANDARD-001',
+            name: '3x2 スタンダード',
+            code: 'LK-3x2-STANDARD-001',
             category: 'locker_option',
             brand: 'joyfit24',
             option_type: 'standard',
@@ -1060,135 +1112,153 @@ export function createOptionTables() {
       },
     },
 
-    surveyReporting: {
-      _rows: [
-        {
-          id: 'R-001',
-          response_date: '2026/03/10 14:32',
-          member_id: 'M-00001',
-          member_number: 'M-00001',
-          member_name: '田中 太郎',
-          survey_id: 'S-001',
-          survey_name: '入会時アンケート',
-          template_type: 'lifecycle',
-          brand: 'fit365',
-          store_id: 'store-001',
-          store_name: 'FIT365八潮店',
-          member_type: 'regular',
-          answered_count: 5,
-          total_count: 5,
-          status: 'completed',
-          answers: [
-            {
-              question_no: 1,
-              question: '入会のきっかけを教えてください',
-              format: 'multiple_choice',
-              answer: ['友人の紹介', 'Web広告'],
-            },
-            {
-              question_no: 2,
-              question: '主に利用したい時間帯はいつですか？',
-              format: 'single_choice',
-              answer: ['平日夜間'],
-            },
-            {
-              question_no: 3,
-              question: '運動経験を教えてください',
-              format: 'single_choice',
-              answer: ['1〜3年'],
-            },
-            {
-              question_no: 4,
-              question: '当ジムに期待することを教えてください',
-              format: 'free_text',
-              answer: ['清潔さと通いやすさ'],
-            },
-            {
-              question_no: 5,
-              question: 'ご意見・ご要望（自由記入）',
-              format: 'free_text',
-              answer: ['夜の混雑が少し気になります'],
-            },
-          ],
-        },
-        {
-          id: 'R-002',
-          response_date: '2026/03/08 09:10',
-          member_id: 'M-00002',
-          member_number: 'M-00002',
-          member_name: '佐藤 花子',
-          survey_id: 'S-001',
-          survey_name: '入会時アンケート',
-          template_type: 'lifecycle',
-          brand: 'fit365',
-          store_id: 'store-001',
-          store_name: 'FIT365八潮店',
-          member_type: 'family',
-          answered_count: 3,
-          total_count: 5,
-          status: 'partial',
-          answers: [
-            {
-              question_no: 1,
-              question: '入会のきっかけを教えてください',
-              format: 'multiple_choice',
-              answer: ['チラシ'],
-            },
-            {
-              question_no: 2,
-              question: '主に利用したい時間帯はいつですか？',
-              format: 'single_choice',
-              answer: ['平日午前'],
-            },
-            {
-              question_no: 4,
-              question: '当ジムに期待することを教えてください',
-              format: 'free_text',
-              answer: ['子どもと一緒に通いやすい環境'],
-            },
-          ],
-        },
-        {
-          id: 'R-003',
-          response_date: '2026/03/05 17:55',
-          member_id: 'M-00003',
-          member_number: 'M-00003',
-          member_name: '鈴木 一郎',
-          survey_id: 'S-002',
-          survey_name: '退会時アンケート',
-          template_type: 'lifecycle',
-          brand: 'joyfit',
-          store_id: 'store-002',
-          store_name: 'JOYFIT大宮店',
-          member_type: 'regular',
-          answered_count: 2,
-          total_count: 2,
-          status: 'completed',
-          answers: [
-            {
-              question_no: 1,
-              question: '退会を検討した主な理由を教えてください',
-              format: 'single_choice',
-              answer: ['通いにくさ'],
-            },
-            {
-              question_no: 2,
-              question: '改善してほしい点があれば教えてください',
-              format: 'free_text',
-              answer: ['朝の時間帯の混雑緩和'],
-            },
-          ],
-        },
-      ] as SurveyResponseDetail[],
-      _seeded: true,
+    surveyVisibility: {
+      _rows: [] as Array<{
+        survey_id: string;
+        store_id: string;
+        questions: SurveyStoreVisibilityQuestion[];
+        updated_at: string;
+      }>,
+      _seeded: false,
       _seed(): void {
-        return;
+        if (this._seeded) return;
+        this._seeded = true;
+      },
+      getBySurveyAndStore(
+        surveyId: string,
+        storeId: string,
+      ): { questions: SurveyStoreVisibilityQuestion[]; updated_at: string } | undefined {
+        this._seed();
+        const row = this._rows.find(
+          (item) => item.survey_id === surveyId && item.store_id === storeId,
+        );
+        if (!row) return undefined;
+        return { questions: row.questions, updated_at: row.updated_at };
+      },
+      upsert(
+        surveyId: string,
+        storeId: string,
+        data: UpdateSurveyStoreVisibilityBody,
+        survey: SurveyTemplateDetail,
+      ): SurveyStoreVisibility {
+        this._seed();
+        const now = new Date().toLocaleString('ja-JP', { hour12: false });
+        const index = this._rows.findIndex(
+          (item) => item.survey_id === surveyId && item.store_id === storeId,
+        );
+        const nextRow = {
+          survey_id: surveyId,
+          store_id: storeId,
+          questions: data.questions,
+          updated_at: now,
+        };
+        if (index === -1) {
+          this._rows.push(nextRow);
+        } else {
+          this._rows[index] = nextRow;
+        }
+
+        const choiceMap = new Map(
+          data.questions.map((question) => [
+            question.no,
+            new Map(question.choices.map((choice) => [choice.order, choice])),
+          ]),
+        );
+        return {
+          survey_id: surveyId,
+          store_id: storeId,
+          updated_at: now,
+          questions: survey.questions.map((question) => {
+            const storedChoices = choiceMap.get(question.no);
+            const storedQuestion = data.questions.find((q) => q.no === question.no);
+            return {
+              no: question.no,
+              visible: storedQuestion?.visible ?? true,
+              choices: question.choices.map((choice) => ({
+                order: choice.order,
+                visible: storedChoices?.get(choice.order)?.visible ?? true,
+              })),
+            };
+          }),
+        };
+      },
+    },
+
+    surveyReporting: {
+      _rows: [] as SurveyResponseDetail[],
+      _seeded: false,
+      _seed(): void {
+        if (this._seeded) return;
+        this._seeded = true;
+
+        const db = getDb();
+        db.members._seed();
+        db.surveys._seed();
+
+        const surveys = db.surveys
+          .getList()
+          .map((survey) => db.surveys.getById(survey.id))
+          .filter((survey): survey is SurveyTemplateDetail => Boolean(survey))
+          .filter((survey) => survey.questions.length > 0);
+        if (surveys.length === 0) return;
+
+        const memberRows = db.members._members;
+        const rows: SurveyResponseDetail[] = [];
+        let sequence = 0;
+
+        for (const [index, member] of memberRows.entries()) {
+          // Leave 1 in 4 members unanswered so the member-detail tab's empty state can be verified
+          if (index % 4 === 3) continue;
+
+          const responseCount = (index % 3) + 1;
+          for (let slot = 0; slot < responseCount; slot++) {
+            const survey = surveys[(index + slot) % surveys.length]!;
+            const totalCount = survey.questions.length;
+            // Make 1 in 5 a partial answer to reproduce the partial status
+            const isPartial = totalCount > 1 && index % 5 === 2;
+            const answeredCount = isPartial ? totalCount - 1 : totalCount;
+            sequence += 1;
+
+            rows.push({
+              id: `R-${String(sequence).padStart(3, '0')}`,
+              response_date: formatSurveyResponseDate(index * 3 + slot * 11),
+              member_id: member.memberId,
+              member_number: member.memberNumber,
+              member_name: joinJapaneseName(
+                member.personalInfo.lastName,
+                member.personalInfo.firstName,
+              ),
+              survey_id: survey.id,
+              survey_name: survey.name,
+              template_type: survey.type,
+              brand: member.primaryStore.brandEnum,
+              store_id: member.primaryStore.storeId,
+              store_name: member.primaryStore.name,
+              member_type: member.memberType,
+              answered_count: answeredCount,
+              total_count: totalCount,
+              status: isPartial ? 'partial' : 'completed',
+              answers: buildSurveyResponseAnswers(survey.questions, answeredCount, index),
+            });
+          }
+        }
+
+        this._rows = rows;
       },
       getAll(): SurveyResponseDetail[] {
+        this._seed();
         return this._rows;
       },
       getById(id: string): SurveyResponseDetail | undefined {
+        this._seed();
         return this._rows.find((row) => row.id === id);
+      },
+      /** For the member-detail survey-response tab; returns answers newest first. */
+      getByMemberId(memberId: string): SurveyResponseDetail[] {
+        this._seed();
+        return this._rows
+          .filter((row) => row.member_id === memberId)
+          .sort((a, b) => b.response_date.localeCompare(a.response_date));
       },
     },
 

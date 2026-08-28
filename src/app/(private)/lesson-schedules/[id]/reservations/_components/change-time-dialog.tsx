@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, CheckCircle, Info } from 'lucide-react';
@@ -25,7 +25,7 @@ import {
 } from '@/lib/api/@tanstack/react-query.gen';
 import type { LessonScheduleListItem } from '@/lib/api/types.gen';
 
-import { toTimeSlot } from '../../../_components/lesson-schedule-display.util';
+import { toTimeSlot } from '../../../_utils/lesson-schedule-display.util';
 
 interface ChangeTimeDialogProps {
   open: boolean;
@@ -50,16 +50,22 @@ export function ChangeTimeDialog({
   const queryClient = useQueryClient();
 
   const isTimeRangeValid = startTime < endTime;
+  const isSubmittingRef = useRef(false);
 
   const changeMutation = useMutation({
     ...patchCrmLessonSchedulesByScheduleIdTimeChangeMutation(),
     onSuccess: () => {
       toast.success('時間を変更しました');
-      queryClient.invalidateQueries({ queryKey: getCrmLessonSchedulesQueryKey() });
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonSchedulesQueryKey(),
+      });
       handleClose();
     },
     onError: () => {
       toast.error('時間の変更に失敗しました');
+    },
+    onSettled: () => {
+      isSubmittingRef.current = false;
     },
   });
 
@@ -71,7 +77,9 @@ export function ChangeTimeDialog({
   };
 
   const handleConfirm = () => {
+    if (isSubmittingRef.current) return;
     if (!reason.trim() || !isTimeRangeValid) return;
+    isSubmittingRef.current = true;
     changeMutation.mutate({
       path: { scheduleId },
       body: {
@@ -179,7 +187,8 @@ export function ChangeTimeDialog({
               <div className="flex items-center gap-2">
                 <CheckCircle className="text-success size-4 shrink-0" />
                 <span className="text-muted-foreground">
-                  返金処理: <strong className="text-foreground">不要</strong>（レッスン自体は実施）
+                  返金処理: <strong className="text-foreground">不要</strong>
+                  （レッスン自体は実施）
                 </span>
               </div>
             </div>

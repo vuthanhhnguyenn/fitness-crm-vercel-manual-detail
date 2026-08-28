@@ -24,6 +24,10 @@ type SlotLockSettingsTableProps = {
   pattern: LockerNumberingPattern;
   defaultLockType: LockerLockType;
   slotSettings: LockerSlotLockSettingFormValue[];
+  /** Numbers of in-use slots (E-01 FR-002 error case: the lock type of an in-use slot cannot be changed) */
+  inUseSlotNumbers?: string[];
+  /** New FIT365 lockers only allow dial locks (#219): disable the cylinder lock option */
+  cylinderDisabled?: boolean;
   onSlotSettingChange: (slotNumber: string, setting: LockerSlotLockSettingFormValue) => void;
 };
 
@@ -41,6 +45,8 @@ export function SlotLockSettingsTable({
   pattern,
   defaultLockType,
   slotSettings,
+  inUseSlotNumbers = [],
+  cylinderDisabled = false,
   onSlotSettingChange,
 }: SlotLockSettingsTableProps) {
   if (!prefix || !shape) return null;
@@ -48,12 +54,14 @@ export function SlotLockSettingsTable({
   const slots = buildLockerSlotPositions(prefix, shape, pattern, startNum);
   if (slots.length === 0) return null;
 
+  const inUseSlots = new Set(inUseSlotNumbers);
+
   return (
     <div className="mt-4">
       <div className="mb-2 flex items-center gap-2">
         <Info className="text-muted-foreground size-4" />
         <p className="text-muted-foreground text-xs">
-          スロットごとに施錠方法を個別変更できます。変更しない場合は上記「施錠方法（デフォルト）」が適用されます。
+          スロットごとに施錠方法を個別変更できます。変更しない場合は上記「施錠方法（デフォルト）」が適用されます。使用中スロットの施錠方法は変更できません。
         </p>
       </div>
       <div className="overflow-hidden rounded-lg border">
@@ -62,6 +70,7 @@ export function SlotLockSettingsTable({
             <tr className="bg-muted/50 border-b">
               <th className="px-3 py-2 text-left text-xs font-semibold">スロット番号</th>
               <th className="px-3 py-2 text-left text-xs font-semibold">位置</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold">状態</th>
               <th className="px-3 py-2 text-left text-xs font-semibold">施錠方法</th>
               <th className="px-3 py-2 text-left text-xs font-semibold">
                 暗証番号（ダイヤル錠のみ）
@@ -76,7 +85,16 @@ export function SlotLockSettingsTable({
                 lock_type: defaultLockType,
                 password: '',
               };
-              const isCustomized = customized !== undefined;
+              // Highlight a row that carries an explicit per-slot setting (a PIN counts) or whose
+              // lock type differs from the default — either way it is no longer "just the default".
+              const isCustomized =
+                customized !== undefined || setting.lock_type !== defaultLockType;
+              const isInUse = inUseSlots.has(slot.slot_number);
+              // E-01 FR-009 error case: input other than 4 digits is a validation error
+              const isPasswordInvalid =
+                setting.lock_type === 'dial' &&
+                Boolean(setting.password) &&
+                setting.password?.length !== 4;
 
               return (
                 <tr
@@ -87,9 +105,17 @@ export function SlotLockSettingsTable({
                   <td className="text-muted-foreground px-3 py-2 text-xs">
                     {slot.row_number}段 {slot.column_number}列
                   </td>
+                  <td className="px-3 py-2 text-xs">
+                    {isInUse ? (
+                      <span className="text-info font-medium">使用中</span>
+                    ) : (
+                      <span className="text-muted-foreground">利用可</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <Select
                       value={setting.lock_type}
+                      disabled={isInUse}
                       onValueChange={(value) => {
                         onSlotSettingChange(slot.slot_number, {
                           slot_number: slot.slot_number,
@@ -98,12 +124,16 @@ export function SlotLockSettingsTable({
                         });
                       }}
                     >
-                      <SelectTrigger className="h-7 w-[130px] text-xs">
+                      <SelectTrigger className="h-7 w-32.5 text-xs">
                         <SelectValue>{LOCKER_LOCK_TYPE_LABELS[setting.lock_type]}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {Object.entries(LOCKER_LOCK_TYPE_LABELS).map(([value, label]) => (
-                          <SelectItem key={value} value={value}>
+                          <SelectItem
+                            key={value}
+                            value={value}
+                            disabled={cylinderDisabled && value === 'cylinder'}
+                          >
                             {label}
                           </SelectItem>
                         ))}
@@ -112,19 +142,27 @@ export function SlotLockSettingsTable({
                   </td>
                   <td className="px-3 py-2">
                     {setting.lock_type === 'dial' ? (
-                      <Input
-                        maxLength={4}
-                        placeholder="0000"
-                        value={setting.password ?? ''}
-                        onChange={(event) => {
-                          const next = event.target.value.replace(/\D/g, '').slice(0, 4);
-                          onSlotSettingChange(slot.slot_number, {
-                            ...setting,
-                            password: next,
-                          });
-                        }}
-                        className="h-7 w-20 text-center font-mono text-xs tracking-widest"
-                      />
+                      <div>
+                        <Input
+                          maxLength={4}
+                          placeholder="0000"
+                          value={setting.password ?? ''}
+                          aria-invalid={isPasswordInvalid || undefined}
+                          onChange={(event) => {
+                            const next = event.target.value.replace(/\D/g, '').slice(0, 4);
+                            onSlotSettingChange(slot.slot_number, {
+                              ...setting,
+                              password: next,
+                            });
+                          }}
+                          className={`h-7 w-20 text-center font-mono text-xs tracking-widest ${
+                            isPasswordInvalid ? 'border-destructive' : ''
+                          }`}
+                        />
+                        {isPasswordInvalid ? (
+                          <p className="text-destructive mt-1 text-xs">4桁で入力してください</p>
+                        ) : null}
+                      </div>
                     ) : (
                       <span className="text-muted-foreground text-xs">なし</span>
                     )}

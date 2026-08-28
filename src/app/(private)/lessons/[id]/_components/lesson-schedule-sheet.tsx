@@ -45,10 +45,8 @@ export function LessonScheduleSheet({
   const router = useRouter();
   const { recurring_patterns, sessions, total } = schedule;
 
-  // D-04 instructor master page does not exist yet (research D6); the link is a
-  // navigation entry point only — its destination is out of scope for Phase 1.
-  const handleInstructorClick = () => {
-    // no-op: D-04 instructor master route not yet defined
+  const handleInstructorClick = (instructorId: string) => {
+    router.push(navigate('/instructors/[id]', instructorId));
   };
 
   return (
@@ -59,7 +57,7 @@ export function LessonScheduleSheet({
             <SheetTitle className="flex items-center gap-2 text-sm font-semibold">
               <CalendarDays className="size-4" />
               {lessonName} のスケジュール
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="destructive" className="text-[10px]">
                 {total}件
               </Badge>
             </SheetTitle>
@@ -100,7 +98,7 @@ export function LessonScheduleSheet({
                           <span key={instructor.instructor_id} className="inline-flex items-center">
                             <button
                               type="button"
-                              onClick={handleInstructorClick}
+                              onClick={() => handleInstructorClick(instructor.instructor_id)}
                               className="text-primary inline-flex items-center gap-0.5 hover:underline"
                             >
                               {instructor.name}

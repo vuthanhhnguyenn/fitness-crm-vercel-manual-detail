@@ -67,6 +67,71 @@ export const SurveyQuestionSchema = z
     description: 'アンケート設問',
   });
 
+export const SurveyStoreVisibilityChoiceSchema = z
+  .object({
+    order: z.number().int().positive().openapi({ example: 1, description: '選択肢順番' }),
+    visible: z.boolean().openapi({ example: true, description: '表示するかどうか' }),
+  })
+  .openapi({
+    title: 'SurveyStoreVisibilityChoice',
+    description: 'アンケート選択肢の店舗別表示設定',
+  });
+
+export const SurveyStoreVisibilityQuestionSchema = z
+  .object({
+    no: z.number().int().positive().openapi({ example: 1, description: '設問番号' }),
+    visible: z.boolean().openapi({ example: true, description: '表示するかどうか' }),
+    choices: z.array(SurveyStoreVisibilityChoiceSchema).openapi({ description: '選択肢表示設定' }),
+  })
+  .openapi({
+    title: 'SurveyStoreVisibilityQuestion',
+    description: 'アンケート設問の店舗別表示設定',
+  });
+
+export const SurveyStoreVisibilitySchema = z
+  .object({
+    survey_id: z.string().openapi({ example: 'S-001', description: 'アンケートID' }),
+    store_id: z.string().openapi({ example: 'store-001', description: '店舗ID' }),
+    questions: z
+      .array(SurveyStoreVisibilityQuestionSchema)
+      .openapi({ description: '設問表示設定' }),
+    updated_at: z.string().openapi({ example: '2026/03/10 10:00', description: '最終更新日時' }),
+  })
+  .openapi({
+    title: 'SurveyStoreVisibility',
+    description: 'アンケートの店舗別表示設定',
+  });
+
+export const GetSurveyStoreVisibilityResponseSchema = z
+  .object({
+    visibility: SurveyStoreVisibilitySchema,
+  })
+  .openapi({
+    title: 'GetSurveyStoreVisibilityResponse',
+    description: 'アンケート店舗別表示設定取得レスポンス',
+  });
+
+export const UpdateSurveyStoreVisibilityBodySchema = z
+  .object({
+    questions: z
+      .array(SurveyStoreVisibilityQuestionSchema)
+      .openapi({ description: '設問表示設定' }),
+  })
+  .openapi({
+    title: 'UpdateSurveyStoreVisibilityBody',
+    description: 'アンケート店舗別表示設定更新リクエスト',
+  });
+
+export const UpdateSurveyStoreVisibilityResponseSchema = z
+  .object({
+    message: z.string().openapi({ example: 'アンケートの表示設定を更新しました' }),
+    visibility: SurveyStoreVisibilitySchema,
+  })
+  .openapi({
+    title: 'UpdateSurveyStoreVisibilityResponse',
+    description: 'アンケート店舗別表示設定更新レスポンス',
+  });
+
 export const SurveyTemplateListItemSchema = z
   .object({
     id: z.string().openapi({ example: 'S-001', description: 'アンケートID' }),
@@ -248,6 +313,9 @@ export type SurveyTemplateStatus = z.infer<typeof SurveyTemplateStatusSchema>;
 export type SurveyQuestionFormat = z.infer<typeof SurveyQuestionFormatSchema>;
 export type SurveyQuestionChoice = z.infer<typeof SurveyQuestionChoiceSchema>;
 export type SurveyQuestion = z.infer<typeof SurveyQuestionSchema>;
+export type SurveyStoreVisibilityChoice = z.infer<typeof SurveyStoreVisibilityChoiceSchema>;
+export type SurveyStoreVisibilityQuestion = z.infer<typeof SurveyStoreVisibilityQuestionSchema>;
+export type SurveyStoreVisibility = z.infer<typeof SurveyStoreVisibilitySchema>;
 export type SurveyTemplateListItem = z.infer<typeof SurveyTemplateListItemSchema>;
 export type GetSurveyTemplatesQuery = z.infer<typeof GetSurveyTemplatesQuerySchema>;
 export type GetSurveyTemplatesResponse = z.infer<typeof GetSurveyTemplatesResponseSchema>;
@@ -262,4 +330,11 @@ export type UpdateSurveyTemplateStatusResponse = z.infer<
 >;
 export type DeleteSurveyTemplateResponse = z.infer<typeof DeleteSurveyTemplateResponseSchema>;
 export type SurveyTemplateChangeHistoryItem = z.infer<typeof SurveyTemplateChangeHistoryItemSchema>;
+export type GetSurveyStoreVisibilityResponse = z.infer<
+  typeof GetSurveyStoreVisibilityResponseSchema
+>;
+export type UpdateSurveyStoreVisibilityBody = z.infer<typeof UpdateSurveyStoreVisibilityBodySchema>;
+export type UpdateSurveyStoreVisibilityResponse = z.infer<
+  typeof UpdateSurveyStoreVisibilityResponseSchema
+>;
 export { ErrorResponseSchema };

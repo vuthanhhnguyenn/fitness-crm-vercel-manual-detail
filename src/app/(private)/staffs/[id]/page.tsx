@@ -4,13 +4,15 @@ import { useParams, useRouter } from 'next/navigation';
 
 import { useQuery } from '@tanstack/react-query';
 
-import { BreadcrumbNav } from '@/components/common/breadcrumb-nav';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { getCrmStaffsByIdOptions } from '@/lib/api/@tanstack/react-query.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import { StaffStatus } from '../_constants/constants';
+import { PermissionHistoryTab } from './_components/permission-history-tab';
 import { StaffDetailHeader } from './_components/staff-detail-header';
 import { StaffDetailSkeleton } from './_components/staff-detail-skeleton';
 import { StaffLoginInfoCard } from './_components/staff-login-info-card';
@@ -24,7 +26,7 @@ export default function StaffDetailPage() {
 
   const router = useRouter();
 
-  const { data, isLoading, isError, refetch } = useQuery(
+  const { data, isLoading, isError, error, refetch } = useQuery(
     getCrmStaffsByIdOptions({
       path: { id: staffId },
     }),
@@ -33,6 +35,34 @@ export default function StaffDetailPage() {
   if (isLoading) return <StaffDetailSkeleton />;
 
   if (isError || !data?.staff) {
+    const status = (error as { status?: number } | null)?.status;
+
+    // 403/404 are expected, "clean" outcomes (no view permission / record deleted or
+    // never existed) — not the generic transient-failure case DataStateBoundary's
+    // default copy describes, and retrying can't change either outcome.
+    if (status === 403) {
+      return (
+        <DataStateBoundary
+          isLoading={false}
+          isError
+          isEmpty={false}
+          errorTitle="アクセス権限がありません"
+          errorDescription="このスタッフ情報を閲覧する権限がありません。"
+        />
+      );
+    }
+    if (status === 404) {
+      return (
+        <DataStateBoundary
+          isLoading={false}
+          isError
+          isEmpty={false}
+          errorTitle="スタッフが見つかりません"
+          errorDescription="このスタッフは存在しないか、削除された可能性があります。"
+        />
+      );
+    }
+
     return (
       <DataStateBoundary
         isLoading={false}
@@ -50,34 +80,61 @@ export default function StaffDetailPage() {
   const handleEdit = () => {
     router.push(navigate('/staffs/[id]/edit', staffId));
   };
+  const handleBack = () => {
+    router.push(navigate('/staffs'));
+  };
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b px-4 py-4">
-        <BreadcrumbNav
-          items={[{ url: '/staffs', label: 'スタッフ管理' }, { label: 'スタッフ詳細' }]}
-          variant="section"
-        />
-      </div>
       <StaffDetailHeader
         staffId={staffId}
         fullName={fullName}
         staffStatus={staffStatus}
+        staffRole={staff.role}
+        linkedStoreId={
+          staff.staff_linkage.type === 'direct_store' ? staff.staff_linkage.store_id : undefined
+        }
         onEdit={handleEdit}
+        onBack={handleBack}
       />
 
-      <div className="flex-1 overflow-auto px-4 pb-4">
-        <div className="grid gap-4 lg:grid-cols-5">
-          <div className="space-y-4 lg:col-span-3">
-            <StaffPersonalInfoCard staff={staff} />
-            <StaffLoginInfoCard staff={staff} />
-          </div>
+      <div className="flex-1 overflow-auto px-6 py-4">
+        <Tabs defaultValue="info" className="gap-4">
+          <TabsList variant="line">
+            <TabsTrigger value="info">基本情報</TabsTrigger>
+            <TabsTrigger value="history">変更履歴</TabsTrigger>
+          </TabsList>
 
-          <div className="space-y-4 lg:col-span-2">
-            <StaffStatusCard staff={staff} />
-            <StaffPermissionCard staff={staff} />
-          </div>
-        </div>
+          <TabsContent value="info">
+            <div className="flex flex-col gap-4 lg:flex-row">
+              <div className="flex flex-col gap-4 lg:w-[60%]">
+                <StaffPersonalInfoCard staff={staff} />
+                <StaffPermissionCard staff={staff} />
+                {staff.note && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold">備考</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4">
+                      <p className="text-muted-foreground text-sm whitespace-pre-wrap">
+                        {staff.note}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+                <StaffLoginInfoCard staff={staff} />
+              </div>
+
+              <div className="flex flex-col gap-4 lg:sticky lg:top-0 lg:w-[40%]">
+                <StaffStatusCard staff={staff} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="history">
+            <PermissionHistoryTab staffId={staffId} />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

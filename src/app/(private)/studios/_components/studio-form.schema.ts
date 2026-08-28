@@ -1,3 +1,4 @@
+import { CAPACITY_MAX_SIZE, TEXTAREA_MAX_LENGTH, TEXT_MAX_LENGTH } from '@/constants/app.constants';
 import { z } from 'zod';
 
 export const StudioImageItemSchema = z.object({
@@ -38,9 +39,13 @@ export const SpaceLayoutSchema = z.object({
 export type SpaceLayout = z.infer<typeof SpaceLayoutSchema>;
 
 export const StudioFormSchema = z.object({
-  storeId: z.string().min(1, '店舗は必須です。'),
-  name: z.string().min(1, 'スタジオ名は必須です。').max(100),
-  studioType: z.enum(['normal', 'hot_yoga', 'virtual'], {
+  storeId: z.string().min(1, '店舗名は必須です。'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'スタジオ名は必須です。')
+    .max(TEXT_MAX_LENGTH, `スタジオ名は${TEXT_MAX_LENGTH}文字以内で入力してください。`),
+  studioType: z.enum(['studio-lesson', 'pt', 'body-care'], {
     error: 'スタジオ区分は必須です。',
   }),
   operatingHours: z.string().regex(/^\d{2}:\d{2}~\d{2}:\d{2}$/, {
@@ -50,15 +55,17 @@ export const StudioFormSchema = z.object({
     .number({ error: '物理定員は必須です。' })
     .int()
     .min(1, '物理定員は必須です。')
-    .max(500, '物理定員は500以下にしてください。'),
-  bufferValue: z.coerce
-    .number({ error: 'バッファ値は必須です。' })
-    .int()
-    .min(0)
-    .max(500, 'バッファ値は500以下にしてください。')
-    .default(0),
-  equipmentNotes: z.string().max(1000).optional().default(''),
-  internalNotes: z.string().max(1000).optional().default(''),
+    .max(CAPACITY_MAX_SIZE, `物理定員は${CAPACITY_MAX_SIZE}以下にしてください。`),
+  bufferValue: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.coerce
+      .number({ error: 'バッファ値は必須です。' })
+      .int()
+      .min(0)
+      .max(CAPACITY_MAX_SIZE, `バッファ値は${CAPACITY_MAX_SIZE}以下にしてください。`),
+  ),
+  equipmentNotes: z.string().max(TEXTAREA_MAX_LENGTH).optional().default(''),
+  internalNotes: z.string().max(TEXTAREA_MAX_LENGTH).optional().default(''),
   status: z.enum(['active', 'inactive']).default('active'),
   images: z.array(StudioImageItemSchema).default([]),
   layout: SpaceLayoutSchema.optional(),

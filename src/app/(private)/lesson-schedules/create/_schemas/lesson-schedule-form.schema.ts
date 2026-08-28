@@ -16,7 +16,7 @@ export const lessonScheduleFormSchema = z
     schedule_mode: z.enum(SCHEDULE_MODE_OPTIONS, { error: 'スケジュールモードを選択してください' }),
     date: z.string().optional().default(''),
     start_date: z.string().optional().default(''),
-    start_time: z.string().min(1, '開始時刻を入力してください'),
+    start_time: z.string().min(1, '開始時間を入力してください'),
     repeat_type: z.enum(REPEAT_TYPE_OPTIONS).optional(),
     days_of_week: z.array(z.number().int().min(0).max(6)).optional().default([]),
     end_condition: z.enum(END_CONDITION_OPTIONS).optional(),
@@ -115,6 +115,18 @@ export const lessonScheduleFormSchema = z
           message: '体験枠定員を入力してください（1-5）',
         });
       }
+      if (
+        value.trial_mode === 'inclusive' &&
+        value.capacity !== undefined &&
+        value.trial_capacity !== undefined &&
+        value.trial_capacity > value.capacity
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['trial_capacity'],
+          message: `内数モードでは体験受け入れ上限数（${value.trial_capacity}名）を定員（${value.capacity}名）以下に設定してください`,
+        });
+      }
     }
   });
 
@@ -130,9 +142,9 @@ export const emptyLessonScheduleFormValues: LessonScheduleFormValues = {
   date: '',
   start_date: '',
   start_time: '',
-  repeat_type: undefined,
+  repeat_type: 'weekly',
   days_of_week: [],
-  end_condition: undefined,
+  end_condition: 'by_date',
   end_date: '',
   end_count: undefined,
   skip_holidays: false,
@@ -141,6 +153,6 @@ export const emptyLessonScheduleFormValues: LessonScheduleFormValues = {
   capacity: undefined,
   is_published: true,
   trial_enabled: false,
-  trial_mode: undefined,
+  trial_mode: 'inclusive',
   trial_capacity: undefined,
 };

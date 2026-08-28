@@ -1,9 +1,9 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
+import { formatDateYYYYMMDD } from '@/utils/date.util';
 import type { ColumnDef } from '@tanstack/react-table';
-import { format, parseISO } from 'date-fns';
 
 import { Badge } from '@/components/ui/badge';
 
@@ -11,67 +11,77 @@ import type { GetCrmBlacklistResponse } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import {
-  BLACKLIST_REGISTRATION_SOURCE_LABEL,
-  getRegistrationSourceBadgeClass,
+  BLACKLIST_SOURCE_LABEL,
+  getBlacklistSourceBadgeClass,
 } from '../_constants/blacklist.constants';
 
 type BlacklistRow = NonNullable<GetCrmBlacklistResponse['blacklist']>[number];
 
+/**
+ * FR-006 — six columns. V0 renders a seventh, 照合結果, which is **not** built: the
+ * contract's `matchResult` is an FR-024 (Could) placeholder that is null at v0.4, and the
+ * client confirmed on 2026-07-29 that the column stays hidden (spec Q-01).
+ */
 export function BlacklistTableColumns(): ColumnDef<BlacklistRow>[] {
-  const router = useRouter();
-
   return [
     {
-      accessorKey: 'memberId',
+      accessorKey: 'member_number',
       header: '会員ID',
       cell: ({ row }) => (
-        <span className="text-muted-foreground font-mono text-xs">{row.original.memberId}</span>
-      ),
-    },
-    {
-      accessorKey: 'memberName',
-      header: '氏名',
-      cell: ({ row }) => (
-        <span
-          className="cursor-pointer text-sm font-medium hover:underline"
-          onClick={(e) => {
-            e.stopPropagation();
-            router.push(navigate('/members/[id]', row.original.memberId));
-          }}
-        >
-          {row.original.memberName}
+        <span className="text-muted-foreground font-mono text-xs">
+          {row.original.member_number}
         </span>
       ),
     },
     {
-      accessorKey: 'storeName',
-      header: '店舗名',
-      cell: ({ row }) => <span className="text-xs">{row.original.storeName}</span>,
+      accessorKey: 'member_name',
+      header: '氏名',
+      cell: ({ row }) => (
+        /**
+         * FR-008 — the name is its own link to the member detail. `stopPropagation` keeps
+         * the row's own navigation (to the blacklist detail) from firing as well, so the
+         * two destinations stay distinguishable.
+         */
+        <Link
+          href={navigate('/members/[id]', row.original.member_id)}
+          className="text-sm font-medium hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {row.original.member_name}
+        </Link>
+      ),
     },
     {
-      accessorKey: 'registrationSource',
+      accessorKey: 'store_name',
+      header: '店舗名',
+      // FR-009 — a member with no primary store shows a dash, not an empty cell.
+      cell: ({ row }) => <span className="text-xs">{row.original.store_name ?? '—'}</span>,
+    },
+    {
+      accessorKey: 'source',
       header: '登録理由',
       cell: ({ row }) => {
-        const source = row.original.registrationSource;
+        // The registration-path axis. The stored reason categories are never shown (FR-043a).
+        const source = row.original.source;
         return (
           <Badge
             variant="outline"
-            className={`text-[10px] ${getRegistrationSourceBadgeClass(source)}`}
+            className={`text-[10px] ${getBlacklistSourceBadgeClass(source)}`}
           >
-            {BLACKLIST_REGISTRATION_SOURCE_LABEL[source]}
+            {BLACKLIST_SOURCE_LABEL[source]}
           </Badge>
         );
       },
     },
     {
-      accessorKey: 'unpaidAmount',
+      accessorKey: 'unpaid_amount',
       header: () => <div className="text-right">未納金額</div>,
       cell: ({ row }) => {
-        const amount = row.original.unpaidAmount;
+        const amount = row.original.unpaid_amount;
         return (
           <div
-            className={`text-right text-xs font-medium ${
-              amount > 0 ? 'text-destructive' : 'text-muted-foreground'
+            className={`text-right text-xs ${
+              amount > 0 ? 'text-destructive font-medium' : 'text-muted-foreground'
             }`}
           >
             ¥{amount.toLocaleString()}
@@ -80,10 +90,10 @@ export function BlacklistTableColumns(): ColumnDef<BlacklistRow>[] {
       },
     },
     {
-      accessorKey: 'registeredAt',
+      accessorKey: 'registered_at',
       header: '登録日',
       cell: ({ row }) => (
-        <span className="text-xs">{format(parseISO(row.original.registeredAt), 'yyyy/MM/dd')}</span>
+        <span className="text-xs">{formatDateYYYYMMDD(row.original.registered_at)}</span>
       ),
     },
   ];

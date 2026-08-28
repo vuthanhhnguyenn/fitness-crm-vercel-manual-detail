@@ -1,5 +1,3 @@
-'use client';
-
 import Image from 'next/image';
 
 import { formatDateYYYYMMDD } from '@/utils/date.util';
@@ -78,7 +76,7 @@ export function LockerInfoTab({ locker }: LockerInfoTabProps) {
                   variant="outline"
                   className="bg-info/15 text-info border-info/20 text-xs font-medium"
                 >
-                  利用中の最下段 {bottomRowInUseCount}/{bottomRowSlots.length}枠
+                  使用中の最下段 {bottomRowInUseCount}/{bottomRowSlots.length}枠
                 </Badge>
                 <Badge
                   variant="outline"
@@ -137,11 +135,11 @@ export function LockerInfoTab({ locker }: LockerInfoTabProps) {
               <span className="font-semibold">{locker.summary.total_slots}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">利用可能</span>
+              <span className="text-muted-foreground">利用可</span>
               <span className="text-success font-semibold">{locker.summary.available_slots}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">利用中</span>
+              <span className="text-muted-foreground">使用中</span>
               <span className="text-info font-semibold">{locker.summary.in_use_slots}</span>
             </div>
             <div className="flex items-center justify-between">

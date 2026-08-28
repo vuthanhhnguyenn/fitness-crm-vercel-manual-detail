@@ -1,31 +1,51 @@
+import { TEXTAREA_MAX_LENGTH, TEXT_MAX_LENGTH } from '@/constants/app.constants';
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
 // Extend Zod with OpenAPI support
 extendZodWithOpenApi(z);
 
-/**
- * Membership Application Status Schema
- */
-export const MembershipApplicationStatusSchema = z.enum([
-  'pending',
-  'review',
-  'approved',
-  'rejected',
-  'cancelled',
-]);
+// ─── Enumerations (C-01 revision 260624_v5) ──────────────────────────────────
 
 /**
- * Risk Reason Schema — kept for detail screen compatibility
+ * Membership Application Status — six values in v5.
+ * `auto_approved` is decided upstream of the CRM on receipt; the CRM never
+ * transitions an application into it, it only renders such records read-only.
  */
-export const RiskReasonSchema = z.enum([
-  'blacklist_match',
-  'duplicate_application',
-  'payment_failure',
-  'high_risk_score',
-  'document_issue',
-  'other',
-]);
+export const MembershipApplicationStatusSchema = z
+  .enum(['pending', 'review', 'approved', 'auto_approved', 'rejected', 'cancelled'])
+  .openapi({ title: 'MembershipApplicationStatus', description: 'Application status' });
+
+/**
+ * Enrollment Route (入会経路) — new in v5, replaces the 申請種別 axis.
+ * Tracked independently of whether a campaign was applied.
+ */
+export const EnrollmentRouteSchema = z
+  .enum(['mobile', 'manual', 'referral'])
+  .openapi({ title: 'EnrollmentRoute', description: 'How the application arrived' });
+
+/** Rejection Reason — a closed set of exactly four values (FR-031). */
+export const RejectionReasonSchema = z
+  .enum(['identity_incomplete', 'age_restriction', 'blacklist_match', 'other'])
+  .openapi({ title: 'RejectionReason', description: 'Standard rejection reason' });
+
+/**
+ * Blacklist comparison state. `incomplete` covers the case where the comparison
+ * could not run — the pre-approval checklist must not report it as passed.
+ */
+export const BlacklistCheckStateSchema = z
+  .enum(['not_checked', 'no_match', 'matched', 'incomplete'])
+  .openapi({ title: 'BlacklistCheckState', description: 'Blacklist comparison state' });
+
+/**
+ * ⚠️ PROVISIONAL — enrolment-fee exemption kind (FR-025 / FR-026 / FR-025a).
+ * Reproduced from the V0 prototype, absent from C-01 revision 260624_v5,
+ * pending PO confirmation. See the precedence comment in
+ * `_mock-db/tables/membership-application.table.ts`.
+ */
+export const EnrollmentFeeExemptionKindSchema = z
+  .enum(['campaign', 'rejoin', 'staff', 'none'])
+  .openapi({ title: 'EnrollmentFeeExemptionKind', description: 'Which exemption applied' });
 
 export const MembershipApplicationPaymentMethodSchema = z
   .enum(['credit_card', 'bank_transfer'])
@@ -35,58 +55,38 @@ export const MembershipApplicationPaymentStatusSchema = z
   .enum(['pending', 'paid', 'failed'])
   .openapi({ title: 'MembershipApplicationPaymentStatus', description: 'Payment status' });
 
+// ─── List item ────────────────────────────────────────────────────────────────
+
 /**
  * Membership Application Schema (list item)
  */
 export const MembershipApplicationSchema = z
   .object({
-    id: z.string().openapi({
-      example: 'APP-2026-0001',
-      description: 'Application ID',
-    }),
-    applicant_name: z.string().openapi({
-      example: '山田 太郎',
-      description: 'Applicant name',
-    }),
-    status: MembershipApplicationStatusSchema.openapi({
-      example: 'pending',
-      description: 'Application status',
-    }),
-    blacklist_match: z.boolean().openapi({
-      example: false,
-      description: 'Whether applicant matched blacklist',
-    }),
-    brand_name: z.string().openapi({
-      example: 'FIT365',
-      description: 'Brand name',
-    }),
-    store_name: z.string().openapi({
-      example: 'FIT365八潮店',
-      description: 'Store name',
-    }),
-    plan_name: z.string().openapi({
-      example: 'レギュラー会員',
-      description: 'Plan name',
-    }),
-    campaign: z.string().openapi({
+    id: z.string().openapi({ example: 'APP-2026-0001', description: 'Application ID' }),
+    applicant_name: z.string().openapi({ example: '山田 太郎', description: 'Applicant name' }),
+    status: MembershipApplicationStatusSchema.openapi({ example: 'pending' }),
+    enrollment_route: EnrollmentRouteSchema.openapi({ example: 'mobile' }),
+    blacklist_state: BlacklistCheckStateSchema.openapi({ example: 'no_match' }),
+    brand_id: z.string().openapi({ example: 'BRD-002', description: 'Brand ID' }),
+    brand_name: z.string().openapi({ example: 'FIT365', description: 'Brand name' }),
+    store_id: z.string().openapi({ example: 'STR-011', description: 'Store ID' }),
+    store_name: z.string().openapi({ example: 'FIT365八潮店', description: 'Store name' }),
+    plan_name: z.string().openapi({ example: 'レギュラー会員', description: 'Plan name' }),
+    campaign_name: z.string().nullable().openapi({
       example: '春の入会キャンペーン',
-      description: 'Campaign name (なし when none)',
+      description: 'Applied campaign name — null when none applies',
     }),
-    application_date: z.string().datetime().openapi({
+    application_date: z.string().openapi({
       example: '2026-03-30T09:15:00+09:00',
-      description: 'Application date and time',
+      description: 'Application date and time (ISO 8601)',
     }),
-    start_date: z.string().date().openapi({
+    usage_start_date: z.string().openapi({
       example: '2026-04-01',
-      description: 'Scheduled start date',
+      description: 'Usage start date (YYYY-MM-DD)',
     }),
-    is_minor: z.boolean().optional().openapi({
+    is_minor: z.boolean().openapi({
       example: false,
-      description: 'Whether applicant is a minor',
-    }),
-    is_proxy: z.boolean().optional().openapi({
-      example: false,
-      description: 'Whether this is a proxy application',
+      description: 'Whether the applicant is a minor',
     }),
   })
   .openapi({
@@ -99,26 +99,32 @@ export const MembershipApplicationSchema = z
  */
 export const PaginationSchema = z
   .object({
-    total: z.number().openapi({
-      example: 200,
-      description: 'Total number of items',
+    total: z.number().openapi({ example: 47, description: 'Total number of items' }),
+    total_pages: z.number().openapi({ example: 1, description: 'Total number of pages' }),
+    current_page: z.number().openapi({ example: 1, description: 'Current page number' }),
+    limit: z.number().openapi({ example: 50, description: 'Items per page' }),
+  })
+  .openapi({ title: 'Pagination', description: 'Pagination information' });
+
+/**
+ * KPI summary — computed over the caller's whole store scope, before pagination
+ * and before the user's filters (FR-004, research R3). A paginated client cannot
+ * compute these from what it receives.
+ */
+export const MembershipApplicationSummarySchema = z
+  .object({
+    pending_count: z.number().openapi({
+      example: 12,
+      description: 'Applications in the queue (status pending or review) within scope',
     }),
-    total_pages: z.number().openapi({
-      example: 4,
-      description: 'Total number of pages',
-    }),
-    current_page: z.number().openapi({
-      example: 1,
-      description: 'Current page number',
-    }),
-    limit: z.number().openapi({
-      example: 50,
-      description: 'Items per page',
+    blacklist_count: z.number().openapi({
+      example: 3,
+      description: 'That same set where blacklist_state is matched',
     }),
   })
   .openapi({
-    title: 'Pagination',
-    description: 'Pagination information',
+    title: 'MembershipApplicationSummary',
+    description: 'Scope-wide KPI counts for the review queue',
   });
 
 /**
@@ -130,25 +136,34 @@ export const GetMembershipApplicationsQuerySchema = z
       example: 1,
       description: 'Page number',
     }),
-    limit: z.coerce.number().int().positive().optional().default(50).openapi({
-      example: 50,
-      description: 'Items per page',
-    }),
+    limit: z.coerce
+      .number()
+      .int()
+      .refine((n) => n === 25 || n === 50 || n === 100 || n === 200, {
+        message: 'limit must be one of 25, 50, 100, 200',
+      })
+      .optional()
+      .default(50)
+      .openapi({ example: 50, description: 'Items per page (25 | 50 | 100 | 200)' }),
     status: MembershipApplicationStatusSchema.optional().openapi({
       example: 'pending',
       description: 'Filter by status',
     }),
+    route: EnrollmentRouteSchema.optional().openapi({
+      example: 'mobile',
+      description: 'Filter by enrollment route',
+    }),
     brand: z.string().optional().openapi({
-      example: 'FIT365',
-      description: 'Filter by brand name',
+      example: 'BRD-002',
+      description: 'Filter by brand ID — can only narrow within the caller scope',
     }),
     store: z.string().optional().openapi({
-      example: 'FIT365八潮店',
-      description: 'Filter by store name',
+      example: 'STR-011',
+      description: 'Filter by store ID — ignored when the caller is single-store scoped',
     }),
     blacklist: z.enum(['all', 'match', 'no_match']).optional().default('all').openapi({
       example: 'all',
-      description: 'Filter by blacklist match',
+      description: 'Filter by blacklist comparison result',
     }),
     date_from: z.string().optional().openapi({
       example: '2026-03-24',
@@ -158,17 +173,18 @@ export const GetMembershipApplicationsQuerySchema = z
       example: '2026-03-30',
       description: 'Application date range end (YYYY-MM-DD)',
     }),
-    sort_by: z.enum(['application_date']).optional().default('application_date').openapi({
-      example: 'application_date',
-      description: 'Sort field',
-    }),
+    sort_by: z
+      .enum(['id', 'applicant_name', 'status', 'application_date', 'usage_start_date'])
+      .optional()
+      .default('application_date')
+      .openapi({ example: 'application_date', description: 'Sort field' }),
     sort_order: z.enum(['asc', 'desc']).optional().default('desc').openapi({
       example: 'desc',
       description: 'Sort order',
     }),
     search: z.string().optional().openapi({
       example: '山田',
-      description: 'Search query (ID or name)',
+      description: 'Partial match on application ID or applicant name',
     }),
   })
   .openapi({
@@ -184,14 +200,21 @@ export const GetMembershipApplicationsResponseSchema = z
     applications: z.array(MembershipApplicationSchema).openapi({
       description: 'List of membership applications',
     }),
-    pagination: PaginationSchema.openapi({
-      description: 'Pagination information',
+    pagination: PaginationSchema.openapi({ description: 'Pagination information' }),
+    summary: MembershipApplicationSummarySchema.openapi({
+      description: 'Scope-wide KPI counts, independent of filters and pagination',
+    }),
+    unfiltered_total: z.number().openapi({
+      example: 128,
+      description: 'Scoped row count before the user filters — powers the result banner',
     }),
   })
   .openapi({
     title: 'GetMembershipApplicationsResponse',
     description: 'Response for getting membership applications',
   });
+
+// ─── Detail ───────────────────────────────────────────────────────────────────
 
 /**
  * Timeline Entry Schema
@@ -200,9 +223,9 @@ export const TimelineEntrySchema = z
   .object({
     id: z.string().openapi({ example: 'tl-001', description: 'Entry ID' }),
     kind: z.enum(['system', 'memo']).openapi({ example: 'system', description: 'Entry kind' }),
-    date: z.string().openapi({
-      example: '2026/03/30 09:15',
-      description: 'Date/time string (formatted)',
+    datetime: z.string().openapi({
+      example: '2026-03-30T09:15:00+09:00',
+      description: 'Entry date and time (ISO 8601)',
     }),
     operator: z.string().openapi({ example: '管理者A', description: 'Operator name' }),
     content: z.string().openapi({
@@ -212,312 +235,212 @@ export const TimelineEntrySchema = z
   })
   .openapi({ title: 'TimelineEntry', description: 'A single activity timeline entry' });
 
+/** One matched blacklist condition, linked to the entry it matched (FR-020). */
+export const BlacklistConditionSchema = z
+  .object({
+    condition: z
+      .enum(['name_birthdate', 'email', 'phone', 'address'])
+      .openapi({ example: 'name_birthdate' }),
+    label: z.string().openapi({ example: '氏名＋生年月日' }),
+    blacklist_entry_id: z.string().openapi({ example: 'BL-0007' }),
+  })
+  .openapi({ title: 'BlacklistCondition', description: 'A matched blacklist condition' });
+
+/** One line of the initial-charge breakdown (FR-023). */
+export const FeeRowSchema = z
+  .object({
+    key: z.string().openapi({ example: 'enrollment_fee', description: 'Stable row key' }),
+    label: z.string().openapi({ example: '入会金' }),
+    amount: z.number().openapi({ example: 2200 }),
+    struck_through: z.boolean().optional().openapi({
+      example: true,
+      description: 'Whether the original amount is superseded by an exemption',
+    }),
+  })
+  .openapi({ title: 'FeeRow', description: 'A single fee breakdown row' });
+
+/**
+ * ⚠️ PROVISIONAL enrolment-fee exemption block (FR-025 / FR-026 / FR-025a).
+ *
+ * This block has NO counterpart in C-01 revision 260624_v5. It is reproduced
+ * from the V0 prototype and is pending PO confirmation. It is declared
+ * `.optional()` on the response so a Phase-2 backend that omits it stays
+ * contract-valid; the client treats a missing value as "no exemption".
+ */
+export const EnrollmentFeeExemptionSchema = z
+  .object({
+    kind: EnrollmentFeeExemptionKindSchema.openapi({ example: 'rejoin' }),
+    original_amount: z.number().openapi({ example: 2200 }),
+    discount_amount: z.number().openapi({ example: 2200 }),
+    reason: z.string().nullable().openapi({
+      example: null,
+      description: 'Mandatory before a staff-discretionary exemption takes effect',
+    }),
+    rule_label: z.string().nullable().openapi({ example: '退会から180日以内の再入会' }),
+    previous_withdrawal_date: z.string().nullable().openapi({ example: '2026-01-20' }),
+    qualifies: z.boolean().openapi({ example: true }),
+    campaign_name: z.string().nullable().openapi({ example: null }),
+    rejoin_window_days: z.number().openapi({
+      example: 180,
+      description: 'The re-enrolment window this determination used',
+    }),
+  })
+  .openapi({
+    title: 'EnrollmentFeeExemption',
+    description: 'PROVISIONAL enrolment-fee exemption determination',
+  });
+
+/** Companion (C区分) → regular member (A区分) upgrade preview (FR-041). */
+export const CompanionUpgradeSchema = z
+  .object({
+    yamauchi_id: z.string().openapi({ example: 'YM-00012345' }),
+    from_classification: z.string().openapi({ example: 'C' }),
+    to_classification: z.string().openapi({ example: 'A' }),
+    inherited_visit_count: z.number().openapi({ example: 8 }),
+    inherited_training_count: z.number().openapi({ example: 3 }),
+  })
+  .openapi({ title: 'CompanionUpgrade', description: 'Companion-to-member upgrade summary' });
+
 /**
  * Get Application Detail Response Schema
  */
 export const GetApplicationDetailResponseSchema = z
   .object({
     application: MembershipApplicationSchema.extend({
-      // Applicant personal info
-      applicant_kana: z.string().optional().openapi({
-        example: 'ヤマダ タロウ',
-        description: 'Applicant name (kana)',
+      // ── Applicant (FR-018, FR-019) ──
+      applicant_kana: z.string().openapi({ example: 'ヤマダ タロウ' }),
+      birth_date: z.string().openapi({ example: '1990-01-15' }),
+      age: z.number().openapi({ example: 36 }),
+      gender_label: z.string().openapi({ example: '男性' }),
+      phone_masked: z.string().openapi({ example: '090-****-5678' }),
+      phone_real: z.string().openapi({ example: '090-1234-5678' }),
+      email_masked: z.string().openapi({ example: 'ya***@example.jp' }),
+      email_real: z.string().openapi({ example: 'yamada@example.jp' }),
+      address_masked: z.string().openapi({ example: '東京都渋谷区***' }),
+      address_real: z.string().openapi({ example: '東京都渋谷区1-2-3' }),
+      face_photo_registered: z.boolean().openapi({ example: true }),
+      face_photo_registered_at: z.string().nullable().openapi({
+        example: '2026-03-30T09:10:00+09:00',
       }),
-      birth_date: z.string().optional().openapi({
-        example: '1990/01/15',
-        description: 'Birth date (formatted)',
+
+      // ── Blacklist (FR-020, FR-021) ──
+      blacklist_conditions: z.array(BlacklistConditionSchema).openapi({
+        description: 'Matched conditions — empty unless blacklist_state is matched',
       }),
-      age: z.number().optional().openapi({ example: 36, description: 'Age' }),
-      gender_label: z.string().optional().openapi({ example: '男性', description: 'Gender label' }),
-      phone: z.string().optional().openapi({
-        example: '090-****-5678',
-        description: 'Phone (masked)',
+
+      // ── Contract (FR-022) ──
+      plan_id: z.string().openapi({ example: 'PLN-010' }),
+      monthly_fee: z.number().openapi({ example: 7700 }),
+      prepayment_months: z.number().openapi({ example: 2 }),
+      prepayment_rule_label: z.string().openapi({ example: 'FIT365: 2ヶ月固定' }),
+      options: z.array(z.string()).openapi({ example: ['タオルレンタル'] }),
+      payment_method: MembershipApplicationPaymentMethodSchema.openapi({
+        example: 'bank_transfer',
       }),
-      phone_real: z.string().optional().openapi({
-        example: '090-1234-5678',
-        description: 'Phone (real)',
+      card_last4: z.string().nullable().openapi({ example: null }),
+      contract_start_date: z.string().openapi({ example: '2026-04-01' }),
+
+      // ── Fees (FR-023, FR-024) ──
+      fee_rows: z.array(FeeRowSchema).openapi({ description: 'Initial charge breakdown' }),
+      fee_total: z.number().openapi({ example: 15620 }),
+
+      // ── ⚠️ PROVISIONAL exemption (FR-025, FR-026, FR-025a) ──
+      enrollment_fee_exemption: EnrollmentFeeExemptionSchema.optional().openapi({
+        description:
+          'PROVISIONAL — absent from C-01 260624_v5. Populated only while the application is 未審査.',
       }),
-      email_masked: z.string().optional().openapi({
-        example: 'ya***@example.jp',
-        description: 'Email (masked)',
+
+      // ── Pre-approval checklist inputs (FR-027) ──
+      brand_min_age: z.number().openapi({ example: 16 }),
+      parental_consent: z.boolean().openapi({ example: false }),
+      parental_consent_at: z.string().nullable().openapi({ example: null }),
+      parental_consent_method: z.string().nullable().openapi({ example: null }),
+
+      // ── Application meta (FR-039, FR-028) ──
+      application_source: z.string().openapi({ example: 'アプリ' }),
+      proxy_staff_name: z.string().nullable().openapi({ example: null }),
+      proxy_staff_id: z.string().nullable().openapi({ example: null }),
+      agreement_datetime: z.string().nullable().openapi({ example: null }),
+      updated_at: z.string().openapi({ example: '2026-03-30T09:20:00+09:00' }),
+
+      // ── Companion upgrade (FR-041) ──
+      companion_upgrade: CompanionUpgradeSchema.nullable().openapi({
+        description:
+          'Present when approval upgrades an existing Yamauchi-ID rather than creating one',
       }),
-      email_real: z.string().optional().openapi({
-        example: 'yamada@example.jp',
-        description: 'Email (real)',
-      }),
-      address: z.string().optional().openapi({
-        example: '東京都渋谷区***',
-        description: 'Address (masked)',
-      }),
-      address_real: z.string().optional().openapi({
-        example: '東京都渋谷区1-2-3',
-        description: 'Address (real)',
-      }),
-      // Blacklist
-      blacklist_conditions: z.array(z.string()).optional().openapi({
-        description: 'BL match condition labels',
-      }),
-      // Contract
-      usage_start_date: z.string().optional().openapi({
-        example: '2026/04/01',
-        description: 'Usage start date (formatted)',
-      }),
-      monthly_fee: z.number().optional().openapi({
-        example: 7700,
-        description: 'Monthly fee (yen)',
-      }),
-      options: z.array(z.string()).optional().openapi({ description: 'Selected options' }),
-      // Fee rows
-      fee_rows: z
-        .array(z.object({ label: z.string(), amount: z.number() }))
-        .optional()
-        .openapi({ description: 'Fee breakdown rows' }),
-      // Payment
-      payment_method: z.string().optional().openapi({
-        example: 'クレジットカード',
-        description: 'Payment method label',
-      }),
-      card_last4: z.string().optional().openapi({
-        example: '1234',
-        description: 'Card last 4 digits',
-      }),
-      // Application meta
-      application_source: z.string().optional().openapi({
-        example: 'アプリ',
-        description: 'Application source',
-      }),
-      updated_at: z.string().optional().openapi({
-        example: '2026/03/30 09:20',
-        description: 'Last updated (formatted)',
-      }),
-      // Minor / proxy
-      parental_consent: z.boolean().optional().openapi({
-        example: false,
-        description: 'Parental consent confirmed',
-      }),
-      proxy_applicant: z.string().optional().openapi({
-        example: '管理者A（STAFF-001）',
-        description: 'Proxy applicant name',
-      }),
-      agreement_date: z.string().optional().openapi({
-        example: '2026/03/30 09:00',
-        description: 'Agreement date (formatted)',
-      }),
-      // Status feedback
-      approved_by: z.string().optional().openapi({
-        example: '管理者A',
-        description: 'Approver name',
-      }),
-      approved_at: z.string().optional().openapi({
-        example: '2026/03/30 10:30',
-        description: 'Approval date (formatted)',
-      }),
-      rejected_by: z.string().optional().openapi({
-        example: '管理者B',
-        description: 'Rejector name',
-      }),
-      rejected_at: z.string().optional().openapi({
-        example: '2026/03/30 10:45',
-        description: 'Rejection date (formatted)',
-      }),
-      rejected_reason: z.string().optional().openapi({
-        example: '本人確認不備',
-        description: 'Rejection reason',
-      }),
-      // Timeline
-      timeline: z.array(TimelineEntrySchema).optional().openapi({
-        description: 'Activity timeline',
-      }),
-    }).openapi({
-      description: 'Application detail information',
-    }),
+
+      // ── Decision record (FR-040) ──
+      approved_by: z.string().nullable().openapi({ example: null }),
+      approved_at: z.string().nullable().openapi({ example: null }),
+      rejected_by: z.string().nullable().openapi({ example: null }),
+      rejected_at: z.string().nullable().openapi({ example: null }),
+      rejection_reason: RejectionReasonSchema.nullable().openapi({ example: null }),
+      rejection_supplement: z.string().nullable().openapi({ example: null }),
+      cancelled_by: z.string().nullable().openapi({ example: null }),
+      cancelled_at: z.string().nullable().openapi({ example: null }),
+      cancellation_reason: z.string().nullable().openapi({ example: null }),
+
+      // ── Cancellation state (FR-034, FR-036) ──
+      same_day_cancel_count: z.number().openapi({ example: 0 }),
+      same_day_cancel_date: z.string().nullable().openapi({ example: null }),
+
+      // ── Timeline (FR-037) ──
+      timeline: z
+        .array(TimelineEntrySchema)
+        .openapi({ description: 'Activity timeline, newest first' }),
+    }).openapi({ description: 'Application detail information' }),
   })
   .openapi({
     title: 'GetApplicationDetailResponse',
     description: 'Response for getting application detail',
   });
 
-/**
- * Update Membership Application Request Schema (Edit screen)
- */
-export const UpdateMembershipApplicationRequestSchema = z
-  .object({
-    basic: z
-      .object({
-        applicant_name: z.string().min(1).optional().openapi({
-          example: '山田太郎',
-          description: 'Applicant name',
-        }),
-        gender: z.enum(['male', 'female', 'other', 'unknown']).optional().openapi({
-          example: 'male',
-          description: 'Gender',
-        }),
-        blood_type: z.enum(['A', 'B', 'O', 'AB', 'unknown']).optional().openapi({
-          example: 'A',
-          description: 'Blood type',
-        }),
-        birthday: z.string().date().optional().openapi({
-          example: '2000-01-01',
-          description: 'Birthday (YYYY-MM-DD)',
-        }),
-      })
-      .optional()
-      .openapi({ description: 'Basic info' }),
-    contact: z
-      .object({
-        applicant_address: z.string().optional().openapi({
-          example: '東京都渋谷区1-2-3',
-          description: 'Address',
-        }),
-        applicant_phone: z.string().optional().openapi({
-          example: '090-1234-5678',
-          description: 'Phone',
-        }),
-        applicant_email: z.string().email().optional().openapi({
-          example: 'yamada.taro@example.com',
-          description: 'Email',
-        }),
-        emergency_contact_name: z.string().optional().openapi({
-          example: '佐藤 太郎',
-          description: 'Emergency contact name',
-        }),
-        emergency_contact_relationship: z.string().optional().openapi({
-          example: '配偶者',
-          description: 'Emergency contact relationship',
-        }),
-        emergency_contact_phone: z.string().optional().openapi({
-          example: '090-8765-4321',
-          description: 'Emergency contact phone',
-        }),
-      })
-      .optional()
-      .openapi({ description: 'Contact info' }),
-    contract: z
-      .object({
-        start_date: z.string().date().optional().openapi({
-          example: '2024-01-20',
-          description: 'Scheduled start date (YYYY-MM-DD)',
-        }),
-        plan_id: z.string().optional().openapi({
-          example: 'plan-001',
-          description: 'Plan ID',
-        }),
-        plan_name: z.string().optional().openapi({
-          example: '通常会員',
-          description: 'Plan name',
-        }),
-        option_ids: z
-          .array(z.string())
-          .optional()
-          .openapi({
-            example: ['opt-001', 'opt-002'],
-            description: 'Option IDs',
-          }),
-        recalculate_fee: z.boolean().optional().openapi({
-          example: false,
-          description: 'Whether to recalculate fee',
-        }),
-      })
-      .optional()
-      .openapi({ description: 'Contract info' }),
-  })
-  .openapi({
-    title: 'UpdateMembershipApplicationRequest',
-    description: 'Request payload for editing membership application',
-  });
+// ─── Decisions ────────────────────────────────────────────────────────────────
 
 /**
- * Update Membership Application Response Schema
- */
-export const UpdateMembershipApplicationResponseSchema = z
-  .object({
-    success: z.boolean().openapi({
-      example: true,
-      description: 'Whether the operation was successful',
-    }),
-    application: z.record(z.string(), z.any()).openapi({
-      description: 'Updated application (shape follows detail response)',
-    }),
-  })
-  .openapi({
-    title: 'UpdateMembershipApplicationResponse',
-    description: 'Response for editing membership application',
-  });
-
-/**
- * Approve Request Schema
+ * Approve Request Schema — approval carries no free-text reason in v5;
+ * the decision context lives in the timeline.
  */
 export const ApproveRequestSchema = z
   .object({
-    approval_reason: z.string().optional().openapi({
-      example: '手動承認',
-      description: 'Approval reason',
-    }),
-    staff_id: z.string().optional().openapi({
-      example: 'staff-001',
-      description: 'Staff ID who approved',
+    /**
+     * ⚠️ PROVISIONAL (FR-025a) — mock-ahead extension for the staff-discretionary
+     * enrolment-fee exemption. Absent from C-01 revision 260624_v5; the reason a
+     * reviewer types in the 個別に免除する panel is submitted here so the mock
+     * table can resolve and record it at approval time. Not part of the settled
+     * contract — a real Phase-2 backend may model this differently.
+     */
+    staff_exemption_reason: z.string().max(TEXTAREA_MAX_LENGTH).optional().openapi({
+      example: '店舗判断による特例免除（キャンペーン終了直後の申込）',
+      description:
+        'PROVISIONAL — staff-discretionary exemption reason, if the reviewer entered one',
     }),
   })
   .openapi({
     title: 'ApproveRequest',
-    description: 'Request payload for approving an application',
+    description: 'Request payload for approving an application (all fields optional)',
   });
 
 /**
- * Approve Response Schema
+ * Approve Response Schema — returns the updated application detail.
  */
-export const ApproveResponseSchema = z
-  .object({
-    success: z.boolean().openapi({
-      example: true,
-      description: 'Whether the operation was successful',
-    }),
-    application_id: z.string().openapi({
-      example: 'APP-00001',
-      description: 'Application ID',
-    }),
-    status: z.enum(['approved']).openapi({
-      example: 'approved',
-      description: 'New application status',
-    }),
-    approved_at: z.string().datetime().openapi({
-      example: '2024-01-15T12:30:00Z',
-      description: 'Approval date and time',
-    }),
-    approved_by: z.string().openapi({
-      example: 'staff-001',
-      description: 'Staff ID who approved',
-    }),
-    approval_reason: z.string().openapi({
-      example: '手動承認',
-      description: 'Approval reason',
-    }),
-    member_id: z.string().openapi({
-      example: 'MEMBER-00001',
-      description: 'Member ID',
-    }),
-  })
-  .openapi({
-    title: 'ApproveResponse',
-    description: 'Response for approving an application',
-  });
+export const ApproveResponseSchema = GetApplicationDetailResponseSchema.openapi({
+  title: 'ApproveResponse',
+  description: 'Response for approving an application',
+});
 
 /**
  * Reject Request Schema
  */
 export const RejectRequestSchema = z
   .object({
-    rejection_reason: z.string().min(1, 'Rejection reason is required').openapi({
-      example: 'リスクスコアが高すぎます',
-      description: 'Rejection reason',
+    rejection_reason: RejectionReasonSchema.openapi({
+      example: 'identity_incomplete',
+      description: 'Standard rejection reason — one of exactly four values',
     }),
-    note: z.string().optional().openapi({
-      example: '本人確認書類の有効期限切れを確認。',
-      description: 'Optional supplementary note',
-    }),
-    staff_id: z.string().optional().openapi({
-      example: 'staff-001',
-      description: 'Staff ID who rejected',
+    rejection_supplement: z.string().max(TEXTAREA_MAX_LENGTH).optional().openapi({
+      example: '本人確認書類の氏名が不一致',
+      description: 'Optional free-text supplement',
     }),
   })
   .openapi({
@@ -525,54 +448,21 @@ export const RejectRequestSchema = z
     description: 'Request payload for rejecting an application',
   });
 
-/**
- * Reject Response Schema
- */
-export const RejectResponseSchema = z
-  .object({
-    success: z.boolean().openapi({
-      example: true,
-      description: 'Whether the operation was successful',
-    }),
-    application_id: z.string().openapi({
-      example: 'APP-00001',
-      description: 'Application ID',
-    }),
-    status: z.enum(['rejected']).openapi({
-      example: 'rejected',
-      description: 'New application status',
-    }),
-    rejected_at: z.string().datetime().openapi({
-      example: '2024-01-15T12:30:00Z',
-      description: 'Rejection date and time',
-    }),
-    rejected_by: z.string().openapi({
-      example: 'staff-001',
-      description: 'Staff ID who rejected',
-    }),
-    rejection_reason: z.string().openapi({
-      example: 'リスクスコアが高すぎます',
-      description: 'Rejection reason',
-    }),
-  })
-  .openapi({
-    title: 'RejectResponse',
-    description: 'Response for rejecting an application',
-  });
+export const RejectResponseSchema = GetApplicationDetailResponseSchema.openapi({
+  title: 'RejectResponse',
+  description: 'Response for rejecting an application',
+});
 
 /**
  * Cancel Request Schema
  */
 export const CancelRequestSchema = z
   .object({
-    cancellation_reason: z.string().min(1, 'Cancellation reason is required').openapi({
-      example: '顧客の要望によりキャンセル',
-      description: 'Cancellation reason',
-    }),
-    staff_id: z.string().optional().openapi({
-      example: 'staff-001',
-      description: 'Staff ID who cancelled',
-    }),
+    cancellation_reason: z
+      .string()
+      .min(1, 'Cancellation reason is required')
+      .max(TEXTAREA_MAX_LENGTH)
+      .openapi({ example: '申請者都合によるキャンセル' }),
   })
   .openapi({
     title: 'CancelRequest',
@@ -580,127 +470,47 @@ export const CancelRequestSchema = z
   });
 
 /**
- * Cancel Response Schema
+ * Cancel Response Schema — carries the updated same-day counter so the client
+ * shows it without a refetch.
  */
 export const CancelResponseSchema = z
   .object({
-    success: z.boolean().openapi({
-      example: true,
-      description: 'Whether the operation was successful',
-    }),
-    application_id: z.string().openapi({
-      example: 'APP-00001',
-      description: 'Application ID',
-    }),
-    status: z.enum(['cancelled']).openapi({
-      example: 'cancelled',
-      description: 'New application status',
-    }),
-    cancelled_at: z.string().datetime().openapi({
-      example: '2024-01-15T12:30:00Z',
-      description: 'Cancellation date and time',
-    }),
-    cancelled_by: z.string().openapi({
-      example: 'staff-001',
-      description: 'Staff ID who cancelled',
-    }),
-    cancellation_reason: z.string().openapi({
-      example: '顧客の要望によりキャンセル',
-      description: 'Cancellation reason',
-    }),
-    refund_processed: z.boolean().openapi({
-      example: true,
-      description: 'Whether refund was processed',
-    }),
-    refund_amount: z.number().openapi({
-      example: 5000,
-      description: 'Refund amount',
-    }),
+    application: GetApplicationDetailResponseSchema.shape.application,
+    same_day_cancel_count: z.number().openapi({ example: 1 }),
   })
   .openapi({
     title: 'CancelResponse',
     description: 'Response for cancelling an application',
   });
 
-/**
- * Memo Schema
- */
-export const MemoSchema = z
-  .object({
-    id: z.string().openapi({
-      example: 'tl-1234567890-memo',
-      description: 'Memo ID',
-    }),
-    kind: z.enum(['memo']).openapi({
-      example: 'memo',
-      description: 'Entry type',
-    }),
-    date: z.string().openapi({
-      example: '2026/03/30 09:15',
-      description: 'Memo date and time',
-    }),
-    operator: z.string().openapi({
-      example: '管理者A',
-      description: 'Staff member who added the memo',
-    }),
-    content: z.string().openapi({
-      example: 'メモのコンテンツ',
-      description: 'Memo content',
-    }),
-  })
-  .openapi({
-    title: 'Memo',
-    description: 'Memo entry in timeline',
-  });
+// ─── Memos ────────────────────────────────────────────────────────────────────
 
-/**
- * Create Memo Request Schema
- */
 export const CreateMemoRequestSchema = z
   .object({
-    content: z.string().min(1).openapi({
-      example: 'メモのコンテンツ',
-      description: 'Memo content',
+    content: z.string().min(1).max(TEXTAREA_MAX_LENGTH).openapi({
+      example: '本人確認書類を目視確認済み。',
+      description: 'Memo content — whitespace-only is rejected',
     }),
   })
   .openapi({
     title: 'CreateMemoRequest',
-    description: 'Request to create a memo for membership application',
+    description: 'Request to create a memo for a membership application',
   });
 
-/**
- * Create Memo Response Schema
- */
 export const CreateMemoResponseSchema = z
   .object({
-    id: z.string().openapi({
-      example: 'tl-1234567890-memo',
-      description: 'Created memo ID',
-    }),
-    kind: z.enum(['memo']).openapi({
-      example: 'memo',
-      description: 'Entry type',
-    }),
-    date: z.string().openapi({
-      example: '2026/03/30 09:15',
-      description: 'Memo date and time',
-    }),
-    operator: z.string().openapi({
-      example: '管理者A',
-      description: 'Staff member who added the memo',
-    }),
-    content: z.string().openapi({
-      example: 'メモのコンテンツ',
-      description: 'Memo content',
-    }),
+    timeline: z.array(TimelineEntrySchema).openapi({ description: 'Updated timeline' }),
   })
-  .openapi({
-    title: 'CreateMemoResponse',
-    description: 'Response for creating a memo',
-  });
+  .openapi({ title: 'CreateMemoResponse', description: 'Response for creating a memo' });
+
+export const DeleteMemoResponseSchema = z
+  .object({
+    timeline: z.array(TimelineEntrySchema).openapi({ description: 'Updated timeline' }),
+  })
+  .openapi({ title: 'DeleteMemoResponse', description: 'Response for deleting a memo' });
 
 /**
- * Error Response Schema (re-exported from auth.schema.ts for consistency)
+ * Error Response Schema
  */
 export const ErrorResponseSchema = z
   .object({
@@ -709,74 +519,37 @@ export const ErrorResponseSchema = z
       description: 'Error message',
     }),
   })
-  .openapi({
-    title: 'ErrorResponse',
-    description: 'Error response',
-  });
+  .openapi({ title: 'ErrorResponse', description: 'Error response' });
 
-// Type exports for use in route handlers
-export type MembershipApplicationStatus = z.infer<typeof MembershipApplicationStatusSchema>;
-export type RiskReason = z.infer<typeof RiskReasonSchema>;
-export type MembershipApplication = z.infer<typeof MembershipApplicationSchema>;
-export type Pagination = z.infer<typeof PaginationSchema>;
-export type GetMembershipApplicationsQuery = z.infer<typeof GetMembershipApplicationsQuerySchema>;
-export type GetMembershipApplicationsResponse = z.infer<
-  typeof GetMembershipApplicationsResponseSchema
->;
-export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
-export type GetApplicationDetailResponse = z.infer<typeof GetApplicationDetailResponseSchema>;
-export type UpdateMembershipApplicationRequest = z.infer<
-  typeof UpdateMembershipApplicationRequestSchema
->;
-export type UpdateMembershipApplicationResponse = z.infer<
-  typeof UpdateMembershipApplicationResponseSchema
->;
-export type ApproveRequest = z.infer<typeof ApproveRequestSchema>;
-export type ApproveResponse = z.infer<typeof ApproveResponseSchema>;
-export type RejectRequest = z.infer<typeof RejectRequestSchema>;
-export type RejectResponse = z.infer<typeof RejectResponseSchema>;
-export type CancelRequest = z.infer<typeof CancelRequestSchema>;
-export type CancelResponse = z.infer<typeof CancelResponseSchema>;
-export type Memo = z.infer<typeof MemoSchema>;
-export type CreateMemoRequest = z.infer<typeof CreateMemoRequestSchema>;
-export type CreateMemoResponse = z.infer<typeof CreateMemoResponseSchema>;
-export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
+// ─── Enrollment fee masters ───────────────────────────────────────────────────
 
-// ─── T-001: Enrollment Fee Master + Upload Response ───────────────────────────
-
-/**
- * Enrollment Fee Master Schema
- */
 export const EnrollmentFeeMasterSchema = z
   .object({
     id: z.string().openapi({ example: 'EF001', description: 'Fee master ID' }),
-    name: z.string().openapi({ example: '標準入会金', description: 'Fee name' }),
+    name: z.string().openapi({ example: '通常入会金', description: 'Fee name' }),
     amount: z
       .number()
       .int()
       .nonnegative()
       .openapi({ example: 2200, description: 'Fee amount (JPY, tax-included)' }),
-    brand: z.string().openapi({ example: 'JOYFIT', description: 'Brand (JOYFIT / FIT365 / 共通)' }),
-    application_type: z.string().openapi({ example: 'normal', description: 'Application type' }),
-    isActive: z.boolean().openapi({ example: true, description: 'Whether this master is active' }),
+    brand_id: z.string().openapi({ example: 'BRD-001', description: 'Brand ID' }),
+    is_active: z.boolean().openapi({ example: true }),
   })
   .openapi({ title: 'EnrollmentFeeMaster', description: 'Enrollment fee master record' });
 
-export const GetEnrollmentFeeMastersQuerySchema = z.object({
-  brand: z.string().optional().openapi({ example: 'JOYFIT', description: 'Filter by brand' }),
-  applicationType: z
-    .string()
-    .optional()
-    .openapi({ example: 'normal', description: 'Filter by application type' }),
-});
+export const GetEnrollmentFeeMastersQuerySchema = z
+  .object({
+    brand_id: z.string().optional().openapi({ example: 'BRD-001', description: 'Filter by brand' }),
+  })
+  .openapi({ title: 'GetEnrollmentFeeMastersQuery' });
 
 export const GetEnrollmentFeeMastersResponseSchema = z
   .object({
-    items: z.array(EnrollmentFeeMasterSchema),
+    masters: z.array(EnrollmentFeeMasterSchema),
   })
   .openapi({
     title: 'GetEnrollmentFeeMastersResponse',
-    description: 'List of enrollment fee masters',
+    description: 'Active enrollment fee masters for a brand',
   });
 
 /**
@@ -791,177 +564,151 @@ export const UploadResponseSchema = z
   })
   .openapi({ title: 'UploadResponse', description: 'Upload response with file URL' });
 
-// Type exports (T-001)
-export type EnrollmentFeeMaster = z.infer<typeof EnrollmentFeeMasterSchema>;
-export type GetEnrollmentFeeMastersQuery = z.infer<typeof GetEnrollmentFeeMastersQuerySchema>;
-export type GetEnrollmentFeeMastersResponse = z.infer<typeof GetEnrollmentFeeMastersResponseSchema>;
-export type UploadResponse = z.infer<typeof UploadResponseSchema>;
+// ─── Blacklist pre-check ──────────────────────────────────────────────────────
 
-// ─── T-002: BL Check + Direct Enrollment Schemas ─────────────────────────────
-
-/**
- * Application Type
- */
-export const ApplicationTypeSchema = z
-  .enum(['normal', 'employee_discount', 'corporate', 'special_contract'])
-  .openapi({ title: 'ApplicationType', description: 'Enrollment application type' });
-
-export type ApplicationType = z.infer<typeof ApplicationTypeSchema>;
-
-export const APPLICATION_TYPE_LABELS: Record<ApplicationType, string> = {
-  normal: '通常入会',
-  employee_discount: '社員割引入会',
-  corporate: '法人会員入会',
-  special_contract: '特別契約入会',
-};
-
-/**
- * Blacklist Check Request / Response
- */
 export const BlacklistCheckRequestSchema = z
   .object({
-    last_name_kanji: z.string().min(1).max(255).openapi({ example: '山田' }),
-    first_name_kanji: z.string().min(1).max(255).openapi({ example: '太郎' }),
-    last_name_kana: z.string().min(1).max(255).openapi({ example: 'ヤマダ' }),
-    first_name_kana: z.string().min(1).max(255).openapi({ example: 'タロウ' }),
-    date_of_birth: z.string().date().openapi({ example: '1990-01-01' }),
-    gender: z.enum(['male', 'female', 'other']).openapi({ example: 'male' }),
-    phone: z.string().min(1).max(255).openapi({ example: '090-1234-5678' }),
-    email: z.string().email().max(255).openapi({ example: 'taro@example.com' }),
-    address: z.string().max(1000).optional().openapi({ example: '東京都渋谷区1-1-1' }),
+    family_name: z.string().min(1).max(TEXT_MAX_LENGTH).openapi({ example: '山田' }),
+    given_name: z.string().min(1).max(TEXT_MAX_LENGTH).openapi({ example: '太郎' }),
+    family_name_kana: z.string().min(1).max(TEXT_MAX_LENGTH).openapi({ example: 'ヤマダ' }),
+    given_name_kana: z.string().min(1).max(TEXT_MAX_LENGTH).openapi({ example: 'タロウ' }),
+    birth_date: z.string().openapi({ example: '1990-01-01' }),
+    phone: z
+      .string()
+      .min(1)
+      .max(TEXT_MAX_LENGTH)
+      .regex(/^0\d{1,4}-?\d{1,4}-?\d{3,4}$/)
+      .openapi({ example: '090-1234-5678' }),
+    email: z.string().email().max(TEXT_MAX_LENGTH).openapi({ example: 'taro@example.com' }),
+    address: z
+      .string()
+      .max(TEXTAREA_MAX_LENGTH)
+      .optional()
+      .openapi({ example: '東京都渋谷区1-1-1' }),
   })
-  .openapi({ title: 'BlacklistCheckRequest', description: 'Blacklist check request' });
+  .openapi({ title: 'BlacklistCheckRequest', description: 'Blacklist pre-check request' });
 
 export const BlacklistCheckResponseSchema = z
   .object({
-    checked: z.boolean().openapi({ example: true }),
-    matched: z.boolean().openapi({ example: false }),
+    state: BlacklistCheckStateSchema.openapi({ example: 'no_match' }),
+    conditions: z.array(BlacklistConditionSchema).openapi({ description: 'Matched conditions' }),
   })
-  .openapi({ title: 'BlacklistCheckResponse', description: 'Blacklist check result' });
+  .openapi({ title: 'BlacklistCheckResponse', description: 'Blacklist pre-check result' });
 
-/**
- * Direct Enrollment — Applicant
- */
+// ─── Direct (admin-screen) enrolment ─────────────────────────────────────────
+
+export const DirectEnrollmentGenderSchema = z
+  .enum(['male', 'female', 'other', 'no_answer'])
+  .openapi({ title: 'DirectEnrollmentGender', description: 'Applicant gender (FR-045)' });
+
 export const DirectEnrollmentApplicantSchema = z
   .object({
-    last_name_kanji: z.string().min(1, { message: '姓を入力してください' }).max(255),
-    first_name_kanji: z.string().min(1, { message: '名を入力してください' }).max(255),
-    last_name_kana: z
+    family_name: z.string().min(1, { message: '姓を入力してください' }).max(TEXT_MAX_LENGTH),
+    given_name: z.string().min(1, { message: '名を入力してください' }).max(TEXT_MAX_LENGTH),
+    family_name_kana: z
       .string()
-      .min(1, { message: '姓（カナ）を入力してください' })
-      .max(255)
-      .regex(/^[\u30A0-\u30FF\s]+$/, 'カタカナで入力してください'),
-    first_name_kana: z
+      .min(1, { message: 'セイを入力してください' })
+      .max(TEXT_MAX_LENGTH)
+      .regex(/^[゠-ヿ\s]+$/, 'カタカナで入力してください'),
+    given_name_kana: z
       .string()
-      .min(1, { message: '名（カナ）を入力してください' })
-      .max(255)
-      .regex(/^[\u30A0-\u30FF\s]+$/, 'カタカナで入力してください'),
-    date_of_birth: z.string().min(1, { message: '生年月日を入力してください' }).date(),
-    gender: z.enum(['male', 'female', 'other']),
-    phone: z.string().min(1, { message: '電話番号を入力してください' }).max(255),
+      .min(1, { message: 'メイを入力してください' })
+      .max(TEXT_MAX_LENGTH)
+      .regex(/^[゠-ヿ\s]+$/, 'カタカナで入力してください'),
+    birth_date: z.string().min(1, { message: '生年月日を入力してください' }),
+    gender: DirectEnrollmentGenderSchema,
+    phone: z
+      .string()
+      .min(1, { message: '電話番号を入力してください' })
+      .max(TEXT_MAX_LENGTH)
+      .regex(/^0\d{1,4}-?\d{1,4}-?\d{3,4}$/, { message: '有効な電話番号を入力してください' }),
     email: z
       .string()
       .min(1, { message: 'メールアドレスを入力してください' })
       .email({ message: '有効なメールアドレスを入力してください' })
-      .max(255),
-    address: z.string().max(1000).optional(),
-    face_photo_url: z
-      .string()
-      .min(1, { message: '顔写真をアップロードしてください' })
-      .url({ message: '有効なURLを入力してください' }),
+      .max(TEXT_MAX_LENGTH),
+    address: z.string().max(TEXTAREA_MAX_LENGTH).optional(),
+    face_photo_id: z.string().min(1, { message: '顔写真をアップロードしてください' }),
   })
   .openapi({ title: 'DirectEnrollmentApplicant' });
 
-/**
- * Direct Enrollment — Contract
- */
 export const DirectEnrollmentContractSchema = z
   .object({
-    brand: z.enum(['FIT365', 'JOYFIT']),
-    store_id: z.string().min(1, { message: '店舗を選択してください' }),
+    brand_id: z.string().min(1, { message: 'ブランドを選択してください' }),
+    store_id: z.string().min(1, { message: '入会店舗を選択してください' }),
     plan_id: z.string().min(1, { message: 'プランを選択してください' }),
-    start_date: z.string().min(1, { message: '利用開始日を入力してください' }).date(),
-    campaign_id: z.string().optional(),
-    payment_method: z.enum(['credit_card', 'bank_transfer']),
+    usage_start_date: z.string().min(1, { message: '利用開始日を入力してください' }),
+    payment_method: MembershipApplicationPaymentMethodSchema,
+    campaign_id: z.string().nullable().optional(),
+    /** JOYFIT only — FIT365 charges a card-issue fee and offers no master selector. */
+    enrollment_fee_master_id: z.string().nullable().optional(),
   })
   .openapi({ title: 'DirectEnrollmentContract' });
 
-/**
- * Direct Enrollment — Corporate
- */
-export const DirectEnrollmentCorporateSchema = z
+export const DirectEnrollmentConsentSchema = z
   .object({
-    corporate_id: z.string().min(1, { message: '法人を選択してください' }),
-    billing_pattern: z.string().min(1, { message: '請求パターンを入力してください' }),
-    enrollment_fee_bearer: z.string().min(1, { message: '入会金負担者を選択してください' }),
+    agreement_datetime: z.string().min(1, { message: '合意日時を入力してください' }),
+    parental_consent: z.boolean(),
   })
-  .openapi({ title: 'DirectEnrollmentCorporate' });
+  .openapi({ title: 'DirectEnrollmentConsent' });
 
-/**
- * Direct Enrollment — Employee Discount
- */
-export const DirectEnrollmentEmployeeDiscountSchema = z
+export const DirectEnrollmentRequestSchema = z
   .object({
-    partner_company_id: z.string().min(1, { message: '提携会社を選択してください' }),
-    employee_number: z.string().min(1, { message: '社員番号を入力してください' }).max(255),
-    employee_id_verified: z.literal(true),
-    employment_cert_verified: z.literal(true),
-    employee_id_image_url: z.string().url().optional(),
-    employment_cert_image_url: z.string().url().optional(),
-  })
-  .openapi({ title: 'DirectEnrollmentEmployeeDiscount' });
-
-/**
- * Direct Enrollment — Fees
- */
-export const DirectEnrollmentFeesSchema = z
-  .object({
-    // JOYFIT fields
-    enrollment_fee_master_id: z.string().optional(),
-    enrollment_fee_amount: z.number().int().nonnegative().optional(),
-    registration_fee: z.number().int().nonnegative().optional(),
-    // FIT365 fields
-    card_issuance_fee: z.number().int().nonnegative().optional(),
-    // Shared
-    first_month_fee_prorated: z.number().int().nonnegative().optional(),
-    next_month_fee: z.number().int().nonnegative().optional(),
-  })
-  .openapi({ title: 'DirectEnrollmentFees' });
-
-/**
- * Direct Enrollment Request Base (no superRefine — applied in form)
- */
-export const DirectEnrollmentRequestBaseSchema = z
-  .object({
-    application_type: ApplicationTypeSchema,
     applicant: DirectEnrollmentApplicantSchema,
     contract: DirectEnrollmentContractSchema,
-    corporate: DirectEnrollmentCorporateSchema.optional(),
-    employee_discount: DirectEnrollmentEmployeeDiscountSchema.optional(),
-    fees: DirectEnrollmentFeesSchema,
+    consent: DirectEnrollmentConsentSchema,
   })
   .openapi({ title: 'DirectEnrollmentRequest', description: 'Direct enrollment request body' });
 
-/**
- * Direct Enrollment Response
- */
 export const DirectEnrollmentResponseSchema = z
   .object({
-    applicationId: z.string().openapi({ example: 'APP-DIRECT-1234567890' }),
-    memberId: z.string().openapi({ example: 'MBR-DIRECT-1234567890' }),
-    status: z.literal('pending'),
+    application: MembershipApplicationSchema,
   })
   .openapi({ title: 'DirectEnrollmentResponse', description: 'Direct enrollment response' });
 
-// Type exports (T-002)
+// ─── Type exports ─────────────────────────────────────────────────────────────
+
+export type MembershipApplicationStatus = z.infer<typeof MembershipApplicationStatusSchema>;
+export type EnrollmentRoute = z.infer<typeof EnrollmentRouteSchema>;
+export type RejectionReason = z.infer<typeof RejectionReasonSchema>;
+export type BlacklistCheckState = z.infer<typeof BlacklistCheckStateSchema>;
+export type EnrollmentFeeExemptionKind = z.infer<typeof EnrollmentFeeExemptionKindSchema>;
+export type MembershipApplicationPaymentMethod = z.infer<
+  typeof MembershipApplicationPaymentMethodSchema
+>;
+export type MembershipApplication = z.infer<typeof MembershipApplicationSchema>;
+export type MembershipApplicationSummary = z.infer<typeof MembershipApplicationSummarySchema>;
+export type Pagination = z.infer<typeof PaginationSchema>;
+export type GetMembershipApplicationsQuery = z.infer<typeof GetMembershipApplicationsQuerySchema>;
+export type GetMembershipApplicationsResponse = z.infer<
+  typeof GetMembershipApplicationsResponseSchema
+>;
+export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
+export type BlacklistCondition = z.infer<typeof BlacklistConditionSchema>;
+export type FeeRow = z.infer<typeof FeeRowSchema>;
+export type EnrollmentFeeExemption = z.infer<typeof EnrollmentFeeExemptionSchema>;
+export type CompanionUpgrade = z.infer<typeof CompanionUpgradeSchema>;
+export type GetApplicationDetailResponse = z.infer<typeof GetApplicationDetailResponseSchema>;
+export type MembershipApplicationDetail = GetApplicationDetailResponse['application'];
+export type ApproveRequest = z.infer<typeof ApproveRequestSchema>;
+export type ApproveResponse = z.infer<typeof ApproveResponseSchema>;
+export type RejectRequest = z.infer<typeof RejectRequestSchema>;
+export type RejectResponse = z.infer<typeof RejectResponseSchema>;
+export type CancelRequest = z.infer<typeof CancelRequestSchema>;
+export type CancelResponse = z.infer<typeof CancelResponseSchema>;
+export type CreateMemoRequest = z.infer<typeof CreateMemoRequestSchema>;
+export type CreateMemoResponse = z.infer<typeof CreateMemoResponseSchema>;
+export type DeleteMemoResponse = z.infer<typeof DeleteMemoResponseSchema>;
+export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
+export type EnrollmentFeeMaster = z.infer<typeof EnrollmentFeeMasterSchema>;
+export type GetEnrollmentFeeMastersQuery = z.infer<typeof GetEnrollmentFeeMastersQuerySchema>;
+export type GetEnrollmentFeeMastersResponse = z.infer<typeof GetEnrollmentFeeMastersResponseSchema>;
+export type UploadResponse = z.infer<typeof UploadResponseSchema>;
 export type BlacklistCheckRequest = z.infer<typeof BlacklistCheckRequestSchema>;
 export type BlacklistCheckResponse = z.infer<typeof BlacklistCheckResponseSchema>;
+export type DirectEnrollmentGender = z.infer<typeof DirectEnrollmentGenderSchema>;
 export type DirectEnrollmentApplicant = z.infer<typeof DirectEnrollmentApplicantSchema>;
 export type DirectEnrollmentContract = z.infer<typeof DirectEnrollmentContractSchema>;
-export type DirectEnrollmentCorporate = z.infer<typeof DirectEnrollmentCorporateSchema>;
-export type DirectEnrollmentEmployeeDiscount = z.infer<
-  typeof DirectEnrollmentEmployeeDiscountSchema
->;
-export type DirectEnrollmentFees = z.infer<typeof DirectEnrollmentFeesSchema>;
-export type DirectEnrollmentRequest = z.infer<typeof DirectEnrollmentRequestBaseSchema>;
+export type DirectEnrollmentConsent = z.infer<typeof DirectEnrollmentConsentSchema>;
+export type DirectEnrollmentRequest = z.infer<typeof DirectEnrollmentRequestSchema>;
 export type DirectEnrollmentResponse = z.infer<typeof DirectEnrollmentResponseSchema>;

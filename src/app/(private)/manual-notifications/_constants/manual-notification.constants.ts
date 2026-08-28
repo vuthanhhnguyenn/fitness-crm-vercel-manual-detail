@@ -13,7 +13,7 @@ type ManualNotificationDynamicAttribute = Extract<
   ManualNotificationTarget,
   { type: 'dynamic_attribute' }
 >['attribute'];
-type ManualNotificationContractType = Extract<
+export type ManualNotificationContractType = Extract<
   ManualNotificationTarget,
   { type: 'contract_type' }
 >['contractType'];
@@ -120,11 +120,14 @@ export const MANUAL_NOTIFICATION_DYNAMIC_ATTRIBUTE_OPTIONS = [
   description: string;
 }>;
 
+/**
+ * Aligned with the /crm/members ContractTypeSchema (member.schema.ts) so that
+ * 契約種別指定 targeting maps 1:1 onto real member contract types.
+ */
 export const MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS = [
   'regular',
-  'premium',
-  'visitor',
-  'corporate',
+  'one_day_member',
+  'family',
 ] as const satisfies readonly ManualNotificationContractType[];
 
 export const MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS: Record<
@@ -132,9 +135,8 @@ export const MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS: Record<
   string
 > = {
   regular: 'レギュラー会員',
-  premium: 'プレミアム会員',
-  visitor: 'ビジター会員',
-  corporate: '法人会員',
+  one_day_member: '1日会員',
+  family: '家族会員',
 };
 
 export const MANUAL_NOTIFICATION_MEMBERSHIP_DURATION_CONDITION_LABELS: Record<
@@ -182,12 +184,50 @@ export const MANUAL_NOTIFICATION_BRAND_LABELS: Record<ManualNotificationBrand, s
   fit365: 'FIT365',
 } as const;
 
-export const MANUAL_NOTIFICATION_STATUS_OPTIONS = Object.keys(
-  MANUAL_NOTIFICATION_STATUS_LABELS,
-) as ManualNotificationStatus[];
+export const MANUAL_NOTIFICATION_STATUS_OPTIONS = [
+  'draft',
+  'pending_approval',
+  'returned',
+  'scheduled',
+  'sending',
+  'sent',
+] as const satisfies readonly ManualNotificationStatus[];
 
-export function manualNotificationRequiresApproval(target: { type: ManualNotificationTargetType }) {
-  return target.type !== 'stores' && target.type !== 'members';
+/**
+ * Spec FR-006 & Prototype:
+ * HQ Approval is required when target is:
+ *  - "全会員" (all_members)
+ *  - a whole brand: "JOYFIT全体" (joyfit_all) or "FIT365" (fit365)
+ *  - all JOYFIT sub-brands individually selected (equivalent to joyfit_all)
+ * NOTE: Keep in sync with src/app/api/crm/notifications/_lib/manual-notification-upsert.util.ts
+ */
+export function manualNotificationRequiresApproval(target: {
+  type: ManualNotificationTargetType;
+  brands?: ManualNotificationBrand[];
+}): boolean {
+  if (target.type === 'all_members') return true;
+
+  if (target.type === 'brands') {
+    const brands = target.brands ?? [];
+    // Whole-brand explicit token (JOYFIT全体 or FIT365) -> approval required
+    if (brands.some((brand) => brand === 'joyfit_all' || brand === 'fit365')) {
+      return true;
+    }
+    // All JOYFIT sub-brands individually selected == JOYFIT全体 -> approval required
+    const JOYFIT_SUB_BRANDS = [
+      'joyfit',
+      'joyfit24',
+      'joyfit_yoga',
+      'joyfit_plus',
+    ] satisfies readonly ManualNotificationBrand[];
+    if (JOYFIT_SUB_BRANDS.every((brand) => brands.includes(brand))) {
+      return true;
+    }
+    return false;
+  }
+
+  // Limited targets (single sub-brand / stores / members / etc.) -> no approval required
+  return false;
 }
 
 interface ManualNotificationActionPolicy {

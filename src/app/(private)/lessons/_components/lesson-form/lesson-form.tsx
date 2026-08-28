@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -17,6 +17,9 @@ import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
 
 import {
+  getCrmLessonContentsByIdHistoryQueryKey,
+  getCrmLessonContentsByIdQueryKey,
+  getCrmLessonContentsQueryKey,
   patchCrmLessonContentsByIdMutation,
   postCrmLessonContentsMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
@@ -48,12 +51,7 @@ function formValuesToApiBody(values: Partial<LessonFormValues>) {
     lesson_type: values.lessonType!,
     brand: values.brand!,
     duration: values.duration!,
-    pricing_type:
-      values.pricingType === 'per_use'
-        ? ('paid' as const)
-        : values.pricingType === 'free'
-          ? ('included' as const)
-          : ('included' as const),
+    pricing_type: values.pricingType === 'free' ? ('included' as const) : values.pricingType!,
     per_use_fee: values.pricingType === 'per_use' ? (values.perUseFee ?? null) : null,
     images: (values.images ?? []).map((image) => ({
       order: image.order,
@@ -71,8 +69,12 @@ export function LessonForm({ mode, defaultValues, lessonId }: LessonFormProps) {
   const router = useRouter();
   const isEdit = mode === 'edit';
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [submitValues, setSubmitValues] = useState<Partial<LessonFormValues> | null>(null);
+  // Holds the schema-transformed (coerced) output values captured in handleSubmit.
+  // Needed because form.getValues() returns the raw input type (e.g. duration as
+  // unknown/string) — only the resolver output has duration coerced to a number.
+  const [submitValues, setSubmitValues] = useState<LessonFormValues | null>(null);
   const scrollToFirstError = useScrollToFirstError();
+  const queryClient = useQueryClient();
 
   const form = useForm<LessonFormInput, unknown, LessonFormValues>({
     resolver: zodResolver(LessonFormSchema),
@@ -95,6 +97,9 @@ export function LessonForm({ mode, defaultValues, lessonId }: LessonFormProps) {
     ...postCrmLessonContentsMutation(),
     onSuccess: () => {
       toast.success('レッスンを登録しました');
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonContentsQueryKey(),
+      });
       router.push(navigate('/lessons'));
     },
     onError: () => {
@@ -106,6 +111,17 @@ export function LessonForm({ mode, defaultValues, lessonId }: LessonFormProps) {
     ...patchCrmLessonContentsByIdMutation(),
     onSuccess: () => {
       toast.success('レッスンの変更を保存しました');
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonContentsQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonContentsByIdQueryKey({ path: { id: lessonId! } }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getCrmLessonContentsByIdHistoryQueryKey({
+          path: { id: lessonId! },
+        }),
+      });
       router.push(navigate('/lessons'));
     },
     onError: () => {
@@ -155,7 +171,7 @@ export function LessonForm({ mode, defaultValues, lessonId }: LessonFormProps) {
     <Form {...form}>
       <form noValidate onSubmit={form.handleSubmit(handleSubmit, onInvalid)}>
         <main className="bg-background min-h-0 flex-1 overflow-y-auto px-6 py-4">
-          <div className="mx-auto max-w-[960px]">
+          <div className="mx-auto max-w-240">
             <div className="space-y-6">
               {isEdit && (
                 <Alert className="border-warning/50 bg-warning/15">
@@ -201,6 +217,9 @@ export function LessonForm({ mode, defaultValues, lessonId }: LessonFormProps) {
           mode={mode}
           values={submitValues ?? {}}
           onConfirm={handleConfirm}
+          isSubmitting={
+            form.formState.isSubmitting || createMutation.isPending || updateMutation.isPending
+          }
         />
       </form>
     </Form>

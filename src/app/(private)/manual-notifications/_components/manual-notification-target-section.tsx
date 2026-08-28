@@ -1,13 +1,13 @@
 'use client';
 
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { Bell, ChevronsUpDown, Users } from 'lucide-react';
 
 import { useDebounce } from '@/hooks/use-debounce.hook';
-import { useInfiniteScroll } from '@/hooks/use-scroll-end.hook';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll.hook';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -65,7 +65,14 @@ function getTargetPreviewCount(
     case 'brands':
       return target.brands.reduce((sum, b) => sum + (targetPreviewCounts.brands[b] ?? 0), 0);
     case 'stores':
-      return targetPreviewCounts.stores * new Set(target.stores.map((s) => s.id)).size;
+      // server-side: `targetPreviewCounts.stores` is a per-store map keyed by
+      // store id. Sum the entries the user actually selected instead of
+      // multiplying a single "average" per store (see the BE util
+      // `getManualNotificationFormPreviewCounts` for the live count).
+      return target.stores.reduce(
+        (sum, store) => sum + (targetPreviewCounts.stores[store.id] ?? 0),
+        0,
+      );
     case 'contract_type':
       return targetPreviewCounts.contractType[target.contractType] ?? 0;
     case 'membership_duration':
@@ -135,10 +142,15 @@ function ManualNotificationStoreSelect({
   });
   const stores = query.data?.pages.flatMap((page) => page.stores) ?? [];
   const total = query.data?.pages[0]?.pagination.total ?? stores.length;
-  const handleStoreListScroll = useInfiniteScroll({
-    hasNextPage: Boolean(query.hasNextPage),
-    isFetchingNextPage: query.isFetchingNextPage,
-    fetchNextPage: query.fetchNextPage,
+  const storeListRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useInfiniteScroll({
+    hasMore: Boolean(query.hasNextPage),
+    isLoading: query.isFetchingNextPage,
+    onLoadMore: () => {
+      void query.fetchNextPage();
+    },
+    rootRef: storeListRef,
+    enabled: open,
   });
 
   return (
@@ -178,7 +190,7 @@ function ManualNotificationStoreSelect({
         <p className="text-muted-foreground border-y px-3 py-2 text-xs">
           {value.length}件選択中 / 全{total}件
         </p>
-        <div className="max-h-64 overflow-y-auto p-1" onScroll={handleStoreListScroll}>
+        <div ref={storeListRef} className="max-h-64 overflow-y-auto p-1">
           {query.isLoading ? (
             <p className="text-muted-foreground p-3 text-center text-xs">店舗を読み込み中...</p>
           ) : null}
@@ -209,6 +221,11 @@ function ManualNotificationStoreSelect({
               </label>
             );
           })}
+          {(query.hasNextPage || query.isFetchingNextPage) && (
+            <div ref={sentinelRef} className="py-1 text-center text-xs text-muted-foreground">
+              {query.isFetchingNextPage ? '読み込み中...' : null}
+            </div>
+          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -502,7 +519,7 @@ export function ManualNotificationTargetSection({
             <Bell className="text-warning size-4" />
             <AlertDescription className="text-muted-foreground text-xs">
               <span className="text-warning font-medium">本部承認が必要です。</span>{' '}
-              店舗指定・会員個別指定以外の通知は本部（HQ）の承認後に配信されます。送信すると、CRMシステム内の通知として本部担当者に承認依頼が届きます。
+              全会員向けまたはブランド全体（JOYFIT全体・FIT365）向けの通知は本部（HQ）の承認後に配信されます。送信すると、CRMシステム内の通知として本部担当者に承認依頼が届きます。
             </AlertDescription>
           </Alert>
         ) : null}

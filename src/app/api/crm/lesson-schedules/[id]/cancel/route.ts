@@ -40,13 +40,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: errors }, { status: 400 });
     }
 
-    db.lessonSchedules.update(scheduleId, { status: 'cancelled' });
+    const cancelledAt = new Date().toISOString();
+    const cancelledBy = parsed.data.cancelled_by ?? 'staff';
+
+    db.lessonSchedules.update(scheduleId, {
+      status: 'cancelled',
+      cancel_reason: parsed.data.cancel_reason,
+      cancel_reason_detail: parsed.data.cancel_reason_detail ?? null,
+      cancelled_at: cancelledAt,
+      cancelled_by: cancelledBy,
+    });
 
     const response: CancelLessonResponse = {
       id: scheduleId,
       status: 'cancelled',
-      cancelled_at: new Date().toISOString(),
-      cancelled_by: 'staff',
+      cancelled_at: cancelledAt,
+      cancelled_by: cancelledBy,
       cancel_reason: parsed.data.cancel_reason,
       message: 'レッスンを中止しました',
     };

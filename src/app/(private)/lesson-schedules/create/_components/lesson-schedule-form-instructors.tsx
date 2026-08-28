@@ -5,7 +5,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 
 import { useAuthUser } from '@/contexts/auth-user.context';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { Check, ChevronsUpDown, Info, Lock, UserRound, X } from 'lucide-react';
+import { Check, ChevronsUpDown, Info, Lock, X } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,13 +26,17 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   getCrmInstructorsOptions,
   getCrmLessonSchedulesInstructorAvailabilityOptions,
+  getCrmStoresOptions,
   getCrmStudiosOptions,
 } from '@/lib/api/@tanstack/react-query.gen';
 import { cn } from '@/lib/utils';
 
 import { UserRole } from '@/types/permission.type';
 
+import { useGeneratedScheduleDates } from '../_hooks/use-generated-schedule-dates.hook';
 import type { LessonScheduleFormValues } from '../_schemas/lesson-schedule-form.schema';
+import { findStoreByLessonScheduleStoreId } from '../_utils/lesson-schedule-store.util';
+import { InstructorAvatar } from './instructor-avatar';
 import { InstructorConflictWarning } from './instructor-conflict-warning';
 
 interface ConflictItem {
@@ -40,6 +44,9 @@ interface ConflictItem {
   date: string;
   lessonName: string;
 }
+
+/** Bounds how many recurring occurrences are checked for instructor conflicts (mock backend, cheap per-call). */
+const MAX_CONFLICT_CHECK_OCCURRENCES = 30;
 
 export function LessonScheduleFormInstructors() {
   const form = useFormContext<LessonScheduleFormValues>();
@@ -81,38 +88,67 @@ export function LessonScheduleFormInstructors() {
 
   const { data: instructorsData } = useQuery({
     ...getCrmInstructorsOptions({
-      query: storeId ? { store_id: storeId } : undefined,
+      query: {
+        ...(storeId ? { store_id: storeId } : {}),
+        status: 'active',
+        tab: lessonType === 'personal' ? 'pt' : 'studio',
+      },
     }),
   });
+
+  const { data: storesRes } = useQuery({
+    ...getCrmStoresOptions({
+      query: { page: 1, limit: 100, sort_by: 'name', sort_order: 'asc' },
+    }),
+  });
+  const stores = useMemo(() => storesRes?.stores ?? [], [storesRes?.stores]);
+  const selectedStore = findStoreByLessonScheduleStoreId(stores, storeId ?? '');
 
   const { data: studiosData } = useQuery({
     ...getCrmStudiosOptions({
-      query: storeId ? { store_id: storeId } : undefined,
+      query: selectedStore ? { store_id: selectedStore.id } : undefined,
     }),
-    enabled: lessonType === 'studio',
+    enabled: lessonType === 'studio' && !!selectedStore,
   });
 
-  const checkDate = scheduleDate || scheduleStartDate;
+  const generatedDates = useGeneratedScheduleDates(form.control);
+
+  const checkDates = useMemo(() => {
+    if (scheduleDate) return [scheduleDate];
+    if (scheduleStartDate) {
+      return generatedDates.slice(0, MAX_CONFLICT_CHECK_OCCURRENCES).map((d) => d.isoDate);
+    }
+    return [];
+  }, [scheduleDate, scheduleStartDate, generatedDates]);
+
+  const conflictCheckPairs = useMemo(
+    () =>
+      (selectedInstructorIds as string[]).flatMap((instructorId) =>
+        checkDates.map((date) => ({ instructorId, date })),
+      ),
+    [selectedInstructorIds, checkDates],
+  );
 
   const conflictQueries = useQueries({
-    queries: (selectedInstructorIds as string[]).map((instructorId) => ({
+    queries: conflictCheckPairs.map(({ instructorId, date }) => ({
       ...getCrmLessonSchedulesInstructorAvailabilityOptions({
         query: {
           instructor_id: instructorId,
-          date: checkDate!,
+          date,
           start_time: startTime!,
         },
       }),
-      enabled: !!checkDate && !!startTime,
+      enabled: !!date && !!startTime,
     })),
   });
 
   const allConflicts = useMemo(() => {
     const conflicts: ConflictItem[] = [];
+    const seen = new Set<string>();
 
     conflictQueries.forEach((query, index) => {
       const data = query.data;
-      const instructorId = (selectedInstructorIds as string[])[index];
+      const { instructorId, date } = conflictCheckPairs[index];
       if (!data || data.available || data.conflicts.length === 0) return;
 
       const instructor = (instructorsData?.instructors ?? []).find(
@@ -120,23 +156,26 @@ export function LessonScheduleFormInstructors() {
       );
 
       data.conflicts.forEach((conflict) => {
+        const dedupeKey = `${instructorId}-${date}-${conflict.schedule_id}`;
+        if (seen.has(dedupeKey)) return;
+        seen.add(dedupeKey);
         conflicts.push({
           instructorValue: instructor?.instructor_name ?? instructorId,
-          date: checkDate!,
+          date,
           lessonName: conflict.lesson_name,
         });
       });
     });
 
     return conflicts;
-  }, [checkDate, conflictQueries, instructorsData?.instructors, selectedInstructorIds]);
+  }, [conflictCheckPairs, conflictQueries, instructorsData?.instructors]);
 
   const instructorList = instructorsData?.instructors ?? [];
   const selectedStudio = (studiosData?.items ?? []).find((s) => s.id === studioId);
+  const effectiveMaxCapacity = selectedStudio
+    ? selectedStudio.capacity + selectedStudio.buffer_value
+    : undefined;
 
-  const availableInstructors = instructorList.filter(
-    (inst) => !(selectedInstructorIds as string[]).includes(inst.instructor_id),
-  );
   const selectedInstructors = instructorList.filter((inst) =>
     (selectedInstructorIds as string[]).includes(inst.instructor_id),
   );
@@ -171,8 +210,15 @@ export function LessonScheduleFormInstructors() {
     );
   }
 
-  const expectedRole = lessonType === 'personal' ? 'トレーナー' : 'インストラクター';
+  function handleToggle(instructorId: string) {
+    if ((selectedInstructorIds as string[]).includes(instructorId)) {
+      handleRemove(instructorId);
+    } else {
+      handleAdd(instructorId);
+    }
+  }
 
+  const expectedRole = lessonType === 'personal' ? 'トレーナー' : 'インストラクター';
   return (
     <Card>
       <CardContent className="px-6">
@@ -195,18 +241,12 @@ export function LessonScheduleFormInstructors() {
                         variant="secondary"
                         className="flex h-7 items-center gap-2 pr-2 pl-1 text-xs font-normal"
                       >
-                        {selfInstructor?.photo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={selfInstructor.photo_url}
-                            alt={selfInstructorName}
-                            className="size-5 shrink-0 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="bg-muted flex size-5 shrink-0 items-center justify-center rounded-full">
-                            <UserRound className="text-muted-foreground size-3" />
-                          </div>
-                        )}
+                        <InstructorAvatar
+                          photoUrl={selfInstructor?.photo_url}
+                          name={selfInstructorName}
+                          className="size-5"
+                          iconClassName="size-3"
+                        />
                         {selfInstructorName}
                         <span className="text-muted-foreground text-[10px]">（あなた）</span>
                         <Lock className="text-muted-foreground ml-0.5 size-3" />
@@ -245,44 +285,37 @@ export function LessonScheduleFormInstructors() {
                           <CommandInput placeholder={`${expectedRole}を検索...`} className="h-8" />
                           <CommandList>
                             <CommandEmpty>該当なし</CommandEmpty>
-                            <CommandGroup
-                              heading={`${expectedRole}（${availableInstructors.length}名）`}
-                            >
-                              {availableInstructors.map((inst) => (
-                                <CommandItem
-                                  key={inst.instructor_id}
-                                  value={inst.instructor_name}
-                                  onSelect={() => {
-                                    handleAdd(inst.instructor_id);
-                                    setOpen(false);
-                                  }}
-                                  className="flex items-center gap-2"
-                                >
-                                  {inst.photo_url ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      src={inst.photo_url}
-                                      alt={inst.instructor_name}
-                                      className="size-6 shrink-0 rounded-full object-cover"
+                            <CommandGroup heading={`${expectedRole}（${instructorList.length}名）`}>
+                              {instructorList.map((inst) => {
+                                const isSelected = (selectedInstructorIds as string[]).includes(
+                                  inst.instructor_id,
+                                );
+                                return (
+                                  <CommandItem
+                                    key={inst.instructor_id}
+                                    value={inst.instructor_name}
+                                    onSelect={() => {
+                                      handleToggle(inst.instructor_id);
+                                      setOpen(false);
+                                    }}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <InstructorAvatar
+                                      photoUrl={inst.photo_url}
+                                      name={inst.instructor_name}
+                                      className="size-6"
+                                      iconClassName="size-3"
                                     />
-                                  ) : (
-                                    <div className="bg-muted flex size-6 shrink-0 items-center justify-center rounded-full">
-                                      <UserRound className="text-muted-foreground size-3" />
-                                    </div>
-                                  )}
-                                  <span>{inst.instructor_name}</span>
-                                  <Check
-                                    className={cn(
-                                      'ml-auto size-4',
-                                      (selectedInstructorIds as string[]).includes(
-                                        inst.instructor_id,
-                                      )
-                                        ? 'opacity-100'
-                                        : 'opacity-0',
-                                    )}
-                                  />
-                                </CommandItem>
-                              ))}
+                                    <span>{inst.instructor_name}</span>
+                                    <Check
+                                      className={cn(
+                                        'ml-auto size-4',
+                                        isSelected ? 'opacity-100' : 'opacity-0',
+                                      )}
+                                    />
+                                  </CommandItem>
+                                );
+                              })}
                             </CommandGroup>
                           </CommandList>
                         </Command>
@@ -298,18 +331,12 @@ export function LessonScheduleFormInstructors() {
                             variant="secondary"
                             className="flex h-7 items-center gap-2 pr-1 pl-1 text-xs font-normal"
                           >
-                            {inst.photo_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={inst.photo_url}
-                                alt={inst.instructor_name}
-                                className="size-5 shrink-0 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="bg-muted flex size-5 shrink-0 items-center justify-center rounded-full">
-                                <UserRound className="text-muted-foreground size-3" />
-                              </div>
-                            )}
+                            <InstructorAvatar
+                              photoUrl={inst.photo_url}
+                              name={inst.instructor_name}
+                              className="size-5"
+                              iconClassName="size-3"
+                            />
                             {inst.instructor_name}
                             <button
                               type="button"
@@ -349,7 +376,7 @@ export function LessonScheduleFormInstructors() {
                         className="h-8 w-[120px] text-sm"
                         placeholder="例: 10"
                         min={1}
-                        max={selectedStudio?.capacity}
+                        max={effectiveMaxCapacity}
                         value={String(field.value ?? '')}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -362,22 +389,31 @@ export function LessonScheduleFormInstructors() {
                       <Label className="text-muted-foreground text-sm">名</Label>
                       {selectedStudio && (
                         <Label className="text-muted-foreground text-xs">
-                          （上限: {selectedStudio.capacity}名 ／ {selectedStudio.name}
-                          物理定員）
+                          （上限: {effectiveMaxCapacity}名 ／ 物理定員 {selectedStudio.capacity}名 +
+                          バッファ {selectedStudio.buffer_value}名）
                         </Label>
                       )}
                     </div>
                   </FormControl>
                   {!studioId ? (
                     <p className="text-muted-foreground mt-1 text-xs">
-                      スタジオを選択すると物理定員の上限が表示されます
+                      スタジオを選択すると定員の上限（物理定員＋バッファ）が表示されます
                     </p>
                   ) : null}
                   {selectedStudio &&
                   capacity !== undefined &&
-                  Number(capacity) > selectedStudio.capacity ? (
+                  Number(capacity) > effectiveMaxCapacity! ? (
                     <p className="text-destructive text-xs">
-                      物理定員（{selectedStudio.capacity}名）を超えています
+                      定員が物理定員＋バッファ値（{effectiveMaxCapacity}
+                      名）を超えているため登録できません
+                    </p>
+                  ) : null}
+                  {selectedStudio &&
+                  capacity !== undefined &&
+                  Number(capacity) > selectedStudio.capacity &&
+                  Number(capacity) <= effectiveMaxCapacity! ? (
+                    <p className="text-warning text-xs">
+                      定員がスタジオの物理定員を超えています。見学・体験枠を含む場合はこのまま進められます
                     </p>
                   ) : null}
                   {selectedStudio &&
@@ -385,7 +421,8 @@ export function LessonScheduleFormInstructors() {
                   Number(capacity) > 0 &&
                   Number(capacity) <= selectedStudio.capacity ? (
                     <p className="text-muted-foreground text-xs">
-                      例: {selectedStudio.capacity}名のスタジオで{Number(capacity)}
+                      例: {selectedStudio.capacity}名のスタジオで
+                      {Number(capacity)}
                       名限定開催
                     </p>
                   ) : null}

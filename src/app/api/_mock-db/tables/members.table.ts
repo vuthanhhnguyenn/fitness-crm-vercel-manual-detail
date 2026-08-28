@@ -4,20 +4,18 @@ import type {
   FamilyRelationship,
 } from '@/app/api/_schemas/family-registration.schema';
 import type {
-  CreateMemberRequest,
+  GateStopReason,
+  GateStopSetPattern,
+  GetMemberDetailResponse,
   UpdateBasicInfoRequest,
   UpdateHealthInfoRequest,
   UpdateMarketingConsentRequest,
   UpdateMemberRequest,
 } from '@/app/api/_schemas/member.schema';
-import type { DirectEnrollmentRequest as DirectEnrollmentRequestType } from '@/app/api/_schemas/membership-application.schema';
+import type { MembershipApplication } from '@/app/api/_schemas/membership-application.schema';
+import { formatISODateLocal } from '@/utils/date.util';
 
-import { Brand, GetContractsResponse, MemberStatus, MemberType } from '@/lib/api/types.gen';
-
-import type {
-  MembershipApplication,
-  MembershipApplicationStatus,
-} from '@/types/api/membership-application.type';
+import { Brand, type MainBrand, MemberStatus, MemberType } from '@/lib/api/types.gen';
 
 import type { DbType } from '../_db.types';
 import {
@@ -26,16 +24,21 @@ import {
   type Member,
   type MemberProfile,
   type MemberRow,
-  type MembershipApplicationDetails,
   buildMemberContractData,
   createMember,
   familyRelationshipToJa,
+  joinJapaneseName,
   memberToListItem,
   resolveBrand,
   resolveContractTypeFromMemberType,
   resolveMainBrand,
+  splitJapaneseName,
   toIsoDate,
 } from '../seeds/membership.seed';
+import type { TransferRow } from '../seeds/transfer.seed';
+import type { ContractsRecord } from '../types/contracts.type';
+import type { MembershipApplicationDetail } from '../types/membership-applications.type';
+import { MEMBERLESS_STORE_CODE } from './store.table';
 
 const DEFAULT_MEMBER_MAIN_CONTRACT_ID = 'MC001';
 
@@ -50,7 +53,10 @@ export function createMembersTables(getDb: () => DbType) {
         this._seeded = true;
         const db = getDb();
         db.stores._seed();
-        const storeRows = db.stores._rows;
+        // The member-free store is held out of the round-robin below; assigning members to
+        // it would destroy the empty scope it exists to provide, and including it would also
+        // shift every other member onto a different store.
+        const storeRows = db.stores._rows.filter((s) => s.club_code !== MEMBERLESS_STORE_CODE);
         const names = [
           { kanji: '佐藤 花子', kana: 'サトウ ハナコ' },
           { kanji: '鈴木 太郎', kana: 'スズキ タロウ' },
@@ -66,6 +72,19 @@ export function createMembersTables(getDb: () => DbType) {
           mainContracts.find((contract) => contract.id === DEFAULT_MEMBER_MAIN_CONTRACT_ID) ??
           mainContracts[0];
         const byId = new Map(mainContracts.map((contract) => [contract.id, contract]));
+        // Promotion codes used at enrollment. These are campaign master **codes**
+        // (`db.campaigns`), not campaign names: the filter matches on the code, and
+        // the screen resolves the display name from the master — QA01 §4-3 (backend
+        // answer 2026-08-10). Pulled live from the campaign seed so the two never
+        // drift apart; a trailing `undefined` keeps ~1/4 of members with no code.
+        db.campaigns._seed();
+        const seedPromoCodes: (string | undefined)[] = [
+          ...db.campaigns
+            .getList()
+            .map((campaign) => campaign.campaign_code)
+            .filter((code): code is string => !!code),
+          undefined,
+        ];
         for (let i = 1; i <= 200; i++) {
           const id = `M-${String(i).padStart(5, '0')}`;
           const name = names[i % names.length];
@@ -75,71 +94,356 @@ export function createMembersTables(getDb: () => DbType) {
           )[i % 4]!;
           const preferredContractId =
             memberType === 'one_day_member'
-              ? 'MC007'
+              ? 'MC005'
               : memberType === 'family'
                 ? 'MC011'
                 : memberType === 'corporate'
-                  ? 'MC003'
+                  ? 'MC007'
                   : DEFAULT_MEMBER_MAIN_CONTRACT_ID;
           const mainContract = byId.get(preferredContractId) ?? defaultContract;
           const displayName = mainContract?.name ?? DEFAULT_MEMBER_MAIN_CONTRACT;
           const mainContractId = mainContract?.id ?? DEFAULT_MEMBER_MAIN_CONTRACT_ID;
           const phone = `090${String(1000 + (i % 9000)).slice(-4)}${String(1000 + (i % 9000)).slice(-4)}`;
           const email = `member${String(i).padStart(5, '0')}@example.jp`;
+          // Spread join dates across 今月/先月/今年/昨年/older so the 入会期間 filter returns results
+          const joinBucket = i % 5;
+          const joinDay = (i % 28) + 1;
+          const joinedDate =
+            joinBucket === 0
+              ? new Date(now.getFullYear(), now.getMonth(), joinDay)
+              : joinBucket === 1
+                ? new Date(now.getFullYear(), now.getMonth() - 1, joinDay)
+                : joinBucket === 2
+                  ? new Date(now.getFullYear(), 0, joinDay)
+                  : joinBucket === 3
+                    ? new Date(now.getFullYear() - 1, i % 12, joinDay)
+                    : new Date(now.getFullYear() - 2, i % 12, joinDay);
+          const promotionCode = seedPromoCodes[i % seedPromoCodes.length];
+          // The three statuses that have no slot in the 6-way cycle below. They are
+          // rare in practice, so a thin bucket each is enough to exercise the label
+          // mapping and the grouped status filter.
+          const rareStatus: MemberProfile['status'] | undefined =
+            i % 50 === 9
+              ? 'provisional'
+              : i % 50 === 19
+                ? 'pending_suspended'
+                : i % 50 === 29
+                  ? 'withdrawal_pending_processing'
+                  : undefined;
+          // Gate stop is orthogonal to member status, so the seed must contain
+          // gate-stopped members on more than one status — otherwise the
+          // 「ゲートストップ」 filter and the status filter can never be told apart.
+          // `i % 30 === 7` lands only on `i % 6 === 1` (suspended) members.
+          // A 仮会員 has not completed enrolment, so a gate stop on them is nonsense.
+          const hasGateStop = (i % 6 === 3 || i % 30 === 7) && rareStatus !== 'provisional';
           const member = {
             name_kanji: name.kanji,
             name_kana: name.kana,
             phone,
             email,
             birthday: `199${i % 10}-0${(i % 9) + 1}-15`,
-            gender: i % 2 === 0 ? 'male' : ('female' as MemberRow['basic_info']['gender']),
+            // 020-member-form: cycle through all 4 gender values so 回答しない
+            // (prefer_not_to_say) members exist in the seed for manual round-trip checks
+            gender: (['male', 'female', 'other', 'prefer_not_to_say'] as MemberProfile['gender'][])[
+              i % 4
+            ]!,
             member_type: memberType,
-            status: (
-              [
-                'active',
-                'suspended',
-                'withdrawn',
-                'gate_stop',
-                'pending_withdrawal',
-                'force_withdrawn',
-              ] as MemberProfile['status'][]
-            )[i % 6],
+            // The `i % 6 === 3` slot used to be the `gate_stop` status. Gate stop is
+            // now an orthogonal flag (see `hasGateStop` above), so that slot holds a
+            // plain active member who also carries a stop — same population, correct
+            // shape.
+            status:
+              rareStatus ??
+              (
+                [
+                  'active',
+                  'suspended',
+                  'withdrawn',
+                  'active',
+                  'pending_withdrawal',
+                  'forced_withdrawal',
+                ] as MemberProfile['status'][]
+              )[i % 6],
             contract_type: resolveContractTypeFromMemberType(memberType),
             store_name: store.name,
             store_id: store.id,
             brand: store.brand as Brand,
             contract_name: displayName,
             contract_id: mainContractId,
-            joined_at: `2024-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+            joined_at: toIsoDate(joinedDate),
             last_visit_date:
               i % 5 === 0
                 ? undefined
                 : toIsoDate(new Date(now.getTime() - ((i * 3) % 420) * dayMs)),
             has_unpaid: i % 7 === 0,
-            in_cancellation_period: i % 6 === 4,
+            promotion_code: promotionCode,
+            // `i % 6 === 4` are the pending_withdrawal members. `i % 30 === 18` adds
+            // *active* members so the 移籍申請「解約手数料期間中」block is observable at all —
+            // 移籍申請 is only offered while the member is active, so without this second
+            // bucket that acceptance scenario could never be reproduced.
+            in_cancellation_period: i % 6 === 4 || i % 30 === 18,
             is_option_restricted: i % 7 === 0,
             emergency_contact_name: name.kanji,
             emergency_contact_relationship: '配偶者',
             emergency_contact_phone: '09087654321',
             gate_stop_info: null as MemberProfile['gate_stop_info'],
+            usage_start_date: undefined as string | undefined,
+            cancellation_fee_until: undefined as string | undefined,
+            active_suspension: undefined as NonNullable<
+              GetMemberDetailResponse['currentMainContract']
+            >['activeSuspension'],
+            pending_withdrawal: undefined as NonNullable<
+              GetMemberDetailResponse['currentMainContract']
+            >['pendingWithdrawal'],
+            active_penalty: null as GetMemberDetailResponse['activePenalty'],
+            blacklist_info: null as GetMemberDetailResponse['blacklist'],
           };
-          if (member.status === 'gate_stop') {
+          if (hasGateStop) {
             member.gate_stop_info = {
-              scope: 'own_store_only',
-              reason: 'unpaid',
-              terminal_message: '未納金のため、入館を制限します。',
-              lock_after_message: true,
-              set_at: new Date().toISOString(),
-              set_by: 'スタッフ',
+              pattern: 'always_deny',
+              reasonCategory: 'unpaid',
+              // Audit only — which store's staff set it. A gate stop always covers
+              // every store, so this is never a scope.
+              setAtStore: { storeId: store.id, code: store.id, name: store.name },
+              messageType: 'deny_after_confirm',
+              message: '未納金のため、入館を制限します。',
+              setAt: new Date().toISOString(),
+              setBy: { staffId: 'staff-mock', displayName: 'スタッフ' },
+            };
+          }
+          if (member.in_cancellation_period) {
+            // JOYFIT: 12 months from the contract start (A-01 制限事項)
+            member.cancellation_fee_until = formatISODateLocal(
+              new Date(joinedDate.getFullYear() + 1, joinedDate.getMonth(), joinedDate.getDate()),
+            );
+          }
+          if (member.status === 'suspended') {
+            // FR-016: the 休会解除 sheet renders these read-only, so every suspended
+            // member needs an active suspension or the sheet shows only placeholders.
+            member.active_suspension = {
+              suspensionApplicationId: `${id}-susp-001`,
+              startDate: formatISODateLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+              endDate: formatISODateLocal(new Date(now.getFullYear(), now.getMonth() + 3, 0)),
+            };
+          }
+          if (member.status === 'pending_withdrawal') {
+            member.pending_withdrawal = {
+              withdrawalApplicationId: `${id}-wd-001`,
+              scheduledWithdrawalDate: formatISODateLocal(
+                new Date(now.getFullYear(), now.getMonth() + 1, 0),
+              ),
+            };
+            // G-A needs both sides of the cancellability rule present in the seed:
+            // usage not yet started → 退会取り消し allowed; already started → blocked.
+            member.usage_start_date =
+              i % 12 === 4
+                ? formatISODateLocal(new Date(now.getFullYear(), now.getMonth() + 2, 1))
+                : formatISODateLocal(new Date(now.getFullYear(), now.getMonth() - 2, 1));
+          }
+          if (i % 30 === 12) {
+            // D-01 FR-010 reservation penalty. Bucket chosen so it only ever lands on
+            // an active member (i % 30 === 12 ⊂ i % 6 === 0) — the penalty is orthogonal
+            // to member status, but an active member is where it is worth demonstrating.
+            const appliedAt = new Date(now.getTime() - 6 * dayMs);
+            const weekStart = new Date(now.getTime() - 13 * dayMs);
+            const weekEnd = new Date(now.getTime() - 7 * dayMs);
+            member.active_penalty = {
+              penaltyType: 'studio',
+              endAt: new Date(now.getTime() + dayMs).toISOString(),
+              noShowCount: 2,
+              appliedAt: appliedAt.toISOString(),
+              // D-01 FR-010: the two no-shows behind `noShowCount`, shown read-only in the
+              // 予約ペナルティ解除 sheet.
+              triggeringReservations: [
+                `${formatISODateLocal(new Date(now.getTime() - 12 * dayMs)).replace(/-/g, '/')} 19:00 ヨガ基礎`,
+                `${formatISODateLocal(new Date(now.getTime() - 9 * dayMs)).replace(/-/g, '/')} 10:00 ピラティス`,
+              ],
+              targetWeek: `${formatISODateLocal(weekStart).replace(/-/g, '/')}〜${formatISODateLocal(weekEnd).replace(/-/g, '/')}`,
+            };
+          }
+          if (member.status === 'forced_withdrawal' || i % 12 === 8) {
+            // A-01 FR-016: forced withdrawal always carries an automatic blacklist entry.
+            // `i % 12 === 8` additionally covers plain `withdrawn` members (i % 6 === 2) so the
+            // blacklist-blocked 個人情報削除 / 再入会 paths have a subject, while the other
+            // withdrawn members stay clean for the happy path.
+            member.blacklist_info = {
+              blacklistId: `${id}-bl-001`,
+              isActive: true,
+              reason:
+                member.status === 'forced_withdrawal' ? '2ヶ月連続未納による強制退会' : '迷惑行為',
+              registeredAt: new Date(now.getTime() - 30 * dayMs).toISOString(),
+              registeredBy: {
+                staffId: 'staff-mock',
+                displayName: member.status === 'forced_withdrawal' ? 'System' : '管理者A',
+              },
             };
           }
           this._members.push(createMember(id, member));
         }
+
+        /*
+         * Layout / output-escaping fixtures. Both carry a leave-eligible status, so the
+         * A-03 seed derives an application for each and their names reach the list cell,
+         * the detail head-up card and the confirmation dialogs — the places a hostile or
+         * over-long value actually has to survive. Appended after the 200 generated
+         * members so no existing id, store or status assignment moves.
+         */
+        const fixtureStore = storeRows[0]!;
+        const hostileNameFixtures: {
+          id: string;
+          nameKanji: string;
+          nameKana: string;
+          status: MemberProfile['status'];
+        }[] = [
+          {
+            id: 'M-00201',
+            // 255 characters with no break point at all — the harsher of the two layout
+            // cases in the shared GUI checklist (the spaced variant is covered by M-00202).
+            nameKanji: '長'.repeat(255),
+            nameKana: 'ナガ'.repeat(30),
+            // A cancellable withdrawal rather than a suspension, so the 255-character name
+            // also has to survive the confirmation dialog — a fixed-width surface where an
+            // over-long value can push the footer buttons out of reach.
+            status: 'pending_withdrawal',
+          },
+          {
+            id: 'M-00202',
+            // Must render as literal text everywhere it is echoed, never as markup.
+            nameKanji: '<script>alert(1)</script><img src=x onerror=alert(2)> 山田 太郎',
+            nameKana: 'スクリプト タロウ',
+            status: 'pending_withdrawal',
+          },
+        ];
+
+        for (const fixture of hostileNameFixtures) {
+          this._members.push(
+            createMember(fixture.id, {
+              name_kanji: fixture.nameKanji,
+              name_kana: fixture.nameKana,
+              phone: '09099998888',
+              email: `${fixture.id.toLowerCase()}@example.jp`,
+              birthday: '1990-01-15',
+              gender: 'prefer_not_to_say',
+              member_type: 'regular',
+              contract_type: resolveContractTypeFromMemberType('regular'),
+              status: fixture.status,
+              store_id: fixtureStore.id,
+              store_name: fixtureStore.name,
+              brand: fixtureStore.brand as Brand,
+              contract_name: DEFAULT_MEMBER_MAIN_CONTRACT,
+              contract_id: DEFAULT_MEMBER_MAIN_CONTRACT_ID,
+              joined_at: toIsoDate(new Date(now.getFullYear() - 1, 0, 15)),
+              last_visit_date: toIsoDate(new Date(now.getTime() - 5 * dayMs)),
+              has_unpaid: false,
+              emergency_contact_name: fixture.nameKanji,
+              emergency_contact_relationship: '配偶者',
+              emergency_contact_phone: '09087654321',
+              in_cancellation_period: false,
+              is_option_restricted: false,
+              // A cancellable withdrawal, so the fixture name also reaches the
+              // cancellation dialog where a long value could push the buttons off-screen.
+              usage_start_date:
+                fixture.status === 'pending_withdrawal'
+                  ? formatISODateLocal(new Date(now.getFullYear() + 1, now.getMonth(), 1))
+                  : undefined,
+              active_suspension:
+                fixture.status === 'suspended'
+                  ? {
+                      suspensionApplicationId: `${fixture.id}-susp-001`,
+                      startDate: formatISODateLocal(
+                        new Date(now.getFullYear(), now.getMonth() - 1, 1),
+                      ),
+                      endDate: formatISODateLocal(
+                        new Date(now.getFullYear(), now.getMonth() + 3, 0),
+                      ),
+                    }
+                  : undefined,
+              pending_withdrawal:
+                fixture.status === 'pending_withdrawal'
+                  ? {
+                      withdrawalApplicationId: `${fixture.id}-wd-001`,
+                      scheduledWithdrawalDate: formatISODateLocal(
+                        new Date(now.getFullYear(), now.getMonth() + 1, 0),
+                      ),
+                    }
+                  : undefined,
+            }),
+          );
+        }
       },
 
+      /**
+       * The 家族会員 block of the member detail response.
+       *
+       * Resolved from the PARENT, so opening a child's page lists their siblings
+       * too. Order is guaranteed — parent first, then member number ascending —
+       * and withdrawn members are left out (backend design answer 2026-08-10,
+       * QA02 §2.1).
+       */
+      buildFamilyBundle(member_id: string): GetMemberDetailResponse['family'] {
+        this._seed();
+        const db = getDb();
+        const ownChildren = db.family.listChildRelationships(member_id);
+        const parentId =
+          ownChildren.length > 0 ? member_id : db.family.getPrimaryMemberIdForChild(member_id);
+
+        if (!parentId) {
+          return { role: 'none', parent: null, members: [], remainingSlots: null };
+        }
+
+        const isListed = (row: MemberRow | undefined): row is MemberRow =>
+          !!row &&
+          row.memberStatus !== MemberStatus.WITHDRAWN &&
+          row.memberStatus !== MemberStatus.FORCED_WITHDRAWAL;
+
+        const toEntry = (row: MemberRow) => ({
+          memberId: row.memberId,
+          memberNumber: row.memberNumber,
+          displayName: joinJapaneseName(row.personalInfo.lastName, row.personalInfo.firstName),
+          isSelf: row.memberId === member_id,
+          memberStatus: row.memberStatus,
+        });
+
+        const parentRow = this._members.find((m) => m.memberId === parentId);
+        const childRows = db.family
+          .listChildRelationships(parentId)
+          .map((rel) => this._members.find((m) => m.memberId === rel.child_member_id))
+          .filter(isListed)
+          .sort((a, b) => a.memberNumber.localeCompare(b.memberNumber));
+
+        const members = [
+          ...(isListed(parentRow) ? [toEntry(parentRow)] : []),
+          ...childRows.map(toEntry),
+        ];
+
+        // Read the limit straight off the parent's brand group. Going through
+        // `getBrandSettingsByPrimaryMemberId` would call back into `members.get()`,
+        // which calls this function — an infinite loop.
+        const limit = db.family.getFamilyMemberLimit(parentRow?.brandGroup);
+        return {
+          role: parentId === member_id ? 'parent' : 'child',
+          parent:
+            parentId === member_id || !parentRow
+              ? null
+              : {
+                  memberId: parentRow.memberId,
+                  memberNumber: parentRow.memberNumber,
+                  displayName: joinJapaneseName(
+                    parentRow.personalInfo.lastName,
+                    parentRow.personalInfo.firstName,
+                  ),
+                },
+          members,
+          remainingSlots: Math.max(limit - childRows.length, 0),
+        };
+      },
+
+      // Deliberately does NOT attach `family`: other tables call `get()` while
+      // resolving family data, so building the bundle here would recurse. The
+      // member-detail route calls `buildFamilyBundle` itself.
       get(id: string): Member | undefined {
         this._seed();
-        return this._members.find((m) => m.basic_info.id === id);
+        return this._members.find((m) => m.memberId === id);
       },
 
       getList() {
@@ -151,11 +455,11 @@ export function createMembersTables(getDb: () => DbType) {
         this._seed();
         const all = this._members;
         const total = all.length;
-        const active = all.filter((m) => m.profile.status === 'active').length;
-        const suspended = all.filter((m) => m.profile.status === 'suspended').length;
+        const active = all.filter((m) => m.memberStatus === 'active').length;
+        const suspended = all.filter((m) => m.memberStatus === 'suspended').length;
         const unpaidMembers = all.filter((m) => m._listMeta?.has_unpaid === true);
         const pending_withdrawal = all.filter(
-          (m) => m.profile.status === 'pending_withdrawal',
+          (m) => m.memberStatus === 'pending_withdrawal',
         ).length;
         return {
           active_count: active,
@@ -170,20 +474,16 @@ export function createMembersTables(getDb: () => DbType) {
         };
       },
 
-      createFromApplication(application: MembershipApplicationDetails): Member {
+      createFromApplication(application: MembershipApplicationDetail): Member {
         this._seed();
         const db = getDb();
         const nextNumber = this._members.length + 1;
         const id = `M-${String(nextNumber).padStart(5, '0')}`;
-        db.stores._seed();
-        const storeRows = db.stores._rows;
-        const store = storeRows[nextNumber % storeRows.length]!;
         const now = new Date();
-        const memberType = (['regular', 'family', 'corporate'] as MemberProfile['member_type'][])[
-          nextNumber % 3
-        ]!;
-        const rawPlan =
-          application.contract_details?.plan_name || application.contract_details?.plan_id || '';
+        // Regular member — the enrolment application never carries a family/
+        // corporate classification (both left the admin form in v5, research R8).
+        const memberType: MemberProfile['member_type'] = 'regular';
+        const rawPlan = application.plan_name || application.plan_id || '';
         db.mainContracts._seed();
         const mainContracts = db.mainContracts.getList();
         const defaultContract =
@@ -197,27 +497,27 @@ export function createMembersTables(getDb: () => DbType) {
         const mainContractId = selectedContract?.id ?? DEFAULT_MEMBER_MAIN_CONTRACT_ID;
         const row = createMember(id, {
           name_kanji: application.applicant_name || '',
-          name_kana: application.applicant_name || '',
-          phone: application.applicant_phone || '',
-          email: application.applicant_email || '',
-          birthday: application.birthday || '',
-          gender: application.gender || 'other',
+          name_kana: application.applicant_kana || '',
+          phone: application.phone_real || '',
+          email: application.email_real || '',
+          birthday: application.birth_date || '',
+          gender: 'other',
           member_type: memberType,
           status: 'active',
           contract_type: resolveContractTypeFromMemberType(memberType),
-          store_name: store.name,
-          store_id: store.id,
-          brand: nextNumber % 2 === 0 ? 'fit365' : 'joyfit',
+          store_name: application.store_name,
+          store_id: application.store_id,
+          brand: resolveBrand(application.brand_name, 'fit365'),
           joined_at: toIsoDate(now),
           contract_name: displayName,
           contract_id: mainContractId,
-          last_visit_date: toIsoDate(new Date(application.contract_details?.start_date ?? now)),
+          last_visit_date: toIsoDate(new Date(application.usage_start_date ?? now)),
           has_unpaid: false,
           in_cancellation_period: false,
           is_option_restricted: false,
-          emergency_contact_name: application.emergency_contact_name || '',
-          emergency_contact_relationship: application.emergency_contact_relationship || '',
-          emergency_contact_phone: application.emergency_contact_phone || '',
+          emergency_contact_name: '',
+          emergency_contact_relationship: '',
+          emergency_contact_phone: '',
         });
         this._members.push(row);
         return row;
@@ -237,8 +537,8 @@ export function createMembersTables(getDb: () => DbType) {
         db.stores._seed();
         const storeRows = db.stores._rows;
         const fallbackStore = storeRows[nextNumber % storeRows.length]!;
-        const store = primary?.profile.store_id
-          ? { id: primary.profile.store_id, name: primary.profile.store_name }
+        const store = primary?.primaryStore.storeId
+          ? { id: primary.primaryStore.storeId, name: primary.primaryStore.name }
           : { id: fallbackStore.id, name: fallbackStore.name };
         db.mainContracts._seed();
         const contracts = db.mainContracts.getList();
@@ -264,7 +564,7 @@ export function createMembersTables(getDb: () => DbType) {
           contract_type: 'family',
           store_name: store.name,
           store_id: store.id,
-          brand: primary?.profile.brand ?? (nextNumber % 2 === 0 ? 'fit365' : 'joyfit'),
+          brand: primary?.primaryStore.brandEnum ?? (nextNumber % 2 === 0 ? 'fit365' : 'joyfit'),
           joined_at: toIsoDate(now),
           contract_name: displayName,
           contract_id: mainContractId,
@@ -276,97 +576,6 @@ export function createMembersTables(getDb: () => DbType) {
           emergency_contact_relationship: registration.relationship,
           emergency_contact_phone: registration.applicant?.phone ?? '',
         });
-        this._members.push(row);
-        return row;
-      },
-
-      create(body: CreateMemberRequest): Member {
-        this._seed();
-        const db = getDb();
-        db.contracts._seed();
-        db.stores._seed();
-        db.mainContracts._seed();
-        const nextNumber = this._members.length + 1;
-        const id = `M-${String(nextNumber).padStart(5, '0')}`;
-        const storeRows = db.stores._rows;
-        const profileInfo = body.profile_info;
-        const joinedAt = profileInfo?.join_date ?? toIsoDate(new Date());
-        const memberType: MemberProfile['member_type'] = profileInfo?.member_type ?? 'regular';
-        const mainContracts = db.mainContracts.getList();
-        const defaultContract =
-          mainContracts.find((contract) => contract.id === DEFAULT_MEMBER_MAIN_CONTRACT_ID) ??
-          mainContracts[0];
-        const selectedContract =
-          mainContracts.find((contract) => contract.id === profileInfo?.contract_name) ??
-          mainContracts.find((contract) => contract.name === profileInfo?.contract_name) ??
-          defaultContract;
-        const contractName = selectedContract?.name ?? DEFAULT_MEMBER_MAIN_CONTRACT;
-        const existingContract = db.contracts.getByPlanName(contractName);
-        const contractId =
-          existingContract?.contract_id ?? `contract-member-${String(nextNumber).padStart(5, '0')}`;
-        if (!existingContract) {
-          db.contracts.create({
-            contract_id: contractId,
-            data: buildMemberContractData({
-              plan_name: contractName,
-              start_date: joinedAt,
-              monthly_fee: selectedContract?.price_including_tax ?? 0,
-              created_at: new Date().toISOString(),
-            }),
-          });
-        }
-        const joinStoreId = profileInfo?.join_store?.trim();
-        const selectedStore =
-          joinStoreId != null && joinStoreId !== ''
-            ? storeRows.find((row) => row.id === joinStoreId || row.store_id === joinStoreId)
-            : undefined;
-        const resolvedStore = selectedStore;
-        const normalizedBrand = profileInfo?.brand?.trim();
-        const brand =
-          normalizedBrand && resolvedStore
-            ? resolveBrand(normalizedBrand, resolvedStore.brand as Brand)
-            : ('' as MemberProfile['brand']);
-        const row = createMember(id, {
-          name_kanji: body.name_kanji,
-          name_kana: body.name_kana,
-          phone: body.phone,
-          email: body.email,
-          birthday: body.birthday ?? '1990-01-01',
-          gender: body.gender ?? 'other',
-          member_type: memberType,
-          status: 'active',
-          contract_type: resolveContractTypeFromMemberType(memberType),
-          store_name: resolvedStore?.name ?? '',
-          store_id: resolvedStore?.id ?? '',
-          brand,
-          joined_at: joinedAt,
-          contract_name: contractName,
-          contract_id: contractId,
-          last_visit_date: undefined,
-          has_unpaid: false,
-          in_cancellation_period: false,
-          is_option_restricted: false,
-          emergency_contact_name: body.emergency_contact?.name ?? '',
-          emergency_contact_relationship: body.emergency_contact?.relationship ?? '',
-          emergency_contact_phone: body.emergency_contact?.phone ?? '',
-        });
-
-        row.basic_info.birthday = body.birthday ?? row.basic_info.birthday;
-        row.basic_info.postal_code = body.postal_code ?? row.basic_info.postal_code;
-        row.basic_info.prefecture = body.prefecture ?? row.basic_info.prefecture;
-        row.basic_info.city = body.city ?? row.basic_info.city;
-        row.basic_info.address = body.address ?? row.basic_info.address;
-        row.basic_info.building = body.building ?? row.basic_info.building;
-        row.basic_info.notes = body.notes ?? row.basic_info.notes;
-        row.profile.contract_id = contractId;
-        row.profile.contract_name = profileInfo?.contract_name ?? row.profile.contract_name;
-        row.profile.join_route = profileInfo?.join_route ?? row.profile.join_route;
-        row.profile.referrer_member_id =
-          profileInfo?.referrer_member_id ?? row.profile.referrer_member_id;
-        row.ekyc = {
-          ...(row.ekyc ?? { verified: false }),
-          photoUrl: profileInfo?.photo_url ?? row.ekyc?.photoUrl,
-        };
         this._members.push(row);
         return row;
       },
@@ -384,16 +593,30 @@ export function createMembersTables(getDb: () => DbType) {
 
       updateBasicInfo(id: string, body: UpdateBasicInfoRequest): Member | undefined {
         this._seed();
-        const idx = this._members.findIndex((m) => m.basic_info.id === id);
+        const idx = this._members.findIndex((m) => m.memberId === id);
         if (idx === -1) return undefined;
-        const current = this._members[idx];
+        const current = this._members[idx]!;
+        const personalInfo = { ...current.personalInfo };
+        if (body.last_name !== undefined) personalInfo.lastName = body.last_name;
+        if (body.first_name !== undefined) personalInfo.firstName = body.first_name;
+        if (body.last_name_kana !== undefined) personalInfo.lastNameKana = body.last_name_kana;
+        if (body.first_name_kana !== undefined) personalInfo.firstNameKana = body.first_name_kana;
+        if (body.birthday !== undefined) personalInfo.dateOfBirth = body.birthday;
+        if (body.gender !== undefined) personalInfo.gender = body.gender;
+        if (body.postal_code !== undefined) personalInfo.postalCode = body.postal_code;
+        if (body.prefecture !== undefined) personalInfo.prefecture = body.prefecture;
+        if (body.city !== undefined) personalInfo.city = body.city;
+        if (body.address !== undefined) personalInfo.streetAddress = body.address;
+        if (body.building !== undefined) personalInfo.building = body.building;
+        if (body.phone !== undefined) personalInfo.phone = body.phone;
+        if (body.email !== undefined) personalInfo.email = body.email;
+        if (body.emergency_contact !== undefined) {
+          personalInfo.emergencyContact = body.emergency_contact;
+        }
         const updated: MemberRow = {
           ...current,
-          basic_info: {
-            ...current.basic_info,
-            ...body,
-            emergency_contact: body.emergency_contact ?? current.basic_info.emergency_contact,
-          },
+          personalInfo,
+          memo: body.notes ?? current.memo,
         };
         this._members[idx] = updated;
         return updated;
@@ -405,9 +628,9 @@ export function createMembersTables(getDb: () => DbType) {
       ): Member | undefined {
         this._seed();
         const db = getDb();
-        const idx = this._members.findIndex((m) => m.basic_info.id === id);
+        const idx = this._members.findIndex((m) => m.memberId === id);
         if (idx === -1) return undefined;
-        const current = this._members[idx];
+        const current = this._members[idx]!;
         const nextContractType = body.member_type
           ? resolveContractTypeFromMemberType(body.member_type)
           : current._listMeta?.contract_type;
@@ -420,7 +643,7 @@ export function createMembersTables(getDb: () => DbType) {
           mainContracts.find((contract) => contract.id === body.contract_name) ??
           mainContracts.find((contract) => contract.name === body.contract_name) ??
           mainContracts.find((contract) => contract.name === current._listMeta?.contract_name) ??
-          mainContracts.find((contract) => contract.name === current.profile.contract_name) ??
+          mainContracts.find((contract) => contract.name === current.contractName) ??
           defaultContract;
         let nextContractDisplayName = selectedInitialContract?.name ?? DEFAULT_MEMBER_MAIN_CONTRACT;
         let nextContractId = current._listMeta?.contract_id;
@@ -433,8 +656,9 @@ export function createMembersTables(getDb: () => DbType) {
             contract = db.contracts.create({
               contract_id: newContractId,
               data: buildMemberContractData({
+                contract_id: newContractId,
                 plan_name: body.contract_name,
-                start_date: body.join_date ?? current.profile.joined_at,
+                start_date: body.join_date ?? current.enrolledAt,
                 monthly_fee:
                   mainContracts.find((item) => item.name === body.contract_name)
                     ?.price_including_tax ??
@@ -455,28 +679,45 @@ export function createMembersTables(getDb: () => DbType) {
             DEFAULT_MEMBER_MAIN_CONTRACT;
         }
 
+        const nextBrand = resolveBrand(body.brand, current.primaryStore.brandEnum);
+        const nextStoreId = body.join_store ?? current.primaryStore.storeId;
+        const nextStoreName =
+          body.join_store != null
+            ? (db.stores.getById(body.join_store)?.name ?? current.primaryStore.name)
+            : current.primaryStore.name;
         const updated: MemberRow = {
           ...current,
-          profile: {
-            ...current.profile,
-            member_type: body.member_type ?? current.profile.member_type,
-            joined_at: body.join_date ?? current.profile.joined_at,
-            store_id: body.join_store ?? current.profile.store_id,
-            store_name:
-              body.join_store != null
-                ? (db.stores.getById(body.join_store)?.name ?? current.profile.store_name)
-                : current.profile.store_name,
-            brand: resolveBrand(body.brand, current.profile.brand),
-            main_brand: resolveMainBrand(resolveBrand(body.brand, current.profile.brand)),
-            contract_id: nextContractId ?? current.profile.contract_id,
-            contract_name: nextContractDisplayName,
-            join_route: body.join_route ?? current.profile.join_route,
-            referrer_member_id: body.referrer_member_id ?? current.profile.referrer_member_id,
+          memberType: body.member_type ?? current.memberType,
+          enrolledAt: body.join_date ?? current.enrolledAt,
+          brandGroup: resolveMainBrand(nextBrand),
+          contractName: nextContractDisplayName,
+          joinRoute: body.join_route ?? current.joinRoute,
+          // The sub-brand now lives on the store the member belongs to.
+          primaryStore: {
+            ...current.primaryStore,
+            storeId: nextStoreId,
+            name: nextStoreName,
+            brandEnum: nextBrand,
           },
-          ekyc: {
-            ...(current.ekyc ?? { verified: false }),
-            photoUrl: body.photo_url ?? current.ekyc?.photoUrl,
+          currentMainContract: current.currentMainContract
+            ? {
+                ...current.currentMainContract,
+                contractId: nextContractId ?? current.currentMainContract.contractId,
+              }
+            : current.currentMainContract,
+          personalInfo: {
+            ...current.personalInfo,
+            facePhotoUrl: body.photo_url ?? current.personalInfo.facePhotoUrl,
           },
+          referral: body.referrer_member_id
+            ? {
+                ...current.referral,
+                byMember: {
+                  memberId: body.referrer_member_id,
+                  memberNumber: body.referrer_member_id,
+                },
+              }
+            : current.referral,
           _listMeta: current._listMeta
             ? {
                 ...current._listMeta,
@@ -486,11 +727,12 @@ export function createMembersTables(getDb: () => DbType) {
               }
             : {
                 contract_id:
-                  nextContractId ?? current.profile.contract_id ?? DEFAULT_MEMBER_MAIN_CONTRACT_ID,
+                  nextContractId ??
+                  current.currentMainContract?.contractId ??
+                  DEFAULT_MEMBER_MAIN_CONTRACT_ID,
                 contract_name: nextContractDisplayName,
                 contract_type:
-                  nextContractType ??
-                  resolveContractTypeFromMemberType(current.profile.member_type),
+                  nextContractType ?? resolveContractTypeFromMemberType(current.memberType),
                 last_visit_date: undefined,
                 has_unpaid: false,
               },
@@ -501,13 +743,13 @@ export function createMembersTables(getDb: () => DbType) {
 
       updateHealthInfo(id: string, body: UpdateHealthInfoRequest): Member | undefined {
         this._seed();
-        const idx = this._members.findIndex((m) => m.basic_info.id === id);
+        const idx = this._members.findIndex((m) => m.memberId === id);
         if (idx === -1) return undefined;
-        const current = this._members[idx];
+        const current = this._members[idx]!;
         const updated: MemberRow = {
           ...current,
-          health_info: {
-            ...current.health_info,
+          _healthInfo: {
+            ...current._healthInfo,
             ...body,
           },
         };
@@ -517,21 +759,14 @@ export function createMembersTables(getDb: () => DbType) {
 
       updateMarketingConsent(id: string, body: UpdateMarketingConsentRequest): Member | undefined {
         this._seed();
-        const idx = this._members.findIndex((m) => m.basic_info.id === id);
+        const idx = this._members.findIndex((m) => m.memberId === id);
         if (idx === -1) return undefined;
-        const current = this._members[idx];
+        const current = this._members[idx]!;
         const updated: MemberRow = {
           ...current,
-          consent: {
-            ...(current.consent ?? {
-              member_agreement: { version: '1.0', agreed_at: new Date().toISOString() },
-              privacy_policy: { version: '1.0', agreed_at: new Date().toISOString() },
-              marketing_consent: { email: false, sms: false, push: false },
-            }),
-            marketing_consent: {
-              ...(current.consent?.marketing_consent ?? { email: false, sms: false, push: false }),
-              ...body,
-            },
+          _marketingConsent: {
+            ...(current._marketingConsent ?? { email: false, sms: false, push: false }),
+            ...body,
           },
         };
         this._members[idx] = updated;
@@ -540,21 +775,26 @@ export function createMembersTables(getDb: () => DbType) {
 
       anonymizePersonalData(id: string): Member | undefined {
         this._seed();
-        const idx = this._members.findIndex((m) => m.basic_info.id === id);
+        const idx = this._members.findIndex((m) => m.memberId === id);
         if (idx === -1) return undefined;
-        const current = this._members[idx];
+        const current = this._members[idx]!;
+        const [lastName, firstName] = splitJapaneseName('削除済み 会員');
+        const [lastNameKana, firstNameKana] = splitJapaneseName('サクジョズミ カイイン');
         const updated: MemberRow = {
           ...current,
-          basic_info: {
-            ...current.basic_info,
-            name_kanji: '削除済み 会員',
-            name_kana: 'サクジョズミ カイイン',
+          anonymizedAt: new Date().toISOString(),
+          personalInfo: {
+            ...current.personalInfo,
+            lastName,
+            firstName,
+            lastNameKana,
+            firstNameKana,
             email: 'deleted@example.com',
             phone: '000-0000-0000',
-            postal_code: '000-0000',
+            postalCode: '000-0000',
             prefecture: '',
             city: '',
-            address: '',
+            streetAddress: '',
             building: '',
           },
         };
@@ -565,7 +805,7 @@ export function createMembersTables(getDb: () => DbType) {
       handleSuspendRelease(input: { id: string; resume_month: string }): Member | undefined {
         this._seed();
         const db = getDb();
-        const idx = this._members.findIndex((m) => m.basic_info.id === input.id);
+        const idx = this._members.findIndex((m) => m.memberId === input.id);
         if (idx === -1) return undefined;
         const suspensionLeave = db.memberLeaves
           .list()
@@ -581,20 +821,13 @@ export function createMembersTables(getDb: () => DbType) {
               _updateDetail: (id: string, patch: Record<string, unknown>) => void;
             }
           )._updateDetail(suspensionLeave.id, { status: 'completed' });
-          const listIdx = db.memberLeaves._rows.findIndex((r) => r.id === suspensionLeave.id);
-          if (listIdx !== -1) {
-            db.memberLeaves._rows[listIdx] = {
-              ...db.memberLeaves._rows[listIdx]!,
-              status: 'completed',
-            };
-          }
+          // A completed application leaves the A-03 list entirely (spec Q-10) — the
+          // list carries only the four in-flight display states.
+          db.memberLeaves._rows = db.memberLeaves._rows.filter((r) => r.id !== suspensionLeave.id);
         }
         const updated: MemberRow = {
           ...this._members[idx]!,
-          profile: {
-            ...this._members[idx]!.profile,
-            status: MemberStatus.ACTIVE,
-          },
+          memberStatus: MemberStatus.ACTIVE,
         };
         this._members[idx] = updated;
         return updated;
@@ -607,24 +840,49 @@ export function createMembersTables(getDb: () => DbType) {
       }): Member | undefined {
         this._seed();
         const db = getDb();
-        const idx = this._members.findIndex((m) => m.basic_info.id === input.id);
+        const idx = this._members.findIndex((m) => m.memberId === input.id);
         if (idx === -1) return undefined;
-        if (
-          this._members[idx].profile.status == MemberStatus.ACTIVE ||
-          this._members[idx].profile.status == MemberStatus.GATE_STOP
-        ) {
+        // A gate-stopped member is active underneath, so the plain ACTIVE check now
+        // covers what the removed GATE_STOP status used to cover as well.
+        if (this._members[idx].memberStatus === MemberStatus.ACTIVE) {
           db.memberLeaves.create({
             member_id: input.id,
             scheduled_date: input.scheduled_date,
             reason: input.reason,
           });
         }
+        const current = this._members[idx]!;
         const updated: MemberRow = {
-          ...this._members[idx]!,
-          profile: {
-            ...this._members[idx]!.profile,
-            status: MemberStatus.PENDING_WITHDRAWAL,
-          },
+          ...current,
+          memberStatus: MemberStatus.PENDING_WITHDRAWAL,
+          // The banner / 退会予定 badge read the contract's pending application, so the
+          // application has to land there too — the status alone is not enough.
+          currentMainContract: current.currentMainContract
+            ? {
+                ...current.currentMainContract,
+                pendingWithdrawal: {
+                  withdrawalApplicationId: `${input.id}-wd-001`,
+                  scheduledWithdrawalDate: input.scheduled_date,
+                },
+              }
+            : current.currentMainContract,
+        };
+        this._members[idx] = updated;
+        return updated;
+      },
+
+      /** 退会取り消し: revert to 有効 and drop the pending application (A-01 FR-020). */
+      handleWithdrawCancel(id: string): Member | undefined {
+        this._seed();
+        const idx = this._members.findIndex((m) => m.memberId === id);
+        if (idx === -1) return undefined;
+        const current = this._members[idx]!;
+        const updated: MemberRow = {
+          ...current,
+          memberStatus: MemberStatus.ACTIVE,
+          currentMainContract: current.currentMainContract
+            ? { ...current.currentMainContract, pendingWithdrawal: undefined }
+            : current.currentMainContract,
         };
         this._members[idx] = updated;
         return updated;
@@ -636,7 +894,7 @@ export function createMembersTables(getDb: () => DbType) {
       }): { member: Member; blacklistId: string } | undefined {
         this._seed();
         const db = getDb();
-        const idx = this._members.findIndex((m) => m.basic_info.id === input.id);
+        const idx = this._members.findIndex((m) => m.memberId === input.id);
         if (idx === -1) return undefined;
         const member = this._members[idx]!;
 
@@ -646,32 +904,40 @@ export function createMembersTables(getDb: () => DbType) {
           reason: input.reason,
         });
 
+        /**
+         * A-01 FR-016 — forced withdrawal and blacklist registration happen together.
+         * This is the *only* writer of `source: 'forced_withdrawal'`; the operator path
+         * (`create`) can never produce one (FR-049). `createAuto` also fixes the reason
+         * categories to `['unpaid']` and records the event with a null actor, both per
+         * the v0.4 contract.
+         */
+        const blRow = db.memberBlacklist.createAuto(input.id);
+        // The two writes are one operation: a member may not be left FORCE_WITHDRAWN
+        // pointing at a blacklist entry that was never created.
+        if (!blRow) return undefined;
+
+        /**
+         * The denormalised block mirrors the entry that was actually written, exactly as
+         * the manual-registration route does — `reason` carries the reason **category**
+         * (`unpaid` here, fixed by `createAuto`), while the operator's free-text
+         * withdrawal reason belongs in `memo`.
+         */
         const updated: MemberRow = {
           ...member,
-          profile: {
-            ...member.profile,
-            status: MemberStatus.FORCE_WITHDRAWN,
-            is_black_listed: true,
+          memberStatus: MemberStatus.FORCED_WITHDRAWAL,
+          blacklist: {
+            blacklistId: blRow.id,
+            isActive: blRow.is_active,
+            reason: blRow.reason_categories[0],
+            memo: input.reason,
+            registeredAt: blRow.registered_at,
+            registeredBy: {
+              staffId: blRow.registered_by.staff_id,
+              displayName: blRow.registered_by.display_name,
+            },
           },
         };
         this._members[idx] = updated;
-
-        const blRow = db.memberBlacklist.create({
-          memberId: member.basic_info.member_number,
-          memberName: member.basic_info.name_kanji,
-          storeName: member.profile.store_name,
-          registrationSource: 'forced_withdrawal',
-          manualReason: null,
-          unpaidAmount: 0,
-          memo: input.reason,
-          registeredBy: 'System',
-          matchConditions: {
-            nameAndBirthdate: true,
-            email: false,
-            phone: false,
-            address: false,
-          },
-        });
 
         return { member: updated, blacklistId: blRow.id };
       },
@@ -681,49 +947,80 @@ export function createMembersTables(getDb: () => DbType) {
         to_store_id: string;
         to_store_name: string;
         reason?: string;
+        is_proxy?: boolean;
+        proxy_agreed_at?: string;
+        proxy_method?: string;
       }): { member: Member; transfer_id: string } | undefined {
         this._seed();
         const db = getDb();
-        const idx = this._members.findIndex((m) => m.basic_info.id === input.id);
+        const idx = this._members.findIndex((m) => m.memberId === input.id);
         if (idx === -1) return undefined;
         const member = this._members[idx]!;
+        // A-02 FR-006: seed the new request's auto-transfer eligibility from the member's own
+        // constraints, so the 自動移籍可否 column and the exclusion alerts have real data instead
+        // of defaulting every created transfer to "eligible".
+        const exclusionReasons: TransferRow['exclusion_reasons'] = [];
+        if (member.constraints.hasUnpaidFee || member.unpaidAmount > 0) {
+          exclusionReasons.push('unpaid');
+        }
+        if (member.constraints.inCancellationPeriod) {
+          exclusionReasons.push('campaign_lock');
+        }
         const transfer = db.transfers.create({
           member_id: input.id,
-          member_name: member.basic_info.name_kanji,
-          from_store_id: member.profile.store_id,
-          from_store_name: member.profile.store_name,
+          member_name: joinJapaneseName(
+            member.personalInfo.lastName,
+            member.personalInfo.firstName,
+          ),
+          from_store_id: member.primaryStore.storeId,
+          from_store_name: member.primaryStore.name,
           to_store_id: input.to_store_id,
           to_store_name: input.to_store_name,
-          brand: member.profile.brand,
+          brand: member.primaryStore.brandEnum,
           reason: input.reason,
+          applicant_name: input.is_proxy
+            ? 'スタッフ'
+            : joinJapaneseName(member.personalInfo.lastName, member.personalInfo.firstName),
+          applicant_role: input.is_proxy ? 'スタッフ' : '会員本人',
+          exclusion_reasons: exclusionReasons,
+          unpaid_amount: member.unpaidAmount > 0 ? member.unpaidAmount : null,
+          campaign_lock_remaining_days: member.constraints.inCancellationPeriod ? 30 : null,
+          is_proxy: input.is_proxy,
+          proxy_agreed_at: input.proxy_agreed_at,
+          proxy_method: input.proxy_method,
         });
         return { member, transfer_id: transfer.id };
       },
 
       setGateStop(input: {
         id: string;
-        scope: string;
-        reason: string;
-        terminal_message?: string;
-        lock_after_message: boolean;
+        pattern: GateStopSetPattern;
+        reasonCategory: GateStopReason;
+        message?: string;
+        messageType: 'allow_after_confirm' | 'deny_after_confirm';
         set_by?: string;
       }): Member | undefined {
         this._seed();
-        const idx = this._members.findIndex((m) => m.basic_info.id === input.id);
+        const idx = this._members.findIndex((m) => m.memberId === input.id);
         if (idx === -1) return undefined;
+        const current = this._members[idx]!;
+        // Gate stop is orthogonal to `memberStatus`: setting it leaves the member's
+        // own status (active / suspended / …) untouched, so a suspended member stays
+        // suspended while gate-stopped — backend design answer 2026-08-10 (QA01 §1-2).
         const updated: MemberRow = {
-          ...this._members[idx]!,
-          profile: {
-            ...this._members[idx]!.profile,
-            status: MemberStatus.GATE_STOP,
-            gate_stop_info: {
-              scope: input.scope as 'all_stores' | 'own_store_only',
-              reason: input.reason as 'nuisance' | 'unpaid' | 'fraudulent_use' | 'other',
-              terminal_message: input.terminal_message,
-              lock_after_message: input.lock_after_message,
-              set_at: new Date().toISOString(),
-              set_by: input.set_by ?? 'スタッフ',
+          ...current,
+          gateStop: {
+            pattern: input.pattern,
+            reasonCategory: input.reasonCategory,
+            setAtStore: {
+              storeId: current.primaryStore.storeId,
+              code: current.primaryStore.code,
+              name: current.primaryStore.name,
             },
+            messageType: input.messageType,
+            message: input.message,
+            setAt: new Date().toISOString(),
+            setBy: { staffId: 'staff-mock', displayName: input.set_by ?? 'スタッフ' },
           },
         };
         this._members[idx] = updated;
@@ -732,15 +1029,13 @@ export function createMembersTables(getDb: () => DbType) {
 
       releaseGateStop(id: string): Member | undefined {
         this._seed();
-        const idx = this._members.findIndex((m) => m.basic_info.id === id);
+        const idx = this._members.findIndex((m) => m.memberId === id);
         if (idx === -1) return undefined;
+        // Clearing the gate stop restores nothing on `memberStatus` — it was never
+        // changed when the stop was applied.
         const updated: MemberRow = {
           ...this._members[idx]!,
-          profile: {
-            ...this._members[idx]!.profile,
-            status: MemberStatus.ACTIVE,
-            gate_stop_info: null,
-          },
+          gateStop: null,
         };
         this._members[idx] = updated;
         return updated;
@@ -757,7 +1052,7 @@ export function createMembersTables(getDb: () => DbType) {
       }): Member | undefined {
         this._seed();
         const db = getDb();
-        const idx = this._members.findIndex((m) => m.basic_info.id === input.id);
+        const idx = this._members.findIndex((m) => m.memberId === input.id);
         if (idx === -1) return undefined;
         db.memberLeaves.createSuspension({
           member_id: input.id,
@@ -770,10 +1065,7 @@ export function createMembersTables(getDb: () => DbType) {
         });
         const updated: MemberRow = {
           ...this._members[idx]!,
-          profile: {
-            ...this._members[idx]!.profile,
-            status: MemberStatus.SUSPENDED,
-          },
+          memberStatus: MemberStatus.SUSPENDED,
         };
         this._members[idx] = updated;
         return updated;
@@ -797,6 +1089,7 @@ export function createMembersTables(getDb: () => DbType) {
             contract_id: masterContract.id,
             created_at: now,
             data: buildMemberContractData({
+              contract_id: masterContract.id,
               plan_name: name,
               start_date: '2024-01-01',
               monthly_fee: monthlyFee,
@@ -816,10 +1109,10 @@ export function createMembersTables(getDb: () => DbType) {
         return this._contracts.find((c) => c.data.main_contract.plan_name === planName);
       },
 
-      getByMemberId(memberId: string): GetContractsResponse | undefined {
+      getByMemberId(memberId: string): ContractsRecord | undefined {
         this._seed();
         const db = getDb();
-        const member = db.members._members.find((m) => m.basic_info.id === memberId);
+        const member = db.members._members.find((m) => m.memberId === memberId);
         const contractId = member?._listMeta?.contract_id;
         if (contractId) {
           return this.getById(contractId)?.data;
@@ -836,7 +1129,7 @@ export function createMembersTables(getDb: () => DbType) {
         contract_id: string;
         member_id?: string;
         application_id?: string;
-        data: GetContractsResponse;
+        data: ContractsRecord;
       }): ContractRow {
         this._seed();
         const db = getDb();
@@ -856,7 +1149,7 @@ export function createMembersTables(getDb: () => DbType) {
         }
 
         if (input.member_id) {
-          const member = db.members._members.find((m) => m.basic_info.id === input.member_id);
+          const member = db.members._members.find((m) => m.memberId === input.member_id);
           if (member?._listMeta) {
             db.mainContracts._seed();
             const mainContracts = db.mainContracts.getList();
@@ -871,8 +1164,10 @@ export function createMembersTables(getDb: () => DbType) {
             member._listMeta.contract_id = row.contract_id;
             member._listMeta.contract_name = normalizedPlan;
             member._listMeta.contract_type = nextContractType;
-            member.profile.contract_id = row.contract_id;
-            member.profile.contract_name = normalizedPlan;
+            if (member.currentMainContract) {
+              member.currentMainContract.contractId = row.contract_id;
+            }
+            member.contractName = normalizedPlan;
           }
         }
         return row;
@@ -898,8 +1193,9 @@ export function createMembersTables(getDb: () => DbType) {
         const monthlyFee = selectedContract?.price_including_tax ?? 0;
 
         const data = buildMemberContractData({
+          contract_id: selectedContract?.id ?? contractId,
           plan_name: displayName,
-          start_date: application.start_date,
+          start_date: application.usage_start_date,
           monthly_fee: monthlyFee,
           created_at: createdAt,
         });
@@ -912,542 +1208,6 @@ export function createMembersTables(getDb: () => DbType) {
         });
 
         return { member_id, contract_id: contractId };
-      },
-    },
-
-    membershipApplications: {
-      _applications: [] as MembershipApplication[],
-      _details: {} as Record<string, MembershipApplicationDetails>,
-      _seeded: false,
-
-      _seed(): void {
-        if (this._seeded) return;
-        this._seeded = true;
-
-        const seed: MembershipApplication[] = [
-          {
-            id: 'APP-2026-0001',
-            applicant_name: '山田 太郎',
-            store_name: 'FIT365八潮店',
-            plan_name: 'レギュラー会員',
-            application_date: '2026-03-30T09:15:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: '春の入会キャンペーン',
-          },
-          {
-            id: 'APP-2026-0002',
-            applicant_name: '佐藤 花子',
-            store_name: 'FIT365草加店',
-            plan_name: 'デイタイム会員',
-            application_date: '2026-03-30T10:32:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-02',
-            brand_name: 'FIT365',
-            campaign: 'なし',
-          },
-          {
-            id: 'APP-2026-0003',
-            applicant_name: '鈴木 一郎',
-            store_name: 'FIT365越谷店',
-            plan_name: 'ナイト会員',
-            application_date: '2026-03-30T11:08:00+09:00',
-            status: 'pending',
-            blacklist_match: true,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: 'なし',
-          },
-          {
-            id: 'APP-2026-0004',
-            applicant_name: '田中 美咲',
-            store_name: 'FIT365八潮店',
-            plan_name: 'ウィークエンド会員',
-            application_date: '2026-03-30T11:45:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-05',
-            brand_name: 'FIT365',
-            campaign: '春の入会キャンペーン',
-          },
-          {
-            id: 'APP-2026-0005',
-            applicant_name: '伊藤 健二',
-            store_name: 'FIT365草加店',
-            plan_name: 'レギュラー会員（学生）',
-            application_date: '2026-03-30T13:20:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: '学生割引キャンペーン',
-          },
-          {
-            id: 'APP-2026-0006',
-            applicant_name: '松本 奈々',
-            store_name: 'ジョイフィット24越谷店',
-            plan_name: 'レギュラー会員',
-            application_date: '2026-03-30T14:05:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'JOYFIT',
-            campaign: 'なし',
-          },
-          {
-            id: 'APP-2026-0007',
-            applicant_name: '高橋 正男',
-            store_name: 'ジョイフィット24草加店',
-            plan_name: 'デイタイム会員',
-            application_date: '2026-03-30T14:50:00+09:00',
-            status: 'pending',
-            blacklist_match: true,
-            start_date: '2026-04-14',
-            brand_name: 'JOYFIT',
-            campaign: '春の入会キャンペーン',
-          },
-          {
-            id: 'APP-2026-0008',
-            applicant_name: '渡辺 由美子',
-            store_name: 'FIT365八潮店',
-            plan_name: 'レギュラー会員',
-            application_date: '2026-03-30T08:05:00+09:00',
-            status: 'approved',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: 'なし',
-          },
-          {
-            id: 'APP-2026-0009',
-            applicant_name: '中村 拓也',
-            store_name: 'FIT365越谷店',
-            plan_name: 'デイタイム会員',
-            application_date: '2026-03-30T07:42:00+09:00',
-            status: 'approved',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: 'なし',
-          },
-          {
-            id: 'APP-2026-0010',
-            applicant_name: '小林 優子',
-            store_name: 'ジョイフィット24越谷店',
-            plan_name: 'ナイト会員',
-            application_date: '2026-03-30T09:55:00+09:00',
-            status: 'approved',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'JOYFIT',
-            campaign: '法人会員キャンペーン',
-          },
-          {
-            id: 'APP-2026-0011',
-            applicant_name: '加藤 次郎',
-            store_name: 'FIT365八潮店',
-            plan_name: 'レギュラー会員（シニア）',
-            application_date: '2026-03-29T14:20:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: 'シニア割引キャンペーン',
-          },
-          {
-            id: 'APP-2026-0012',
-            applicant_name: '吉田 恵子',
-            store_name: 'FIT365越谷店',
-            plan_name: 'レギュラー会員',
-            application_date: '2026-03-29T09:55:00+09:00',
-            status: 'rejected',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: 'なし',
-          },
-          {
-            id: 'APP-2026-0013',
-            applicant_name: '山本 直人',
-            store_name: 'FIT365草加店',
-            plan_name: 'ウィークエンド会員',
-            application_date: '2026-03-28T11:22:00+09:00',
-            status: 'cancelled',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: 'なし',
-          },
-          {
-            id: 'APP-2026-0014',
-            applicant_name: '木村 幸子',
-            store_name: 'ジョイフィット24草加店',
-            plan_name: 'レギュラー会員',
-            application_date: '2026-03-28T08:50:00+09:00',
-            status: 'approved',
-            blacklist_match: false,
-            start_date: '2026-04-07',
-            brand_name: 'JOYFIT',
-            campaign: 'なし',
-          },
-          {
-            id: 'APP-2026-0015',
-            applicant_name: '石川 雄介',
-            store_name: 'FIT365八潮店',
-            plan_name: 'デイタイム会員',
-            application_date: '2026-03-27T16:30:00+09:00',
-            status: 'rejected',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: '春の入会キャンペーン',
-          },
-          {
-            id: 'APP-2026-0016',
-            applicant_name: '前田 由香',
-            store_name: 'FIT365八潮店',
-            plan_name: 'レギュラー会員',
-            application_date: '2026-03-30T15:40:00+09:00',
-            status: 'review',
-            blacklist_match: true,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: '学生割引キャンペーン',
-          },
-          {
-            id: 'APP-2026-0017',
-            applicant_name: '若林 みなみ',
-            store_name: 'ジョイフィット24越谷店',
-            plan_name: 'レギュラー会員（学生）',
-            application_date: '2026-03-30T10:00:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'JOYFIT',
-            campaign: '学生割引キャンペーン',
-            is_minor: true,
-          },
-          {
-            id: 'APP-2026-0018',
-            applicant_name: '青木 太一',
-            store_name: 'FIT365草加店',
-            plan_name: 'レギュラー会員',
-            application_date: '2026-03-30T09:00:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'FIT365',
-            campaign: 'なし',
-            is_proxy: true,
-          },
-          {
-            id: 'APP-2026-0019',
-            applicant_name: '小川 拓海',
-            store_name: 'ジョイフィット24越谷店',
-            plan_name: 'レギュラー会員',
-            application_date: '2026-03-30T12:30:00+09:00',
-            status: 'pending',
-            blacklist_match: false,
-            start_date: '2026-04-01',
-            brand_name: 'JOYFIT',
-            campaign: 'なし',
-          },
-        ];
-
-        this._applications.push(...seed);
-
-        function maskPhone(real: string) {
-          return real.replace(/(\d{3})-(\d{4})-(\d{4})/, '$1-****-$3');
-        }
-        function maskEmail(real: string) {
-          const [local, domain] = real.split('@');
-          return `${local.slice(0, 2)}***@${domain}`;
-        }
-        function maskAddress(real: string) {
-          return real.replace(/(\d+-\d+-\d+)$/, '***');
-        }
-
-        const FEE_ROWS_JOYFIT = [
-          { label: '入会金', amount: 2200 },
-          { label: '登録事務手数料', amount: 3300 },
-          { label: '初月会費（日割）', amount: 990 },
-          { label: '翌月会費', amount: 7700 },
-        ];
-        const FEE_ROWS_FIT365 = [
-          { label: 'カード発行料', amount: 5500 },
-          { label: '初月会費（日割）', amount: 990 },
-          { label: '翌月会費', amount: 7700 },
-        ];
-
-        const SPECIAL_DETAILS: Record<string, Record<string, unknown>> = {
-          'APP-2026-0003': {
-            blacklist_conditions: ['氏名＆生年月日一致', '電話番号一致'],
-            timeline: [
-              {
-                id: 'tl-0003-2',
-                kind: 'system',
-                date: '2026/03/25 11:00',
-                operator: 'システム',
-                content: 'ブラックリスト照合で一致を検出しました。',
-              },
-              {
-                id: 'tl-0003-1',
-                kind: 'system',
-                date: '2026/03/25 10:30',
-                operator: 'システム',
-                content: '申請受付（アプリ経由）',
-              },
-            ],
-          },
-          'APP-2026-0007': {
-            blacklist_conditions: ['氏名＆生年月日一致'],
-            timeline: [
-              {
-                id: 'tl-0007-1',
-                kind: 'system',
-                date: '2026/03/26 14:00',
-                operator: 'システム',
-                content: '申請受付（アプリ経由）',
-              },
-            ],
-          },
-          'APP-2026-0008': {
-            approved_by: '管理者A',
-            approved_at: '2026/03/26 15:30',
-            timeline: [
-              {
-                id: 'tl-0008-3',
-                kind: 'system',
-                date: '2026/03/26 15:30',
-                operator: '管理者A',
-                content: '入会申請を承認しました。会員登録完了通知を送信しました。',
-              },
-              {
-                id: 'tl-0008-2',
-                kind: 'memo',
-                date: '2026/03/26 15:00',
-                operator: '管理者A',
-                content: '本人確認書類を目視確認済み。',
-              },
-              {
-                id: 'tl-0008-1',
-                kind: 'system',
-                date: '2026/03/26 14:00',
-                operator: 'システム',
-                content: '申請受付（アプリ経由）',
-              },
-            ],
-          },
-          'APP-2026-0016': {
-            blacklist_conditions: ['氏名＆生年月日一致', '住所一致'],
-            timeline: [
-              {
-                id: 'tl-0016-1',
-                kind: 'system',
-                date: '2026/03/30 15:40',
-                operator: 'システム',
-                content: '申請受付（アプリ経由）',
-              },
-            ],
-          },
-          'APP-2026-0017': {
-            applicant_kana: 'ワカバヤシ ミナミ',
-            birth_date: '2009/05/15',
-            age: 16,
-            gender_label: '女性',
-            parental_consent: true,
-            timeline: [
-              {
-                id: 'tl-0017-1',
-                kind: 'system',
-                date: '2026/03/30 10:00',
-                operator: 'システム',
-                content: '申請受付（アプリ経由）',
-              },
-            ],
-          },
-          'APP-2026-0018': {
-            application_source: '管理画面',
-            proxy_applicant: '管理者A（STAFF-001）',
-            agreement_date: '2026/03/30 09:00',
-            timeline: [
-              {
-                id: 'tl-0018-1',
-                kind: 'system',
-                date: '2026/03/30 09:00',
-                operator: '管理者A',
-                content: '管理画面から代理申請を登録',
-              },
-            ],
-          },
-        };
-
-        for (const app of seed) {
-          const phoneReal = '090-1234-5678';
-          const emailReal = `${app.id.toLowerCase().replaceAll('-', '')}@example.jp`;
-          const addressReal = '東京都渋谷区1-2-3';
-          const special = SPECIAL_DETAILS[app.id] ?? {};
-          const feeRows = app.brand_name === 'FIT365' ? FEE_ROWS_FIT365 : FEE_ROWS_JOYFIT;
-          const monthlyFee = 7700;
-
-          this._details[app.id] = {
-            applicant_kana: (special.applicant_kana as string) ?? 'ヤマダ タロウ',
-            birth_date: (special.birth_date as string) ?? '1990/01/15',
-            age: (special.age as number) ?? 36,
-            gender_label: (special.gender_label as string) ?? '男性',
-            phone: maskPhone(phoneReal),
-            phone_real: phoneReal,
-            email_masked: maskEmail(emailReal),
-            email_real: emailReal,
-            address: maskAddress(addressReal),
-            address_real: addressReal,
-            blacklist_conditions: (special.blacklist_conditions as string[]) ?? [],
-            usage_start_date: app.start_date.replaceAll('-', '/'),
-            monthly_fee: monthlyFee,
-            options: ['タオル'],
-            fee_rows: feeRows,
-            payment_method: 'クレジットカード',
-            card_last4: '1234',
-            application_source: (special.application_source as string) ?? 'アプリ',
-            updated_at: '2026/03/30 09:20',
-            parental_consent: (special.parental_consent as boolean) ?? false,
-            proxy_applicant: special.proxy_applicant as string | undefined,
-            agreement_date: special.agreement_date as string | undefined,
-            approved_by: special.approved_by as string | undefined,
-            approved_at: special.approved_at as string | undefined,
-            rejected_by: special.rejected_by as string | undefined,
-            rejected_at: special.rejected_at as string | undefined,
-            rejected_reason: special.rejected_reason as string | undefined,
-            timeline: (special.timeline as MembershipApplicationDetails['timeline']) ?? [
-              {
-                id: `tl-${app.id}-1`,
-                kind: 'system' as const,
-                date: '2026/03/30 09:15',
-                operator: 'システム',
-                content: '申請受付（アプリ経由）',
-              },
-            ],
-          };
-        }
-      },
-
-      getAll(): MembershipApplication[] {
-        this._seed();
-        return [...this._applications];
-      },
-
-      getById(id: string): MembershipApplication | undefined {
-        this._seed();
-        return this._applications.find((a) => a.id === id);
-      },
-
-      getDetails(id: string) {
-        this._seed();
-        return this._details[id] ?? {};
-      },
-
-      updateDetails(id: string, patch: Record<string, any>) {
-        this._seed();
-        const exists = this._applications.some((a) => a.id === id);
-        if (!exists) return undefined;
-        this._details[id] = { ...(this._details[id] ?? {}), ...patch };
-        return this._details[id];
-      },
-
-      updateStatus(
-        id: string,
-        status: MembershipApplicationStatus,
-      ): MembershipApplication | undefined {
-        this._seed();
-        const idx = this._applications.findIndex((a) => a.id === id);
-        if (idx === -1) return undefined;
-        this._applications[idx] = { ...this._applications[idx], status };
-        return this._applications[idx];
-      },
-
-      addMemo(
-        id: string,
-        content: string,
-        operator: string,
-      ): MembershipApplicationDetails['timeline'] | undefined {
-        this._seed();
-        const exists = this._applications.some((a) => a.id === id);
-        if (!exists) return undefined;
-
-        const details = this._details[id] ?? {};
-        const timeline = (details.timeline ?? []) as NonNullable<
-          MembershipApplicationDetails['timeline']
-        >;
-
-        const now = new Date();
-        const dateStr = now.toLocaleString('ja-JP', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-
-        const newMemo = {
-          id: `tl-${Date.now()}-memo`,
-          kind: 'memo' as const,
-          date: dateStr.replace(/\//g, '/'),
-          operator,
-          content,
-        };
-
-        const updatedTimeline = [newMemo, ...timeline];
-        this._details[id] = { ...details, timeline: updatedTimeline };
-
-        return updatedTimeline;
-      },
-
-      deleteMemo(id: string, memoId: string): boolean {
-        this._seed();
-        const exists = this._applications.some((a) => a.id === id);
-        if (!exists) return false;
-
-        const details = this._details[id];
-        if (!details || !details.timeline) return false;
-
-        const memoIndex = details.timeline.findIndex((entry) => entry.id === memoId);
-        if (memoIndex === -1) return false;
-
-        const updatedTimeline = details.timeline.filter((_, idx) => idx !== memoIndex);
-        this._details[id] = { ...details, timeline: updatedTimeline };
-
-        return true;
-      },
-
-      createDirect(data: DirectEnrollmentRequestType, blMatched: boolean): MembershipApplication {
-        this._seed();
-        const id = `APP-DIRECT-${Date.now()}`;
-        const newApp: MembershipApplication = {
-          id,
-          applicant_name: `${data.applicant.last_name_kanji}${data.applicant.first_name_kanji}`,
-          status: 'pending',
-          blacklist_match: blMatched,
-          brand_name: data.contract.brand,
-          store_name: data.contract.store_id,
-          plan_name: data.contract.plan_id,
-          campaign: data.contract.campaign_id ?? 'なし',
-          application_date: new Date().toISOString(),
-          start_date: data.contract.start_date,
-          is_proxy: true,
-        };
-        this._applications.push(newApp);
-        this._details[id] = {
-          applicant_name: newApp.applicant_name,
-          proxy_applicant: '管理者A（STAFF-001）',
-          agreement_date: new Date().toISOString(),
-          payment_method: data.contract.payment_method,
-          usage_start_date: data.contract.start_date,
-          timeline: [],
-        };
-        return newApp;
       },
     },
 
@@ -1495,32 +1255,37 @@ export function createMembersTables(getDb: () => DbType) {
         const members = db.members._members;
         const primaries = members.filter(
           (m) =>
-            (m.profile.member_type === MemberType.REGULAR ||
-              m.profile.member_type === MemberType.CORPORATE ||
-              m.profile.member_type === MemberType.ONE_DAY_MEMBER) &&
-            m.profile.status === MemberStatus.ACTIVE,
+            (m.memberType === MemberType.REGULAR ||
+              m.memberType === MemberType.CORPORATE ||
+              m.memberType === MemberType.ONE_DAY_MEMBER) &&
+            m.memberStatus === MemberStatus.ACTIVE,
         );
-        const familyCandidates = members.filter((m) => m.profile.member_type === MemberType.FAMILY);
+        // Each family member belongs to exactly ONE group. The pool is consumed in
+        // order and never wraps around: reusing a candidate would put the same
+        // person under two different parents, which made the 家族会員 block disagree
+        // with itself depending on whose page you opened (QA02 ★5).
+        const familyCandidates = members.filter((m) => m.memberType === MemberType.FAMILY);
+        let candidateIdx = 0;
+        const takeCandidates = (count: number) => {
+          const taken = familyCandidates.slice(candidateIdx, candidateIdx + count);
+          candidateIdx += taken.length;
+          return taken;
+        };
 
         for (let i = 0; i < primaries.length; i++) {
           const p = primaries[i]!;
-          const childCount = i % 4;
           const rels: Array<{
             child_member_id: string;
             relationship: FamilyRelationship;
             joined_at: string;
-          }> = [];
-          for (let j = 0; j < childCount; j++) {
-            const child = familyCandidates[(i * 3 + j) % familyCandidates.length]!;
-            rels.push({
-              child_member_id: child.basic_info.id,
-              relationship: (
-                ['spouse', 'child', 'parent', 'sibling', 'grandparent', 'grandchild'] as const
-              )[(i + j) % 6]!,
-              joined_at: child.profile.joined_at,
-            });
-          }
-          if (rels.length) this._relationships.set(p.basic_info.id, rels);
+          }> = takeCandidates(i % 4).map((child, j) => ({
+            child_member_id: child.memberId,
+            relationship: (
+              ['spouse', 'child', 'parent', 'sibling', 'grandparent', 'grandchild'] as const
+            )[(i + j) % 6]!,
+            joined_at: child.enrolledAt,
+          }));
+          if (rels.length) this._relationships.set(p.memberId, rels);
         }
 
         const typeGroups: Array<{ type: MemberType; count: number }> = [
@@ -1536,30 +1301,21 @@ export function createMembersTables(getDb: () => DbType) {
           'grandparent',
           'grandchild',
         ];
-        let childIdx = 0;
         for (const { type, count } of typeGroups) {
           const typePrimaries = members.filter(
-            (m) => m.profile.member_type === type && m.profile.status === MemberStatus.ACTIVE,
+            (m) => m.memberType === type && m.memberStatus === MemberStatus.ACTIVE,
           );
           for (let k = 0; k < Math.min(count, typePrimaries.length); k++) {
             const p = typePrimaries[k]!;
-            if (this._relationships.has(p.basic_info.id)) continue;
-            const numChildren = (k % 3) + 1;
-            const rels: Array<{
-              child_member_id: string;
-              relationship: FamilyRelationship;
-              joined_at: string;
-            }> = [];
-            for (let j = 0; j < numChildren; j++) {
-              const child = familyCandidates[childIdx % familyCandidates.length]!;
-              childIdx++;
-              rels.push({
-                child_member_id: child.basic_info.id,
-                relationship: relationships[(k + j) % relationships.length]!,
-                joined_at: child.profile.joined_at,
-              });
-            }
-            this._relationships.set(p.basic_info.id, rels);
+            if (this._relationships.has(p.memberId)) continue;
+            // Same pool as above — once it runs dry no further groups are created,
+            // rather than handing an already-placed member to a second parent.
+            const rels = takeCandidates((k % 3) + 1).map((child, j) => ({
+              child_member_id: child.memberId,
+              relationship: relationships[(k + j) % relationships.length]!,
+              joined_at: child.enrolledAt,
+            }));
+            if (rels.length) this._relationships.set(p.memberId, rels);
           }
         }
 
@@ -1625,7 +1381,7 @@ export function createMembersTables(getDb: () => DbType) {
             id: `FR-${String(i).padStart(5, '0')}`,
             created_at: created.toISOString(),
             status,
-            primary_member_id: primary.basic_info.id,
+            primary_member_id: primary.memberId,
             applicant_name: `家族申請者${String(i).padStart(3, '0')}`,
             relationship: (
               ['spouse', 'child', 'parent', 'sibling', 'grandparent', 'grandchild'] as const
@@ -1649,13 +1405,21 @@ export function createMembersTables(getDb: () => DbType) {
         }
       },
 
+      /** Family-size cap for a brand group, without touching the member table. */
+      getFamilyMemberLimit(brandGroup: MainBrand | undefined): number {
+        const settings = this._brandSettings[brandGroup ?? Brand.FIT365];
+        return (
+          settings?.family_member_limit ?? this._brandSettings[Brand.FIT365].family_member_limit
+        );
+      },
+
       getBrandSettingsByPrimaryMemberId(primary_member_id: string) {
         this._seed();
         const db = getDb();
         const primary = db.members.get(primary_member_id);
-        const mainBrand = primary?.profile.main_brand ?? 'fit365';
+        const mainBrand = primary?.brandGroup ?? 'fit365';
         const settings = this._brandSettings[mainBrand] ?? this._brandSettings[Brand.FIT365];
-        const brand = primary?.profile.brand ?? Brand.FIT365;
+        const brand = primary?.primaryStore.brandEnum ?? Brand.FIT365;
         return { brand, settings };
       },
 
@@ -1669,15 +1433,18 @@ export function createMembersTables(getDb: () => DbType) {
             const child = db.members.get(r.child_member_id);
             if (!child) return undefined;
             return {
-              id: child.basic_info.id,
-              member_number: child.basic_info.member_number,
-              name_kanji: child.basic_info.name_kanji,
+              id: child.memberId,
+              member_number: child.memberNumber,
+              name_kanji: joinJapaneseName(
+                child.personalInfo.lastName,
+                child.personalInfo.firstName,
+              ),
               relationship: r.relationship,
               joined_at: r.joined_at,
-              status: child.profile.status,
+              status: child.memberStatus,
               monthly_fee: settings.family_member_fee,
-              store_id: child.profile.store_id,
-              store_name: child.profile.store_name,
+              store_id: child.primaryStore.storeId,
+              store_name: child.primaryStore.name,
             };
           })
           .filter(Boolean);
@@ -1763,7 +1530,7 @@ export function createMembersTables(getDb: () => DbType) {
       updateRegistrationStatus(
         id: string,
         status: FamilyRegistrationStatus,
-        patch?: Record<string, any>,
+        patch?: Record<string, unknown>,
       ) {
         this._seed();
         const idx = this._registrations.findIndex((r) => r.id === id);
@@ -1809,11 +1576,11 @@ export function createMembersTables(getDb: () => DbType) {
             const referee = members[i + k];
             if (!referee) break;
             const joined =
-              referee.profile.status === MemberStatus.ACTIVE ||
-              referee.profile.status === MemberStatus.SUSPENDED;
+              referee.memberStatus === MemberStatus.ACTIVE ||
+              referee.memberStatus === MemberStatus.SUSPENDED;
             const withdrew =
-              referee.profile.status === MemberStatus.WITHDRAWN ||
-              referee.profile.status === MemberStatus.FORCE_WITHDRAWN;
+              referee.memberStatus === MemberStatus.WITHDRAWN ||
+              referee.memberStatus === MemberStatus.FORCED_WITHDRAWAL;
             const points = joined ? 300 * k : null;
             const points_status_ja = joined
               ? `付与済み（${points}P）`
@@ -1821,20 +1588,20 @@ export function createMembersTables(getDb: () => DbType) {
                 ? '退会により対象外'
                 : '未付与';
             batch.push({
-              referee_member_id: referee.basic_info.id,
+              referee_member_id: referee.memberId,
               referred_at: referredAt,
               points_earned: points,
               points_status_ja,
             });
-            if (!this._refereeToReferrer.has(referee.basic_info.id)) {
-              this._refereeToReferrer.set(referee.basic_info.id, {
-                referrer_member_id: referrer.basic_info.id,
+            if (!this._refereeToReferrer.has(referee.memberId)) {
+              this._refereeToReferrer.set(referee.memberId, {
+                referrer_member_id: referrer.memberId,
                 referred_at: referredAt,
                 benefit_description: '初月会費50%オフ（紹介特典）',
               });
             }
           }
-          if (batch.length) this._byReferrer.set(referrer.basic_info.id, batch);
+          if (batch.length) this._byReferrer.set(referrer.memberId, batch);
         }
       },
 
@@ -1856,7 +1623,7 @@ export function createMembersTables(getDb: () => DbType) {
       const member = db.members.get(memberId);
       if (!member) return null;
 
-      const memberType = member.profile.member_type;
+      const memberType = member.memberType;
 
       let family:
         | {
@@ -1895,11 +1662,11 @@ export function createMembersTables(getDb: () => DbType) {
               const child = db.members.get(r.child_member_id);
               if (!child) return undefined;
               return {
-                id: child.basic_info.id,
-                member_number: child.basic_info.member_number,
-                name: child.basic_info.name_kanji,
+                id: child.memberId,
+                member_number: child.memberNumber,
+                name: joinJapaneseName(child.personalInfo.lastName, child.personalInfo.firstName),
                 relationship: familyRelationshipToJa(r.relationship),
-                status: child.profile.status,
+                status: child.memberStatus,
               };
             })
             .filter((x): x is NonNullable<typeof x> => Boolean(x)),
@@ -1913,11 +1680,11 @@ export function createMembersTables(getDb: () => DbType) {
             family = {
               role: 'family_child',
               parent: {
-                id: parent.basic_info.id,
-                member_number: parent.basic_info.member_number,
-                name: parent.basic_info.name_kanji,
+                id: parent.memberId,
+                member_number: parent.memberNumber,
+                name: joinJapaneseName(parent.personalInfo.lastName, parent.personalInfo.firstName),
                 relationship: relEnum ? familyRelationshipToJa(relEnum) : '—',
-                status: parent.profile.status,
+                status: parent.memberStatus,
               },
             };
           }
@@ -1935,10 +1702,14 @@ export function createMembersTables(getDb: () => DbType) {
       } | null = null;
 
       if (memberType === MemberType.CORPORATE) {
+        const memberNameKanji = joinJapaneseName(
+          member.personalInfo.lastName,
+          member.personalInfo.firstName,
+        );
         corporate = {
-          corporate_detail_member_id: member.basic_info.id,
-          corporate_name: `${member.basic_info.name_kanji}（法人契約）`,
-          corporate_number: `7${String(member.basic_info.id.replace(/\D/g, '') || '0')
+          corporate_detail_member_id: member.memberId,
+          corporate_name: `${memberNameKanji}（法人契約）`,
+          corporate_number: `7${String(member.memberId.replace(/\D/g, '') || '0')
             .padStart(12, '0')
             .slice(0, 12)}`,
           contract_type: '法人団体契約（標準）',
@@ -1947,18 +1718,19 @@ export function createMembersTables(getDb: () => DbType) {
           contact_name: '営業 一郎',
         };
       } else if (memberType === MemberType.ONE_DAY_MEMBER) {
-        const corpMember = db.members._members.find(
-          (m) => m.profile.member_type === MemberType.CORPORATE,
-        );
+        const corpMember = db.members._members.find((m) => m.memberType === MemberType.CORPORATE);
         if (corpMember) {
           corporate = {
-            corporate_detail_member_id: corpMember.basic_info.id,
+            corporate_detail_member_id: corpMember.memberId,
             corporate_name: 'サンプル株式会社（社割提携法人）',
             corporate_number: '7010001056789',
             contract_type: '社員優待（法人付帯）',
             company_discount: { applied: true, rate_percent: 15 },
             contact_department: '人事部',
-            contact_name: corpMember.basic_info.name_kanji,
+            contact_name: joinJapaneseName(
+              corpMember.personalInfo.lastName,
+              corpMember.personalInfo.firstName,
+            ),
           };
         }
       }
@@ -1968,16 +1740,19 @@ export function createMembersTables(getDb: () => DbType) {
         .map((r) => {
           const refMember = db.members.get(r.referee_member_id);
           if (!refMember) return undefined;
-          const st = refMember.profile.status;
+          const st = refMember.memberStatus;
           let membership_status_ja = '未入会';
           if (st === MemberStatus.ACTIVE) membership_status_ja = '入会済み（利用中）';
           else if (st === MemberStatus.SUSPENDED) membership_status_ja = '入会済み（休会中）';
-          else if (st === MemberStatus.WITHDRAWN || st === MemberStatus.FORCE_WITHDRAWN)
+          else if (st === MemberStatus.WITHDRAWN || st === MemberStatus.FORCED_WITHDRAWAL)
             membership_status_ja = '退会済み';
           return {
-            id: refMember.basic_info.id,
-            member_number: refMember.basic_info.member_number,
-            name: refMember.basic_info.name_kanji,
+            id: refMember.memberId,
+            member_number: refMember.memberNumber,
+            name: joinJapaneseName(
+              refMember.personalInfo.lastName,
+              refMember.personalInfo.firstName,
+            ),
             referred_at: r.referred_at,
             membership_status: membership_status_ja,
             points_status: r.points_status_ja,
@@ -2002,9 +1777,9 @@ export function createMembersTables(getDb: () => DbType) {
         if (ref) {
           as_referee = {
             referrer: {
-              id: ref.basic_info.id,
-              member_number: ref.basic_info.member_number,
-              name: ref.basic_info.name_kanji,
+              id: ref.memberId,
+              member_number: ref.memberNumber,
+              name: joinJapaneseName(ref.personalInfo.lastName, ref.personalInfo.firstName),
               referred_at: asRefereeRow.referred_at,
               referral_benefit: asRefereeRow.benefit_description,
             },

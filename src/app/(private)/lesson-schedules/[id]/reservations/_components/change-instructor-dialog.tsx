@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Check, CheckCircle, Info, X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,23 +27,23 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
 import {
+  getCrmInstructorsOptions,
   getCrmLessonSchedulesQueryKey,
   patchCrmLessonSchedulesByScheduleIdInstructorChangeMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
 import type { LessonScheduleListItem } from '@/lib/api/types.gen';
 import { cn } from '@/lib/utils';
 
-// Mock instructor list (in a real app, this would come from an API)
-const AVAILABLE_INSTRUCTORS = [
-  { id: 'inst-1', name: '田中 美咲', specialty: 'ヨガ / ピラティス' },
-  { id: 'inst-2', name: '鈴木 健太', specialty: 'ヨガ / ストレッチ' },
-  { id: 'inst-3', name: '山本 裕子', specialty: 'ヨガ / 瞑想' },
-  { id: 'inst-4', name: '佐藤 あかり', specialty: 'ヨガ全般' },
-  { id: 'inst-5', name: '伊藤 大輔', specialty: 'パワーヨガ / HIIT' },
-  { id: 'inst-6', name: '渡辺 麻衣', specialty: 'リラックスヨガ / アロマ' },
-  { id: 'inst-7', name: '高橋 誠', specialty: 'ボディコンバット / 筋トレ' },
-  { id: 'inst-8', name: '小林 真理', specialty: 'ピラティス / バレトン' },
-];
+const ROLE_LABELS: Record<string, string> = {
+  trainer: 'トレーナー',
+  instructor: 'インストラクター',
+  body_care_therapist: 'ボディケアセラピスト',
+};
+
+const TAB_LABELS: Record<string, string> = {
+  studio: 'スタジオ',
+  pt: 'パーソナル',
+};
 
 interface ChangeInstructorDialogProps {
   open: boolean;
@@ -62,6 +62,26 @@ export function ChangeInstructorDialog({
   const [reason, setReason] = useState('');
   const [sendNotification, setSendNotification] = useState(true);
   const queryClient = useQueryClient();
+
+  const instructorsQuery = useQuery({
+    ...getCrmInstructorsOptions({ query: { status: 'active' } }),
+    enabled: open,
+  });
+  const availableInstructors = (instructorsQuery.data?.instructors ?? [])
+    .filter((i) => i.instructor_id !== schedule.instructor_id)
+    .map((i) => ({
+      id: i.instructor_id,
+      name: i.instructor_name,
+      specialty: [TAB_LABELS[i.tab ?? ''], ROLE_LABELS[i.role]].filter(Boolean).join(' / '),
+    }));
+
+  const currentInstructorSpecialty = (() => {
+    const current = instructorsQuery.data?.instructors.find(
+      (i) => i.instructor_id === schedule.instructor_id,
+    );
+    if (!current) return null;
+    return [TAB_LABELS[current.tab ?? ''], ROLE_LABELS[current.role]].filter(Boolean).join(' / ');
+  })();
 
   const changeMutation = useMutation({
     ...patchCrmLessonSchedulesByScheduleIdInstructorChangeMutation(),
@@ -119,6 +139,9 @@ export function ChangeInstructorDialog({
               </div>
               <div>
                 <p className="text-sm font-medium">{schedule.instructor_name}</p>
+                {currentInstructorSpecialty && (
+                  <p className="text-muted-foreground text-[10px]">{currentInstructorSpecialty}</p>
+                )}
               </div>
             </div>
           </div>
@@ -131,7 +154,7 @@ export function ChangeInstructorDialog({
               <CommandList className="max-h-[200px]">
                 <CommandEmpty>該当する講師が見つかりません</CommandEmpty>
                 <CommandGroup>
-                  {AVAILABLE_INSTRUCTORS.map((inst) => (
+                  {availableInstructors.map((inst) => (
                     <CommandItem
                       key={inst.id}
                       value={`${inst.name} ${inst.specialty}`}
@@ -160,7 +183,7 @@ export function ChangeInstructorDialog({
             {selectedIds.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {selectedIds.map((id) => {
-                  const inst = AVAILABLE_INSTRUCTORS.find((i) => i.id === id);
+                  const inst = availableInstructors.find((i) => i.id === id);
                   if (!inst) return null;
                   return (
                     <span
@@ -188,7 +211,7 @@ export function ChangeInstructorDialog({
               checked={sendNotification}
               onCheckedChange={(v) => setSendNotification(!!v)}
             />
-            予約者に講師変更を通知する
+            予約者に講師変更を通知する（{schedule.booked_count}名）
           </label>
 
           {/* Reason */}

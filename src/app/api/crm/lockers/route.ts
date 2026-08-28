@@ -69,7 +69,8 @@ export async function GET(request: NextRequest) {
     const query: GetLockersQuery = validationResult.data;
     const { page, limit, search, shape, sort_by = 'locker_id', sort_order = 'asc' } = query;
 
-    const filtered = filterLockers(db.lockers.getList(), {
+    const allLockers = db.lockers.getList();
+    const filtered = filterLockers(allLockers, {
       search,
       shape,
       sort_by,
@@ -87,6 +88,7 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         total_pages,
+        all_total: allLockers.length,
       },
     };
 

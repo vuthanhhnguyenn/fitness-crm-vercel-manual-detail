@@ -1,4 +1,4 @@
-import { Clock } from 'lucide-react';
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -6,15 +6,6 @@ import type { VisitExperienceDetail } from '@/types/api/visit-experience.type';
 
 interface TimelineCardProps {
   record: VisitExperienceDetail;
-}
-
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString('ja-JP', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 export function TimelineCard({ record }: TimelineCardProps) {
@@ -25,27 +16,38 @@ export function TimelineCard({ record }: TimelineCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <Clock className="size-4" />
-          対応履歴
-        </CardTitle>
+        <CardTitle className="text-base font-semibold">タイムライン</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4">
         {entries.length === 0 ? (
           <p className="text-muted-foreground text-xs">履歴がありません</p>
         ) : (
-          <ol className="border-border relative border-l pl-4">
-            {entries.map((entry, idx) => (
-              <li key={idx} className="mb-4 last:mb-0">
-                <div className="border-background bg-muted-foreground/40 absolute -left-1.5 mt-1 size-3 rounded-full border" />
-                <time className="text-muted-foreground text-xs">
-                  {formatTimestamp(entry.timestamp)}
-                </time>
-                <p className="mt-0.5 text-sm font-medium">{entry.content}</p>
-                <p className="text-muted-foreground text-xs">{entry.operator}</p>
-              </li>
-            ))}
-          </ol>
+          <div className="flex flex-col gap-0">
+            {entries.map((entry, i) => {
+              const isSystem = entry.operator === 'システム';
+              return (
+                <div key={`${entry.timestamp}-${entry.operator}-${i}`} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`mt-2 size-2.5 shrink-0 rounded-full ${
+                        isSystem ? 'bg-muted-foreground' : 'bg-primary'
+                      }`}
+                    />
+                    {i < entries.length - 1 && <div className="bg-border mt-1 w-px flex-1" />}
+                  </div>
+                  <div className="flex flex-col gap-0.5 pb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-xs">
+                        {formatDateYYYYMMDD_HHMM(entry.timestamp)}
+                      </span>
+                      <span className="text-xs font-medium">{entry.operator}</span>
+                    </div>
+                    <p className="text-sm">{entry.content}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </CardContent>
     </Card>

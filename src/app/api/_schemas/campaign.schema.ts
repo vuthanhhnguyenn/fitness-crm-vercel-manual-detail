@@ -1,585 +1,698 @@
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
-import { ErrorResponseSchema } from './auth.schema';
-import { StoreListBrandSchema } from './store.schema';
+import { BrandEnumSchema } from './brand.schema';
 
 extendZodWithOpenApi(z);
 
-export const CampaignAcceptStatusSchema = z.enum(['active', 'inactive']).openapi({
-  title: 'CampaignAcceptStatus',
-  description: 'Campaign acceptance availability',
+/** クエリ文字列の "true"/"false" を boolean に寄せる (リポジトリ共通パターン)。 */
+const booleanQuery = () =>
+  z.preprocess((value) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  }, z.boolean().optional());
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+/** API-088 DiscountType */
+export const CampaignDiscountTypeSchema = z.enum(['fixed_amount', 'percentage']).openapi({
+  title: 'CampaignDiscountType',
+  description: '割引種別 (fixed_amount=円 / percentage=%)',
 });
 
-export const CampaignStatusSchema = z.enum(['active', 'inactive']).openapi({
-  title: 'CampaignStatus',
-  description: 'Campaign record status',
-});
-
-export const CampaignApplicationStartMonthTypeSchema = z
-  .enum(['first_month', 'next_month', 'custom_month'])
+/** API-088 ApplyStartMonth */
+export const CampaignApplyStartMonthSchema = z
+  .enum(['first_month', 'next_month', 'specific_month'])
   .openapi({
-    title: 'CampaignApplicationStartMonthType',
-    description: 'Start month type for campaign application period',
+    title: 'CampaignApplyStartMonth',
+    description: 'キャンペーン適用開始月 (初月 / 翌月 / X月指定)',
   });
 
-export const CampaignAutoGrantTargetSchema = z.enum(['all', 'conditional']).openapi({
-  title: 'CampaignAutoGrantTarget',
-  description: 'Auto-grant target scope',
+export const CampaignTargetSexSchema = z.enum(['male', 'female', 'other']).openapi({
+  title: 'CampaignTargetSex',
+  description: '自動付与の性別条件',
 });
 
-export const CampaignGenderConditionSchema = z.enum(['male', 'female', 'other']).openapi({
-  title: 'CampaignGenderCondition',
-  description: 'Gender condition for auto-grant',
+export const CampaignAcceptStateSchema = z
+  .enum(['accepting', 'stopped', 'capacity_reached'])
+  .openapi({
+    title: 'CampaignAcceptState',
+    description: '受付状態 (導出値。上限到達時は capacity_reached)',
+  });
+
+export const CampaignPublishScopeSchema = z.enum(['all_stores', 'specific_stores']).openapi({
+  title: 'CampaignPublishScope',
+  description: '公開範囲 (全店舗公開 / 特定店舗のみ公開)',
 });
 
-export const CampaignErrorResponseSchema = ErrorResponseSchema.extend({
-  code: z.string().optional().openapi({
-    example: 'campaign_code_duplicate',
-    description: 'Campaign-specific error code',
-  }),
-}).openapi({
-  title: 'CampaignErrorResponse',
-  description: 'Campaign-specific error response',
-});
+export const CampaignSortSchema = z
+  .enum(['id', 'createdAt', 'updatedAt', 'name', 'recruitmentStart', 'recruitmentEnd'])
+  .openapi({
+    title: 'CampaignSort',
+    description: 'キャンペーン一覧の並び替えキー',
+  });
 
-export const CampaignListItemSchema = z
+// ─── Error ────────────────────────────────────────────────────────────────────
+
+/** API-088 ErrorResponse */
+export const CampaignErrorResponseSchema = z
   .object({
-    id: z.string().openapi({ example: 'CP001', description: 'Campaign ID' }),
-    name: z.string().openapi({ example: '春の入会キャンペーン', description: 'Campaign name' }),
-    code: z.string().openapi({ example: 'STR01A1B2C', description: 'Campaign code' }),
-    brand: StoreListBrandSchema.openapi({ description: 'Brand' }),
-    recruitment_period_start: z
+    code: z.string().openapi({ example: 'E-VAL-001', description: 'エラーコード' }),
+    message: z.string().openapi({ description: 'ログ・デバッグ用の内部メッセージ (英語)' }),
+    userMessage: z.string().openapi({ description: '利用者向けメッセージ (日本語)' }),
+    traceId: z.string().optional().openapi({ example: '1-abcdef12-3456789abcdef012' }),
+  })
+  .openapi({
+    title: 'CampaignErrorResponse',
+    description: 'キャンペーンAPIのエラーレスポンス',
+  });
+
+/** API-088 のエラーコード。ハンドラ側の分岐に使う。 */
+export const CAMPAIGN_ERROR_CODES = {
+  validation: 'E-VAL-001',
+  codeDuplicate: 'E-CMP-001',
+  inUse: 'E-CMP-002',
+  notFound: 'E-CMP-404',
+  forbidden: 'E-AUTH-103',
+} as const;
+
+// ─── Nested value objects ─────────────────────────────────────────────────────
+
+/** API-088 CampaignOptionDiscount */
+export const CampaignOptionDiscountSchema = z
+  .object({
+    optionId: z.string().openapi({ example: 'OP001', description: 'オプションID' }),
+    optionName: z
       .string()
-      .openapi({ example: '2026/03/01', description: 'Recruitment period start date' }),
-    recruitment_period_end: z
-      .string()
-      .openapi({ example: '2026/04/30', description: 'Recruitment period end date' }),
-    accept_status: CampaignAcceptStatusSchema.openapi({ description: 'Acceptance status' }),
-    main_contract_name: z
-      .string()
-      .openapi({ example: 'レギュラー会員', description: 'Linked main contract name' }),
+      .openapi({ example: 'ドリンクバー（月額）', description: 'オプション名' }),
+    discountMonth1: z.boolean().openapi({ description: '初月に割引を適用するか' }),
+    discountMonth1Type: CampaignDiscountTypeSchema.nullable().openapi({
+      description: 'discountMonth1 が true の場合は必須',
+    }),
+    discountMonth1Value: z.number().nonnegative().nullable().openapi({
+      example: 500,
+      description: 'fixed_amount のときは円 (整数) / percentage のときは 0〜100',
+    }),
+    discountMonth2: z.boolean().openapi({ description: '翌月に割引を適用するか' }),
+    discountMonth2Type: CampaignDiscountTypeSchema.nullable().openapi({
+      description: 'discountMonth2 が true の場合は必須',
+    }),
+    discountMonth2Value: z.number().nonnegative().nullable().openapi({
+      example: 200,
+      description: 'fixed_amount のときは円 (整数) / percentage のときは 0〜100',
+    }),
   })
   .openapi({
-    title: 'CampaignListItem',
-    description: 'Campaign master list item',
+    title: 'CampaignOptionDiscount',
+    description: 'オプション単位の割引設定 (初月・翌月で別の値を保持できる)',
   });
 
-export const GetCampaignsQuerySchema = z
+/** API-088 CampaignOptionDiscountInput */
+export const CampaignOptionDiscountInputSchema = z
   .object({
-    page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(200).default(20),
-    search: z.string().optional().openapi({ description: 'Search by campaign name, ID, or code' }),
-    brand: StoreListBrandSchema.optional(),
-    accept_status: CampaignAcceptStatusSchema.optional(),
-    recruitment_period_start: z.string().optional().openapi({
-      description: 'Recruitment period start date (YYYY-MM-DD)',
-    }),
-    recruitment_period_end: z.string().optional().openapi({
-      description: 'Recruitment period end date (YYYY-MM-DD)',
-    }),
-    sort_by: z
-      .enum([
-        'id',
-        'name',
-        'code',
-        'brand',
-        'recruitment_period_start',
-        'recruitment_period_end',
-        'accept_status',
-        'main_contract_name',
-      ])
-      .default('id'),
-    sort_order: z.enum(['asc', 'desc']).default('asc'),
+    optionId: z.string().trim().min(1, 'オプションを選択してください'),
+    discountMonth1: z.boolean().default(false),
+    discountMonth1Type: CampaignDiscountTypeSchema.nullable().default(null),
+    discountMonth1Value: z.number().nonnegative().nullable().default(null),
+    discountMonth2: z.boolean().default(false),
+    discountMonth2Type: CampaignDiscountTypeSchema.nullable().default(null),
+    discountMonth2Value: z.number().nonnegative().nullable().default(null),
   })
   .openapi({
-    title: 'GetCampaignsQuery',
-    description: 'Campaign master list query',
+    title: 'CampaignOptionDiscountInput',
+    description: 'オプション単位の割引設定 (登録・更新用、初月・翌月で別の値を保持できる)',
   });
 
-export const GetCampaignsResponseSchema = z
+/** API-088 CampaignAutoOption */
+export const CampaignAutoOptionSchema = z
   .object({
-    campaigns: z.array(CampaignListItemSchema),
-    pagination: z.object({
-      page: z.number(),
-      limit: z.number(),
-      total: z.number(),
-      total_pages: z.number(),
-    }),
+    optionId: z.string().openapi({ example: 'OP002', description: 'オプションID' }),
+    optionName: z.string().openapi({ example: '水素水', description: 'オプション名' }),
+    targetSexes: z
+      .array(CampaignTargetSexSchema)
+      .nullable()
+      .openapi({
+        example: ['male', 'female'],
+        description: 'null は無条件 (全員)。配列指定で絞り込み',
+      }),
   })
   .openapi({
-    title: 'GetCampaignsResponse',
-    description: 'Campaign master list response',
+    title: 'CampaignAutoOption',
+    description: '自動付与オプション',
   });
 
-export type CampaignAcceptStatus = z.infer<typeof CampaignAcceptStatusSchema>;
-export type CampaignErrorResponse = z.infer<typeof CampaignErrorResponseSchema>;
-export type CampaignListItem = z.infer<typeof CampaignListItemSchema>;
-export type GetCampaignsQuery = z.infer<typeof GetCampaignsQuerySchema>;
-export type GetCampaignsResponse = z.infer<typeof GetCampaignsResponseSchema>;
-
-export const CampaignPeriodTypeSchema = z.enum(['recruitment', 'usage', 'application']).openapi({
-  title: 'CampaignPeriodType',
-  description: 'Type of campaign period shown in the detail tab',
-});
-
-export const CampaignDetailPeriodSchema = z
+/** API-088 CampaignAutoOptionInput */
+export const CampaignAutoOptionInputSchema = z
   .object({
-    period_type: CampaignPeriodTypeSchema.openapi({
-      description: 'Period grouping key',
-    }),
-    label: z.string().openapi({ example: '募集期間', description: 'Period label' }),
-    start_date: z.string().openapi({ example: '2026/03/01', description: 'Start date' }),
-    end_date: z.string().openapi({ example: '2026/04/30', description: 'End date' }),
+    optionId: z.string().trim().min(1, 'オプションを選択してください'),
+    targetSexes: z.array(CampaignTargetSexSchema).nullable().default(null),
   })
   .openapi({
-    title: 'CampaignDetailPeriod',
-    description: 'Campaign period block shown in detail tab 1',
+    title: 'CampaignAutoOptionInput',
+    description: '自動付与オプション (登録・更新用)',
   });
 
-export const CampaignDetailDiscountSchema = z
+export const CampaignReferralSettingsSchema = z
   .object({
-    title: z.string().openapi({ example: '春の入会特典', description: 'Discount title' }),
-    description: z.string().openapi({
-      example: '入会金 0円 / 事務手数料 50% OFF',
-      description: 'Discount description',
+    enabled: z.boolean().openapi({ description: '紹介キャンペーンとして設定するか' }),
+    points: z.number().int().nonnegative().nullable().openapi({
+      example: 1000,
+      description: '紹介成立1件ごとに紹介者へ付与するポイント',
     }),
-    value_text: z.string().openapi({
-      example: '初月会費 1,100円引き',
-      description: 'Display text for the discount value',
+    tieredIncrease: z.boolean().openapi({ description: '紹介人数に応じた段階的増加の有無' }),
+    tierThreshold: z.number().int().positive().nullable().openapi({
+      example: 3,
+      description: '段階的増加の開始人数 (N人目以降)',
     }),
-    first_month_enabled: z.boolean().openapi({
-      example: true,
-      description: 'Whether first month discount is enabled',
+    tierPoints: z.number().int().nonnegative().nullable().openapi({
+      example: 2000,
+      description: '段階的増加後の付与ポイント',
     }),
-    second_month_enabled: z.boolean().openapi({
-      example: false,
-      description: 'Whether second month discount is enabled',
-    }),
-    amount: z.number().int().nonnegative().nullable().openapi({
-      example: 1100,
-      description: 'Fixed discount amount in JPY',
-    }),
-    rate: z.number().int().min(0).max(100).nullable().openapi({
-      example: null,
-      description: 'Discount rate percentage',
-    }),
+    annualReset: z.boolean().openapi({ description: '毎年3/31にポイントをリセットするか' }),
   })
   .openapi({
-    title: 'CampaignDetailDiscount',
-    description: 'Discount settings shown in the basic information tab',
+    title: 'CampaignReferralSettings',
+    description: '紹介キャンペーン設定',
   });
 
-export const CampaignDetailAutoGrantSchema = z
-  .object({
-    enabled: z.boolean().openapi({ description: 'Whether auto-grant is enabled' }),
-    title: z.string().openapi({ example: '自動付与設定', description: 'Auto-grant title' }),
-    timing_text: z.string().openapi({
-      example: '会員登録完了後 3日以内',
-      description: 'Timing description',
-    }),
-    target_text: z.string().openapi({
-      example: 'レギュラー会員 / プレミアム会員',
-      description: 'Target contract description',
-    }),
-    description: z.string().openapi({
-      example: '条件を満たした会員に対して自動でキャンペーン適用を行います。',
-      description: 'Additional description',
-    }),
-    target_type: CampaignAutoGrantTargetSchema.openapi({
-      description: 'Auto-grant target type',
-    }),
-    gender_conditions: z.array(CampaignGenderConditionSchema).openapi({
-      example: ['male', 'female'],
-      description: 'Gender conditions for auto-grant',
-    }),
-    option_ids: z.array(z.string()).openapi({
-      example: ['OP001', 'OP002'],
-      description: 'Auto-granted option IDs',
-    }),
-    option_names: z.array(z.string()).openapi({
-      example: ['プロテイン', '水素水'],
-      description: 'Auto-granted option names',
-    }),
-  })
-  .openapi({
-    title: 'CampaignDetailAutoGrant',
-    description: 'Auto-grant settings shown in the basic information tab',
-  });
-
-export const CampaignUpsertDiscountSchema = z
-  .object({
-    first_month_enabled: z.boolean().default(false),
-    second_month_enabled: z.boolean().default(false),
-    amount: z.number().int().nonnegative().nullable().default(null),
-    rate: z.number().int().min(0).max(100).nullable().default(null),
-  })
-  .superRefine((value, ctx) => {
-    const hasEnabledMonth = value.first_month_enabled || value.second_month_enabled;
-    const hasAmount = value.amount !== null;
-    const hasRate = value.rate !== null;
-
-    if (!hasEnabledMonth && (hasAmount || hasRate)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['first_month_enabled'],
-        message: '対象月を選択してください',
-      });
-    }
-
-    if (hasEnabledMonth && !hasAmount && !hasRate) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['amount'],
-        message: '割引額または割引率を入力してください',
-      });
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['rate'],
-        message: '割引額または割引率を入力してください',
-      });
-    }
-
-    if (hasAmount && hasRate) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['amount'],
-        message: '割引額と割引率は同時に設定できません',
-      });
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['rate'],
-        message: '割引額と割引率は同時に設定できません',
-      });
-    }
-  })
-  .openapi({
-    title: 'CampaignUpsertDiscount',
-    description: 'Campaign discount settings for create/update',
-  });
-
-export const CampaignUpsertAutoGrantSchema = z
+export const CampaignReferralSettingsInputSchema = z
   .object({
     enabled: z.boolean().default(false),
-    target_type: CampaignAutoGrantTargetSchema.default('all'),
-    gender_conditions: z.array(CampaignGenderConditionSchema).default([]),
-    option_ids: z.array(z.string()).default([]),
+    points: z.number().int().nonnegative().nullable().default(null),
+    tieredIncrease: z.boolean().default(false),
+    tierThreshold: z.number().int().positive().nullable().default(null),
+    tierPoints: z.number().int().nonnegative().nullable().default(null),
+    annualReset: z.boolean().default(true),
   })
   .superRefine((value, ctx) => {
     if (!value.enabled) return;
-
-    if (value.option_ids.length === 0) {
+    if (value.points === null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['option_ids'],
-        message: '自動付与するオプションを1つ以上選択してください',
-      });
-    }
-
-    if (value.target_type === 'conditional' && value.gender_conditions.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['gender_conditions'],
-        message: '条件ありの場合は性別条件を1つ以上選択してください',
+        path: ['points'],
+        message: '紹介者への特典ポイントを入力してください',
       });
     }
   })
   .openapi({
-    title: 'CampaignUpsertAutoGrant',
-    description: 'Campaign auto-grant settings for create/update',
+    title: 'CampaignReferralSettingsInput',
+    description: '紹介キャンペーン設定 (登録・更新用)',
   });
 
-export const CampaignDetailStatsSchema = z
+export const CampaignEnrollmentChannelsSchema = z
   .object({
-    applied_member_count: z
-      .number()
-      .int()
-      .nonnegative()
-      .openapi({ example: 128, description: 'Number of applied members' }),
-    application_count: z
-      .number()
-      .int()
-      .nonnegative()
-      .openapi({ example: 45, description: 'Number of applications' }),
-    monthly_new_application_count: z
-      .number()
-      .int()
-      .nonnegative()
-      .openapi({ example: 12, description: 'New applications this month' }),
+    mobile: z.number().int().nonnegative().openapi({ example: 79, description: 'モバイル経由' }),
+    manual: z.number().int().nonnegative().openapi({ example: 34, description: '手動登録' }),
+    referral: z.number().int().nonnegative().openapi({ example: 15, description: '紹介経由' }),
   })
   .openapi({
-    title: 'CampaignDetailStats',
-    description: 'Campaign summary metrics shown on the detail page',
+    title: 'CampaignEnrollmentChannels',
+    description: '入会経路別内訳',
   });
 
-export const CampaignDetailMetadataSchema = z
+export const CampaignStatsSchema = z
   .object({
-    created_at: z.string().openapi({ example: '2026/01/10 09:30', description: 'Created at' }),
-    created_by: z.string().openapi({ example: '本部管理者', description: 'Created by' }),
-    updated_at: z.string().openapi({ example: '2026/05/31 14:20', description: 'Updated at' }),
-    updated_by: z.string().openapi({ example: '本部管理者', description: 'Updated by' }),
+    appliedMemberCount: z.number().int().nonnegative().openapi({ example: 128 }),
+    pendingApplicationCount: z.number().int().nonnegative().openapi({ example: 142 }),
+    monthlyNewApplicationCount: z.number().int().nonnegative().openapi({ example: 23 }),
+    enrollmentChannels: CampaignEnrollmentChannelsSchema,
   })
   .openapi({
-    title: 'CampaignDetailMetadata',
-    description: 'Campaign detail audit metadata',
+    title: 'CampaignStats',
+    description: 'キャンペーン適用実績サマリー',
   });
 
-export const CampaignPromoCodePreviewStatusSchema = z
-  .enum(['active', 'expired', 'limit_reached', 'inactive'])
-  .openapi({
-    title: 'CampaignPromoCodePreviewStatus',
-    description: 'Read-only promo-code preview status for campaign detail tab 2',
-  });
-
-export const CampaignPromoCodePreviewItemSchema = z
+/** オプション・店舗の参照表示用ペア。 */
+export const CampaignOptionRefSchema = z
   .object({
-    code: z.string().openapi({ example: 'STR01-ABCDE', description: 'Promo code' }),
-    description: z
-      .string()
-      .nullable()
-      .openapi({ example: '春の入会キャンペーン用', description: 'Promo code description' }),
-    valid_from: z.string().openapi({ example: '2026/03/01', description: 'Validity start date' }),
-    valid_to: z.string().openapi({ example: '2026/04/30', description: 'Validity end date' }),
-    status: CampaignPromoCodePreviewStatusSchema.openapi({
-      description: 'Promo code preview status',
-    }),
+    optionId: z.string().openapi({ example: 'OP001' }),
+    optionName: z.string().openapi({ example: 'ヨガ' }),
+  })
+  .openapi({ title: 'CampaignOptionRef', description: 'オプション参照' });
+
+export const CampaignStoreRefSchema = z
+  .object({
+    storeId: z.string().openapi({ example: 'S-004' }),
+    storeName: z.string().openapi({ example: '八潮店' }),
+  })
+  .openapi({ title: 'CampaignStoreRef', description: '店舗参照' });
+
+/** API-088 StoreCampaignLink */
+export const CampaignStoreUsageSchema = z
+  .object({
+    storeId: z.string().openapi({ example: 'S-004' }),
+    storeName: z.string().openapi({ example: '八潮店' }),
+    linkedAt: z.string().openapi({ example: '2026-02-20', description: '紐づけ日 (YYYY-MM-DD)' }),
+    linkedBy: z.string().nullable().openapi({ example: '本部管理者' }),
   })
   .openapi({
-    title: 'CampaignPromoCodePreviewItem',
-    description: 'Read-only promo-code preview row shown in campaign detail tab 2',
+    title: 'CampaignStoreUsage',
+    description: '店舗×キャンペーンの利用紐づけ',
   });
 
 export const CampaignChangeHistoryItemSchema = z
   .object({
-    date: z.string().openapi({ example: '2026/03/10 14:20', description: 'Updated timestamp' }),
-    user: z.string().openapi({ example: '田中 花子', description: 'Operator name' }),
+    date: z.string().openapi({ example: '2026-03-10T14:20:00.000Z', description: '更新日時' }),
+    user: z.string().openapi({ example: '田中 花子', description: '操作者' }),
     field: z.string().nullable().openapi({
       example: '月額割引',
-      description: 'Changed field name',
+      description: '変更フィールド。新規作成時は null',
     }),
-    from: z.string().nullable().openapi({
-      example: '初月30%OFF',
-      description: 'Previous value',
-    }),
-    to: z.string().openapi({
-      example: '初月50%OFF',
-      description: 'New value',
-    }),
+    from: z.string().nullable().openapi({ example: '初月30%OFF', description: '変更前' }),
+    to: z.string().openapi({ example: '初月50%OFF', description: '変更後' }),
   })
   .openapi({
     title: 'CampaignChangeHistoryItem',
-    description: 'Campaign change history item',
+    description: 'キャンペーン変更履歴エントリ',
   });
 
-export const CampaignDetailSchema = z
+// ─── DB row (internal, snake_case) ────────────────────────────────────────────
+
+export const CampaignRowSchema = z
   .object({
-    id: z.string().openapi({ example: 'CP001', description: 'Campaign ID' }),
-    name: z.string().openapi({ example: '春の入会キャンペーン', description: 'Campaign name' }),
-    code: z.string().openapi({ example: 'STR01A1B2C', description: 'Campaign code' }),
-    brand: StoreListBrandSchema.openapi({ description: 'Brand' }),
-    note: z.string().nullable().openapi({
-      example: '新生活需要向けの施策',
-      description: 'Campaign note',
-    }),
-    accept_status: CampaignAcceptStatusSchema.openapi({ description: 'Acceptance status' }),
-    status: CampaignStatusSchema.openapi({ description: 'Campaign status' }),
-    accept_status_message: z.string().openapi({
-      example: '受付中です。募集期間内の新規申請を受け付けています。',
-      description: 'Acceptance status helper text',
-    }),
-    accept_status_action_label: z.string().openapi({
-      example: '受付を停止する',
-      description: 'Primary acceptance control label',
-    }),
-    main_contract_name: z.string().openapi({
-      example: 'レギュラー会員',
-      description: 'Main contract name',
-    }),
-    main_contract_id: z.string().openapi({
-      example: 'MC001',
-      description: 'Main contract ID',
-    }),
-    recruitment_period_start: z.string().openapi({
-      example: '2026/03/01',
-      description: 'Recruitment period start date',
-    }),
-    recruitment_period_end: z.string().openapi({
-      example: '2026/04/30',
-      description: 'Recruitment period end date',
-    }),
-    usage_period_start: z.string().openapi({
-      example: '2026/03/15',
-      description: 'Usage period start date',
-    }),
-    usage_period_end: z.string().openapi({
-      example: '2026/05/31',
-      description: 'Usage period end date',
-    }),
-    application_period_start: z.string().openapi({
-      example: '2026/03/01',
-      description: 'Campaign application period start date',
-    }),
-    application_period_end: z.string().openapi({
-      example: '2026/04/30',
-      description: 'Campaign application period end date',
-    }),
-    application_start_month_type: CampaignApplicationStartMonthTypeSchema.openapi({
-      description: 'Campaign application start month type',
-    }),
-    application_custom_month: z.number().int().nullable().openapi({
-      example: null,
-      description: 'Custom application start month offset',
-    }),
-    application_duration_months: z.number().int().positive().openapi({
-      example: 2,
-      description: 'Campaign application duration in months',
-    }),
-    discount: CampaignDetailDiscountSchema,
-    periods: z.array(CampaignDetailPeriodSchema).openapi({
-      description: 'Periods displayed in the detail tab',
-    }),
-    auto_grant: CampaignDetailAutoGrantSchema,
-    stats: CampaignDetailStatsSchema,
-    metadata: CampaignDetailMetadataSchema,
-    promo_code_previews: z.array(CampaignPromoCodePreviewItemSchema).openapi({
-      description: 'Read-only promo-code preview rows for campaign detail tab 2',
-    }),
+    id: z.string(),
+    brand_enum: BrandEnumSchema,
+    campaign_code: z.string().max(50).nullable(),
+    name: z.string().min(1).max(100),
+    remarks: z.string().max(4000).nullable(),
+    is_accepting: z.boolean(),
+    recruitment_start: z.string(),
+    recruitment_end: z.string(),
+    usage_start: z.string().nullable(),
+    usage_end: z.string().nullable(),
+    apply_start_month: CampaignApplyStartMonthSchema.nullable(),
+    apply_start_specific_n: z.number().int().min(1).nullable(),
+    apply_duration_months: z.number().int().min(1).nullable(),
+    plan_id: z.string(),
+    plan_discount_month1: z.boolean(),
+    plan_discount_month1_type: CampaignDiscountTypeSchema.nullable(),
+    plan_discount_month1_value: z.number().nonnegative().nullable(),
+    plan_discount_month2: z.boolean(),
+    plan_discount_month2_type: CampaignDiscountTypeSchema.nullable(),
+    plan_discount_month2_value: z.number().nonnegative().nullable(),
+    option_discounts: z.array(CampaignOptionDiscountInputSchema),
+    auto_options: z.array(CampaignAutoOptionInputSchema),
+    entry_cap: z.number().int().min(1).nullable(),
+    lock_in_months: z.number().int().min(0).nullable(),
+    publish_scope: CampaignPublishScopeSchema,
+    publish_store_ids: z.array(z.string()),
+    condition_option_ids: z.array(z.string()),
+    referral: CampaignReferralSettingsSchema,
+    active_contract_count: z.number().int().nonnegative(),
+    pending_application_count: z.number().int().nonnegative(),
+    monthly_new_application_count: z.number().int().nonnegative(),
+    channel_mobile_count: z.number().int().nonnegative(),
+    channel_manual_count: z.number().int().nonnegative(),
+    channel_referral_count: z.number().int().nonnegative(),
+    // 監査
+    created_by: z.string().nullable(),
+    updated_by: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+    deleted_at: z.string().nullable(),
   })
   .openapi({
-    title: 'CampaignDetail',
-    description: 'Campaign master detail payload for tab 1',
+    title: 'CampaignRow',
+    description: 'キャンペーンのDB行 (内部表現)',
   });
 
-export const GetCampaignDetailResponseSchema = z
+export const StoreCampaignLinkRowSchema = z
   .object({
-    campaign: CampaignDetailSchema,
+    store_id: z.string(),
+    campaign_id: z.string(),
+    linked_at: z.string(),
+    linked_by: z.string().nullable(),
+    created_at: z.string(),
   })
   .openapi({
-    title: 'GetCampaignDetailResponse',
-    description: 'Single campaign master detail response',
+    title: 'StoreCampaignLinkRow',
+    description: '店舗×キャンペーン紐づけのDB行 (内部表現)',
   });
 
-export const GetCampaignChangeHistoryResponseSchema = z
+// ─── Query ────────────────────────────────────────────────────────────────────
+
+export const GetCampaignsQueryParamsSchema = z
   .object({
-    history: z.array(CampaignChangeHistoryItemSchema),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(200).default(20),
+    nameQuery: z.string().optional().openapi({ description: 'キャンペーン名の部分一致' }),
+    codeQuery: z.string().optional().openapi({ description: 'キャンペーンコードの部分一致' }),
+    brandEnum: BrandEnumSchema.optional(),
+    planId: z.string().optional(),
+    isAccepting: booleanQuery().openapi({ description: '受付可否フラグでの絞り込み' }),
+    acceptState: CampaignAcceptStateSchema.optional(),
+    recruitmentActiveOn: z.string().optional().openapi({
+      description: '募集期間内に該当日を含むもの (YYYY-MM-DD)',
+    }),
+    recruitmentFrom: z.string().optional().openapi({
+      description: '募集期間がこの日以降に終了するもの (YYYY-MM-DD)',
+    }),
+    recruitmentTo: z.string().optional().openapi({
+      description: '募集期間がこの日以前に開始するもの (YYYY-MM-DD)',
+    }),
+    sort: CampaignSortSchema.default('createdAt'),
+    order: z.enum(['asc', 'desc']).default('desc'),
   })
   .openapi({
-    title: 'GetCampaignChangeHistoryResponse',
-    description: 'Campaign change-history response',
+    title: 'GetCampaignsQueryParams',
+    description: 'キャンペーン一覧取得クエリ',
   });
 
-const campaignCodeRegex = /^(?:OGF|[A-Z0-9]+)[A-Z0-9]{5}$/;
+export const GetCampaignChangeHistoryQueryParamsSchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .openapi({
+    title: 'GetCampaignChangeHistoryQueryParams',
+    description: 'キャンペーン変更履歴取得クエリ',
+  });
+
+// ─── Request bodies ───────────────────────────────────────────────────────────
+
 const campaignDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
-export const UpsertCampaignBodySchema = z
+export const CreateCampaignBodySchema = z
   .object({
-    name: z.string().trim().min(1, 'キャンペーン名は必須です').max(255),
-    code: z
-      .string()
-      .trim()
-      .min(1, 'キャンペーンコードは必須です')
-      .max(255)
-      .regex(
-        campaignCodeRegex,
-        'キャンペーンコードは「店舗ID＋英数字5桁」または「OGF＋英数字5桁」の形式で入力してください',
-      ),
-    brand: StoreListBrandSchema,
-    note: z.string().trim().max(1000).nullable().optional(),
-    accept_status: CampaignAcceptStatusSchema.optional().default('active'),
-    status: CampaignStatusSchema.optional().default('active'),
-    recruitment_period_start: z.string().regex(campaignDateRegex, '募集期間の開始日が不正です'),
-    recruitment_period_end: z.string().regex(campaignDateRegex, '募集期間の終了日が不正です'),
-    usage_period_start: z.string().regex(campaignDateRegex, '利用開始期間の開始日が不正です'),
-    usage_period_end: z.string().regex(campaignDateRegex, '利用開始期間の終了日が不正です'),
-    application_start_month_type: CampaignApplicationStartMonthTypeSchema,
-    application_custom_month: z.number().int().min(1).nullable().optional(),
-    application_duration_months: z.number().int().min(1).max(12),
-    main_contract_id: z.string().trim().min(1, '適用主契約を選択してください'),
-    discount: CampaignUpsertDiscountSchema,
-    auto_grant: CampaignUpsertAutoGrantSchema,
+    brandEnum: BrandEnumSchema,
+    name: z.string().trim().min(1, 'キャンペーン名を入力してください').max(100),
+    /** API-088: 自由記述・任意。命名規則 (店舗ID＋英数字5桁) は案内のみで検証しない (spec Assumptions)。 */
+    campaignCode: z.string().trim().min(1).max(50).nullable().optional(),
+    remarks: z.string().trim().max(4000).nullable().optional(),
+    isAccepting: z.boolean().default(true),
+    recruitmentStart: z.string().regex(campaignDateRegex, '募集期間の開始日が不正です'),
+    recruitmentEnd: z.string().regex(campaignDateRegex, '募集期間の終了日が不正です'),
+    usageStart: z.string().regex(campaignDateRegex).nullable().optional(),
+    usageEnd: z.string().regex(campaignDateRegex).nullable().optional(),
+    applyStartMonth: CampaignApplyStartMonthSchema.nullable().optional(),
+    applyStartSpecificN: z.number().int().min(1).nullable().optional(),
+    applyDurationMonths: z.number().int().min(1).nullable().optional(),
+    planId: z.string().trim().min(1, '適用主契約を選択してください'),
+    planDiscountMonth1: z.boolean().default(false),
+    planDiscountMonth1Type: CampaignDiscountTypeSchema.nullable().optional(),
+    planDiscountMonth1Value: z.number().nonnegative().nullable().optional(),
+    planDiscountMonth2: z.boolean().default(false),
+    planDiscountMonth2Type: CampaignDiscountTypeSchema.nullable().optional(),
+    planDiscountMonth2Value: z.number().nonnegative().nullable().optional(),
+    campaignOptionDiscounts: z.array(CampaignOptionDiscountInputSchema).default([]),
+    campaignAutoOptions: z.array(CampaignAutoOptionInputSchema).default([]),
+    // mock-ahead
+    entryCap: z.number().int().min(1).nullable().optional(),
+    lockInMonths: z.number().int().min(0).nullable().optional(),
+    publishScope: CampaignPublishScopeSchema.default('all_stores'),
+    publishStoreIds: z.array(z.string()).default([]),
+    conditionOptionIds: z.array(z.string()).default([]),
+    referral: CampaignReferralSettingsInputSchema.optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.recruitment_period_start > value.recruitment_period_end) {
+    if (value.recruitmentStart > value.recruitmentEnd) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['recruitment_period_end'],
+        path: ['recruitmentEnd'],
         message: '募集期間の終了日は開始日以降にしてください',
       });
     }
 
-    if (value.usage_period_start > value.usage_period_end) {
+    if (value.usageStart && value.usageEnd && value.usageStart > value.usageEnd) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['usage_period_end'],
+        path: ['usageEnd'],
         message: '利用開始期間の終了日は開始日以降にしてください',
       });
     }
 
-    if (value.application_start_month_type === 'custom_month' && !value.application_custom_month) {
+    if (value.applyStartMonth === 'specific_month' && !value.applyStartSpecificN) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['application_custom_month'],
+        path: ['applyStartSpecificN'],
         message: 'X月指定の場合は開始月を入力してください',
       });
     }
 
-    if (value.application_start_month_type !== 'custom_month' && value.application_custom_month) {
+    if (value.applyStartMonth !== 'specific_month' && value.applyStartSpecificN) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['application_custom_month'],
+        path: ['applyStartSpecificN'],
         message: 'X月指定を選択した場合のみ開始月を入力できます',
+      });
+    }
+
+    // API-088: 月フラグが立っている場合はその月の種別と値が必須 (初月・翌月は独立)
+    (['1', '2'] as const).forEach((month) => {
+      const monthEnabled = value[`planDiscountMonth${month}`];
+      const type = value[`planDiscountMonth${month}Type`];
+      const discountValue = value[`planDiscountMonth${month}Value`];
+      const path = `planDiscountMonth${month}Value` as const;
+      if (monthEnabled && (!type || discountValue === null || discountValue === undefined)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message: '割引額または割引率を入力してください',
+        });
+      }
+      if (
+        type === 'percentage' &&
+        discountValue !== null &&
+        discountValue !== undefined &&
+        discountValue > 100
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message: '割引率は100%以下で入力してください',
+        });
+      }
+    });
+
+    value.campaignOptionDiscounts.forEach((row, index) => {
+      (['1', '2'] as const).forEach((month) => {
+        const monthEnabled = row[`discountMonth${month}`];
+        const type = row[`discountMonth${month}Type`];
+        const discountValue = row[`discountMonth${month}Value`];
+        const path = `discountMonth${month}Value` as const;
+        if (monthEnabled && (!type || discountValue === null)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['campaignOptionDiscounts', index, path],
+            message: '割引額または割引率を入力してください',
+          });
+        }
+        if (type === 'percentage' && (discountValue ?? 0) > 100) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['campaignOptionDiscounts', index, path],
+            message: '割引率は100%以下で入力してください',
+          });
+        }
+      });
+    });
+
+    if (value.publishScope === 'specific_stores' && value.publishStoreIds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['publishStoreIds'],
+        message: '公開対象店舗を1つ以上選択してください',
       });
     }
   })
   .openapi({
-    title: 'UpsertCampaignBody',
-    description: 'Campaign create/update request payload',
+    title: 'CreateCampaignBody',
+    description: 'キャンペーン作成リクエスト',
+  });
+
+/**
+ * API-088 CampaignUpdate: 部分更新。省略=変更なし。
+ * `brandEnum` は不変のため受け付けない。
+ */
+export const UpdateCampaignBodySchema = z
+  .object({
+    name: z.string().trim().min(1, 'キャンペーン名を入力してください').max(100).optional(),
+    campaignCode: z.string().trim().min(1).max(50).nullable().optional(),
+    remarks: z.string().trim().max(4000).nullable().optional(),
+    isAccepting: z.boolean().optional(),
+    recruitmentStart: z.string().regex(campaignDateRegex).optional(),
+    recruitmentEnd: z.string().regex(campaignDateRegex).optional(),
+    usageStart: z.string().regex(campaignDateRegex).nullable().optional(),
+    usageEnd: z.string().regex(campaignDateRegex).nullable().optional(),
+    applyStartMonth: CampaignApplyStartMonthSchema.nullable().optional(),
+    applyStartSpecificN: z.number().int().min(1).nullable().optional(),
+    applyDurationMonths: z.number().int().min(1).nullable().optional(),
+    planId: z.string().trim().min(1).optional(),
+    planDiscountMonth1: z.boolean().optional(),
+    planDiscountMonth1Type: CampaignDiscountTypeSchema.nullable().optional(),
+    planDiscountMonth1Value: z.number().nonnegative().nullable().optional(),
+    planDiscountMonth2: z.boolean().optional(),
+    planDiscountMonth2Type: CampaignDiscountTypeSchema.nullable().optional(),
+    planDiscountMonth2Value: z.number().nonnegative().nullable().optional(),
+    campaignOptionDiscounts: z.array(CampaignOptionDiscountInputSchema).optional(),
+    campaignAutoOptions: z.array(CampaignAutoOptionInputSchema).optional(),
+    entryCap: z.number().int().min(1).nullable().optional(),
+    lockInMonths: z.number().int().min(0).nullable().optional(),
+    publishScope: CampaignPublishScopeSchema.optional(),
+    publishStoreIds: z.array(z.string()).optional(),
+    conditionOptionIds: z.array(z.string()).optional(),
+    referral: CampaignReferralSettingsInputSchema.optional(),
+  })
+  .openapi({
+    title: 'UpdateCampaignBody',
+    description: 'キャンペーン更新リクエスト (部分更新)',
+  });
+
+// ─── Responses ────────────────────────────────────────────────────────────────
+
+export const CampaignListItemResponseSchema = z
+  .object({
+    id: z.string().openapi({ example: 'CP001', description: 'キャンペーンID' }),
+    brandEnum: BrandEnumSchema,
+    campaignCode: z.string().nullable().openapi({ example: 'STR01-A1B2C' }),
+    name: z.string().openapi({ example: '春の入会キャンペーン' }),
+    planId: z.string().openapi({ example: 'MC001' }),
+    planName: z.string().openapi({ example: 'レギュラー会員' }),
+    recruitmentStart: z.string().openapi({ example: '2026-03-01' }),
+    recruitmentEnd: z.string().openapi({ example: '2026-04-30' }),
+    isAccepting: z.boolean(),
+    activeContractCount: z.number().int().nonnegative(),
+    pendingApplicationCount: z.number().int().nonnegative(),
+    createdAt: z.string().openapi({ example: '2026-02-15T10:30:00.000Z' }),
+    updatedAt: z.string().openapi({ example: '2026-03-10T14:20:00.000Z' }),
+    // mock-ahead
+    entryCap: z.number().int().nullable().openapi({ description: '先着件数上限' }),
+    acceptState: CampaignAcceptStateSchema.openapi({ description: '受付状態 (導出値)' }),
+    hasPromotionCode: z.boolean().openapi({ description: 'プロモーションコードの有無' }),
+  })
+  .openapi({
+    title: 'CampaignListItemResponse',
+    description: 'キャンペーン一覧アイテム',
+  });
+
+export const CampaignDetailResponseSchema = CampaignListItemResponseSchema.extend({
+  remarks: z.string().nullable(),
+  usageStart: z.string().nullable().openapi({ example: '2026-03-01' }),
+  usageEnd: z.string().nullable().openapi({ example: '2026-04-30' }),
+  applyStartMonth: CampaignApplyStartMonthSchema.nullable(),
+  applyStartSpecificN: z.number().int().nullable(),
+  applyDurationMonths: z.number().int().nullable(),
+  planDiscountMonth1: z.boolean(),
+  planDiscountMonth1Type: CampaignDiscountTypeSchema.nullable(),
+  planDiscountMonth1Value: z.number().nullable(),
+  planDiscountMonth2: z.boolean(),
+  planDiscountMonth2Type: CampaignDiscountTypeSchema.nullable(),
+  planDiscountMonth2Value: z.number().nullable(),
+  campaignOptionDiscounts: z.array(CampaignOptionDiscountSchema),
+  campaignAutoOptions: z.array(CampaignAutoOptionSchema),
+  storeCount: z.number().int().nonnegative(),
+  promotionCodeCount: z.number().int().nonnegative(),
+  createdBy: z.string().nullable(),
+  updatedBy: z.string().nullable(),
+  // mock-ahead
+  lockInMonths: z.number().int().nullable().openapi({ description: '縛り期間' }),
+  lockInExample: z.string().nullable().openapi({
+    example: '2026/04入会の場合 → 2026/09末まで解約手数料対象',
+    description: '縛り期間の適用例',
+  }),
+  publishScope: CampaignPublishScopeSchema.openapi({ description: '公開範囲' }),
+  publishStores: z.array(CampaignStoreRefSchema).openapi({ description: '公開対象店舗' }),
+  conditionOptions: z.array(CampaignOptionRefSchema).openapi({
+    description: '適用発動条件のオプション契約',
+  }),
+  referral: CampaignReferralSettingsSchema.openapi({
+    description: '紹介キャンペーン設定',
+  }),
+  stats: CampaignStatsSchema.openapi({ description: '適用実績サマリー' }),
+  storeUsages: z.array(CampaignStoreUsageSchema).openapi({
+    description: '店舗×キャンペーンの利用紐づけ (公開範囲とは別概念)',
+  }),
+}).openapi({
+  title: 'CampaignDetailResponse',
+  description: 'キャンペーン詳細',
+});
+
+const paginationShape = z.object({
+  page: z.number(),
+  limit: z.number(),
+  totalItems: z.number(),
+  totalPages: z.number(),
+});
+
+export const GetCampaignsResponseSchema = z
+  .object({
+    items: z.array(CampaignListItemResponseSchema),
+    pagination: paginationShape.extend({
+      totalAllItems: z.number().openapi({ description: 'フィルター適用前の総件数' }),
+    }),
+  })
+  .openapi({
+    title: 'GetCampaignsResponse',
+    description: 'キャンペーン一覧レスポンス',
+  });
+
+export const GetCampaignDetailResponseSchema = z
+  .object({ campaign: CampaignDetailResponseSchema })
+  .openapi({
+    title: 'GetCampaignDetailResponse',
+    description: 'キャンペーン詳細レスポンス',
+  });
+
+export const GetCampaignChangeHistoryResponseSchema = z
+  .object({
+    items: z.array(CampaignChangeHistoryItemSchema),
+    pagination: paginationShape,
+  })
+  .openapi({
+    title: 'GetCampaignChangeHistoryResponse',
+    description: 'キャンペーン変更履歴レスポンス',
   });
 
 export const CreateCampaignResponseSchema = z
   .object({
-    message: z.string(),
-    campaign: CampaignDetailSchema,
+    message: z.string().openapi({ example: 'キャンペーンを登録しました' }),
+    campaign: CampaignDetailResponseSchema,
   })
   .openapi({
     title: 'CreateCampaignResponse',
-    description: 'Create campaign response',
+    description: 'キャンペーン作成レスポンス',
   });
 
 export const UpdateCampaignResponseSchema = z
   .object({
-    message: z.string(),
-    campaign: CampaignDetailSchema,
+    message: z.string().openapi({ example: 'キャンペーンを更新しました' }),
+    campaign: CampaignDetailResponseSchema,
   })
   .openapi({
     title: 'UpdateCampaignResponse',
-    description: 'Update campaign response',
+    description: 'キャンペーン更新レスポンス',
   });
 
-export type CampaignPeriodType = z.infer<typeof CampaignPeriodTypeSchema>;
-export type CampaignDetailPeriod = z.infer<typeof CampaignDetailPeriodSchema>;
-export type CampaignDetailDiscount = z.infer<typeof CampaignDetailDiscountSchema>;
-export type CampaignDetailAutoGrant = z.infer<typeof CampaignDetailAutoGrantSchema>;
-export type CampaignUpsertDiscount = z.infer<typeof CampaignUpsertDiscountSchema>;
-export type CampaignUpsertAutoGrant = z.infer<typeof CampaignUpsertAutoGrantSchema>;
-export type CampaignDetailStats = z.infer<typeof CampaignDetailStatsSchema>;
-export type CampaignDetailMetadata = z.infer<typeof CampaignDetailMetadataSchema>;
-export type CampaignPromoCodePreviewStatus = z.infer<typeof CampaignPromoCodePreviewStatusSchema>;
-export type CampaignPromoCodePreviewItem = z.infer<typeof CampaignPromoCodePreviewItemSchema>;
-export type CampaignChangeHistoryItem = z.infer<typeof CampaignChangeHistoryItemSchema>;
-export type CampaignDetail = z.infer<typeof CampaignDetailSchema>;
-export type GetCampaignDetailResponse = z.infer<typeof GetCampaignDetailResponseSchema>;
-export type GetCampaignChangeHistoryResponse = z.infer<
-  typeof GetCampaignChangeHistoryResponseSchema
->;
-export type CampaignStatus = z.infer<typeof CampaignStatusSchema>;
-export type CampaignApplicationStartMonthType = z.infer<
-  typeof CampaignApplicationStartMonthTypeSchema
->;
-export type CampaignAutoGrantTarget = z.infer<typeof CampaignAutoGrantTargetSchema>;
-export type CampaignGenderCondition = z.infer<typeof CampaignGenderConditionSchema>;
-export type UpsertCampaignBody = z.infer<typeof UpsertCampaignBodySchema>;
-export type CreateCampaignResponse = z.infer<typeof CreateCampaignResponseSchema>;
-export type UpdateCampaignResponse = z.infer<typeof UpdateCampaignResponseSchema>;
+export const DeleteCampaignResponseSchema = z
+  .object({ message: z.string().openapi({ example: 'キャンペーンを削除しました' }) })
+  .openapi({
+    title: 'DeleteCampaignResponse',
+    description: 'キャンペーン削除レスポンス',
+  });
 
-export { ErrorResponseSchema };
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type CampaignDiscountType = z.infer<typeof CampaignDiscountTypeSchema>;
+export type CampaignApplyStartMonth = z.infer<typeof CampaignApplyStartMonthSchema>;
+export type CampaignTargetSex = z.infer<typeof CampaignTargetSexSchema>;
+export type CampaignAcceptState = z.infer<typeof CampaignAcceptStateSchema>;
+export type CampaignPublishScope = z.infer<typeof CampaignPublishScopeSchema>;
+export type CampaignSort = z.infer<typeof CampaignSortSchema>;
+export type CampaignErrorResponse = z.infer<typeof CampaignErrorResponseSchema>;
+export type CampaignOptionDiscount = z.infer<typeof CampaignOptionDiscountSchema>;
+export type CampaignOptionDiscountInput = z.infer<typeof CampaignOptionDiscountInputSchema>;
+export type CampaignAutoOption = z.infer<typeof CampaignAutoOptionSchema>;
+export type CampaignAutoOptionInput = z.infer<typeof CampaignAutoOptionInputSchema>;
+export type CampaignReferralSettings = z.infer<typeof CampaignReferralSettingsSchema>;
+export type CampaignStats = z.infer<typeof CampaignStatsSchema>;
+export type CampaignStoreUsage = z.infer<typeof CampaignStoreUsageSchema>;
+export type CampaignChangeHistoryItem = z.infer<typeof CampaignChangeHistoryItemSchema>;
+export type CampaignRow = z.infer<typeof CampaignRowSchema>;
+export type StoreCampaignLinkRow = z.infer<typeof StoreCampaignLinkRowSchema>;
+export type GetCampaignsQueryParams = z.infer<typeof GetCampaignsQueryParamsSchema>;
+export type CreateCampaignBody = z.infer<typeof CreateCampaignBodySchema>;
+export type UpdateCampaignBody = z.infer<typeof UpdateCampaignBodySchema>;
+export type CampaignListItemResponse = z.infer<typeof CampaignListItemResponseSchema>;
+export type CampaignDetailResponse = z.infer<typeof CampaignDetailResponseSchema>;
+export type GetCampaignsResponse = z.infer<typeof GetCampaignsResponseSchema>;

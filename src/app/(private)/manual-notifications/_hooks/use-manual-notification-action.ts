@@ -12,8 +12,6 @@ import {
 } from '@/lib/api/@tanstack/react-query.gen';
 import type { PatchCrmNotificationsByIdActionData } from '@/lib/api/types.gen';
 
-import { withManualNotificationError } from '../_lib/manual-notification-mutation.util';
-
 export type ManualNotificationAction = NonNullable<
   PatchCrmNotificationsByIdActionData['body']
 >['action'];
@@ -26,11 +24,9 @@ export const manualNotificationReturnReasonSchema = z
 
 export function useManualNotificationAction() {
   const queryClient = useQueryClient();
-  const mutationOptions = patchCrmNotificationsByIdActionMutation();
 
   return useMutation({
-    ...mutationOptions,
-    mutationFn: withManualNotificationError(mutationOptions.mutationFn!),
+    ...patchCrmNotificationsByIdActionMutation(),
     onSuccess: (data, variables) => {
       const action = variables.body?.action;
       if (!action) return;

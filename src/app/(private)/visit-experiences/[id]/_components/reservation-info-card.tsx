@@ -1,4 +1,4 @@
-import { Calendar } from 'lucide-react';
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -7,16 +7,6 @@ import type { VisitExperienceDetail } from '@/types/api/visit-experience.type';
 
 interface ReservationInfoCardProps {
   record: VisitExperienceDetail;
-}
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('ja-JP', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -32,18 +22,25 @@ export function ReservationInfoCard({ record }: ReservationInfoCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <Calendar className="size-4" />
-          来店詳細情報
-        </CardTitle>
+        <CardTitle className="text-base font-semibold">来店詳細情報</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-4">
-        <Field label="来店予定日時" value={formatDateTime(record.reserved_at)} />
+        <Field label="店舗" value={record.store_name} />
+        <Field label="来店予定日時" value={formatDateYYYYMMDD_HHMM(record.reserved_at)} />
         {record.permit_issued_at && (
-          <Field label="見学許可発行日時" value={formatDateTime(record.permit_issued_at)} />
+          <Field
+            label="見学許可発行日時"
+            value={formatDateYYYYMMDD_HHMM(record.permit_issued_at)}
+          />
         )}
         {record.visit_end_actual_at && (
-          <Field label="見学終了日時" value={formatDateTime(record.visit_end_actual_at)} />
+          <Field label="見学終了日時" value={formatDateYYYYMMDD_HHMM(record.visit_end_actual_at)} />
+        )}
+        {record.enrolled_at && (
+          <Field label="入会申請日時" value={formatDateYYYYMMDD_HHMM(record.enrolled_at)} />
+        )}
+        {record.cancelled_at && (
+          <Field label="キャンセル日時" value={formatDateYYYYMMDD_HHMM(record.cancelled_at)} />
         )}
       </CardContent>
     </Card>

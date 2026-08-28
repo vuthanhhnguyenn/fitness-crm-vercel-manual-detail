@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { db } from '@/app/api/_mock-db';
+import { BRAND_POINT_NAMES } from '@/app/api/_mock-db/seeds/brand.seed';
 import {
   ErrorResponseSchema,
-  GetPointsQuerySchema,
   type GetPointsResponse,
   GetPointsResponseSchema,
   type PointAdjustmentRequest,
@@ -11,6 +12,7 @@ import {
   PointAdjustmentResponseSchema,
 } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { format } from 'date-fns';
 
 // Register OpenAPI documentation for GET route
 registerRoute({
@@ -28,10 +30,17 @@ registerRoute({
       schema: { type: 'string' },
     },
     {
-      name: 'period',
+      name: 'from',
       in: 'query',
       required: false,
-      description: 'Point history period filter',
+      description: 'Start date (inclusive, YYYY-MM-DD)',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'to',
+      in: 'query',
+      required: false,
+      description: 'End date (inclusive, YYYY-MM-DD)',
       schema: { type: 'string' },
     },
   ],
@@ -98,7 +107,7 @@ registerRoute({
   ],
 });
 
-/** Mock data for GET /crm/members/{id}/points — ポイントタブ用（member_points, member_point_histories 想定） */
+/** Mock data for GET /crm/members/{id}/points — for the points tab (assumes member_points, member_point_histories) */
 type PointHistoryItem = {
   id: string;
   date: string;
@@ -106,113 +115,71 @@ type PointHistoryItem = {
   points: number;
 };
 
-function getFilterStartDate(period: 'all' | 'this_month' | 'last_3_months' | 'last_1_year') {
-  const now = new Date();
-  if (period === 'all') return null;
-  if (period === 'this_month') {
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  }
-  if (period === 'last_3_months') {
-    return new Date(now.getFullYear(), now.getMonth() - 2, 1);
-  }
-  return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-}
-
-function filterHistoryByPeriod(
-  list: PointHistoryItem[],
-  period: 'all' | 'this_month' | 'last_3_months' | 'last_1_year',
-) {
-  const startDate = getFilterStartDate(period);
-  if (!startDate) return list;
-  return list.filter((item) => new Date(item.date) >= startDate);
-}
-
+// Generated relative to "now" so the default month (current month) always has
+// data, and recent months are populated too (for MonthPicker navigation).
 function buildMockPoints(
-  memberId: string,
-  period: 'all' | 'this_month' | 'last_3_months' | 'last_1_year',
+  fromTime: number | null,
+  toTime: number | null,
+  pointName: string,
 ): GetPointsResponse {
+  const now = new Date();
+  const ymd = (offsetDays: number) =>
+    format(new Date(now.getFullYear(), now.getMonth(), now.getDate() - offsetDays), 'yyyy-MM-dd');
+
   const earnHistory: PointHistoryItem[] = [
-    {
-      id: 'earn-001',
-      date: '2026-04-10T10:00:00+09:00',
-      reason: '来館',
-      points: 100,
-    },
-    {
-      id: 'earn-002',
-      date: '2026-03-15T14:00:00+09:00',
-      reason: '友達紹介',
-      points: 500,
-    },
-    {
-      id: 'earn-003',
-      date: '2026-02-10T09:00:00+09:00',
-      reason: 'キャンペーン',
-      points: 200,
-    },
-    {
-      id: 'earn-004',
-      date: '2025-10-05T11:00:00+09:00',
-      reason: '来館',
-      points: 80,
-    },
-    {
-      id: 'earn-005',
-      date: '2025-01-20T09:00:00+09:00',
-      reason: '誕生日ボーナス',
-      points: 300,
-    },
+    { id: 'earn-001', date: ymd(2), reason: '来館', points: 100 },
+    { id: 'earn-002', date: ymd(12), reason: '友達紹介', points: 500 },
+    { id: 'earn-003', date: ymd(25), reason: 'キャンペーン', points: 200 },
+    { id: 'earn-004', date: ymd(40), reason: '来館', points: 80 },
+    { id: 'earn-005', date: ymd(70), reason: '誕生日ボーナス', points: 300 },
   ];
   const spendHistory: PointHistoryItem[] = [
-    {
-      id: 'spend-001',
-      date: '2026-04-08T10:00:00+09:00',
-      reason: '月会費充当',
-      points: 500,
-    },
-    {
-      id: 'spend-002',
-      date: '2026-03-18T12:00:00+09:00',
-      reason: '商品交換',
-      points: 300,
-    },
-    {
-      id: 'spend-003',
-      date: '2026-01-11T10:00:00+09:00',
-      reason: 'ECサイト決済',
-      points: 200,
-    },
-    {
-      id: 'spend-004',
-      date: '2025-02-01T10:00:00+09:00',
-      reason: 'ギフト交換',
-      points: 150,
-    },
+    { id: 'spend-001', date: ymd(4), reason: '月会費充当', points: 500 },
+    { id: 'spend-002', date: ymd(15), reason: '商品交換', points: 300 },
+    { id: 'spend-003', date: ymd(33), reason: 'ECサイト決済', points: 200 },
+    { id: 'spend-004', date: ymd(60), reason: 'ギフト交換', points: 150 },
   ];
 
-  const filteredEarnHistory = filterHistoryByPeriod(earnHistory, period);
-  const filteredSpendHistory = filterHistoryByPeriod(spendHistory, period);
+  const inRange = (item: PointHistoryItem) => {
+    const itemTime = new Date(`${item.date}T00:00:00`).getTime();
+    const afterFrom = fromTime === null || itemTime >= fromTime;
+    const beforeTo = toTime === null || itemTime <= toTime;
+    return afterFrom && beforeTo;
+  };
+
+  const filteredEarnHistory = earnHistory.filter(inRange);
+  const filteredSpendHistory = spendHistory.filter(inRange);
 
   const totalEarn = filteredEarnHistory.reduce((sum, item) => sum + item.points, 0);
   const totalSpend = filteredSpendHistory.reduce((sum, item) => sum + item.points, 0);
 
   return {
-    point_balance: Math.max(0, 2000 + totalEarn - totalSpend),
-    period,
-    earn_history: filteredEarnHistory,
-    spend_history: filteredSpendHistory,
+    pointBalance: Math.max(0, 2000 + totalEarn - totalSpend),
+    pointName,
+    period: 'all',
+    earnHistory: filteredEarnHistory,
+    spendHistory: filteredSpendHistory,
+    expiringPoints: 200,
+    expiringAt: '2026-06-30',
   };
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const queryResult = GetPointsQuerySchema.safeParse({
-      period: request.nextUrl.searchParams.get('period') ?? undefined,
-    });
-    const period = queryResult.success ? queryResult.data.period : 'all';
-    const data = buildMockPoints(id, period);
-    const response: GetPointsResponse = data as any;
+    const from = request.nextUrl.searchParams.get('from');
+    const to = request.nextUrl.searchParams.get('to');
+    // `to` is inclusive of the whole day
+    const fromTime = from ? new Date(`${from}T00:00:00`).getTime() : null;
+    const toTime = to ? new Date(`${to}T23:59:59`).getTime() : null;
+
+    // Per the design, the point name is resolved server-side from the brands master
+    const member = db.members.get(id);
+    // Point names are defined per brand GROUP (JOYFIT / FIT365), so they resolve
+    // from `brandGroup`, not from the store's sub-brand.
+    const pointName = (member && BRAND_POINT_NAMES[member.brandGroup]) || 'ポイント';
+
+    const response = buildMockPoints(fromTime, toTime, pointName);
     return NextResponse.json(response);
   } catch (error) {
     console.error('Error fetching points:', error);

@@ -6,7 +6,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Megaphone } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { StatusCard as StatusCardComponent } from '@/components/common/status-card';
+import { RoleGatedButton } from '@/components/common/role-gated-button';
+import { StatusCard } from '@/components/common/status-card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,134 +19,124 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
 
 import {
+  getCrmCampaignsByIdChangeHistoryQueryKey,
   getCrmCampaignsByIdQueryKey,
   getCrmCampaignsQueryKey,
   patchCrmCampaignsByIdMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { CampaignDetail, PatchCrmCampaignsByIdData } from '@/lib/api/types.gen';
+import type { CampaignDetailResponse } from '@/lib/api/types.gen';
+
+import { Permission } from '@/types/permission.type';
+
+import {
+  CAMPAIGN_ACCEPT_STATE_LABELS,
+  CAMPAIGN_ACCEPT_STATE_TONES,
+} from '../../_constants/constants';
+import { getCampaignErrorMessage } from '../../_utils/campaign-error';
 
 type CampaignAcceptancePanelProps = {
-  campaign: CampaignDetail;
+  campaign: CampaignDetailResponse;
 };
-
-function toRequestDate(value: string) {
-  return value.replaceAll('/', '-');
-}
 
 export function CampaignAcceptancePanel({ campaign }: Readonly<CampaignAcceptancePanelProps>) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [acceptEnabled, setAcceptEnabled] = useState(campaign.accept_status === 'active');
+
+  const capReached = campaign.acceptState === 'capacity_reached';
+  const isAccepting = campaign.isAccepting;
+  const remaining =
+    campaign.entryCap === null
+      ? null
+      : Math.max(0, campaign.entryCap - campaign.stats.pendingApplicationCount);
 
   const updateMutation = useMutation({
     ...patchCrmCampaignsByIdMutation(),
     onSuccess: (response) => {
-      toast.success(response.message || 'キャンペーンを更新しました');
-      setAcceptEnabled(response.campaign.accept_status === 'active');
-      setOpen(false);
-      queryClient.invalidateQueries({
-        queryKey: getCrmCampaignsQueryKey(),
-        refetchType: 'all',
+      toast.success(response.message || 'キャンペーンを更新しました', {
+        description: isAccepting
+          ? '入会フローでこのキャンペーンが表示されなくなりました'
+          : '入会フローで再びこのキャンペーンが表示されます',
       });
+      setOpen(false);
+      queryClient.invalidateQueries({ queryKey: getCrmCampaignsQueryKey() });
       queryClient.invalidateQueries({
         queryKey: getCrmCampaignsByIdQueryKey({ path: { id: campaign.id } }),
-        refetchType: 'all',
+      });
+      queryClient.invalidateQueries({
+        queryKey: getCrmCampaignsByIdChangeHistoryQueryKey({ path: { id: campaign.id } }),
       });
     },
-    onError: () => {
-      toast.error('受付状態の更新に失敗しました');
+    onError: (error) => {
+      toast.error(getCampaignErrorMessage(error, '受付状態の更新に失敗しました'));
     },
   });
 
-  const handleAcceptToggle = () => {
-    const nextAcceptStatus = acceptEnabled ? 'inactive' : 'active';
-    const requestBody: NonNullable<PatchCrmCampaignsByIdData['body']> = {
-      name: campaign.name,
-      code: campaign.code,
-      brand: campaign.brand,
-      note: campaign.note ?? null,
-      accept_status: nextAcceptStatus,
-      status: campaign.status ?? 'active',
-      recruitment_period_start: toRequestDate(campaign.recruitment_period_start),
-      recruitment_period_end: toRequestDate(campaign.recruitment_period_end),
-      usage_period_start: toRequestDate(campaign.usage_period_start),
-      usage_period_end: toRequestDate(campaign.usage_period_end),
-      application_start_month_type: campaign.application_start_month_type,
-      application_custom_month: campaign.application_custom_month,
-      application_duration_months: campaign.application_duration_months,
-      main_contract_id: campaign.main_contract_id,
-      discount: {
-        first_month_enabled: campaign.discount.first_month_enabled,
-        second_month_enabled: campaign.discount.second_month_enabled,
-        amount: campaign.discount.amount,
-        rate: campaign.discount.rate,
-      },
-      auto_grant: {
-        enabled: campaign.auto_grant.enabled,
-        target_type: campaign.auto_grant.target_type,
-        gender_conditions: campaign.auto_grant.gender_conditions,
-        option_ids: campaign.auto_grant.option_ids,
-      },
-    };
-
-    updateMutation.mutate({
-      path: { id: campaign.id },
-      body: requestBody,
-    } as never);
-  };
+  const meta = [
+    campaign.entryCap === null
+      ? '先着件数上限: 未設定'
+      : `先着件数上限: ${campaign.entryCap}件（申請 ${campaign.stats.pendingApplicationCount}件 / 残り ${remaining}件）`,
+    `募集期間: ${campaign.recruitmentStart} 〜 ${campaign.recruitmentEnd}`,
+    capReached
+      ? '上限到達のためシステムが自動で受付可否フラグをOFFにしました'
+      : 'OFFで入会フローから非表示',
+  ];
 
   return (
-    <StatusCardComponent
-      tone={acceptEnabled ? 'success' : 'muted'}
+    <StatusCard
+      tone={CAMPAIGN_ACCEPT_STATE_TONES[campaign.acceptState]}
       icon={Megaphone}
-      label={acceptEnabled ? '受付中' : '受付停止'}
-      meta={[
-        `募集期間: ${campaign.recruitment_period_start} 〜 ${campaign.recruitment_period_end}`,
-        'OFFで入会フローから非表示',
-      ]}
+      label={CAMPAIGN_ACCEPT_STATE_LABELS[campaign.acceptState]}
+      meta={meta}
       action={
-        <AlertDialog open={open} onOpenChange={setOpen}>
-          <AlertDialogTrigger
-            render={
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 w-full rounded-[10px] px-4 text-sm font-medium"
-              />
-            }
-          >
-            {acceptEnabled ? '受付を停止する' : '受付を再開する'}
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {acceptEnabled
-                  ? 'このキャンペーンの受付を停止しますか？'
-                  : 'このキャンペーンの受付を再開しますか？'}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {acceptEnabled
-                  ? '受付停止中は入会フローでこのキャンペーンが表示されなくなります。既存の適用会員への影響はありません。'
-                  : '受付再開すると入会フローで再びこのキャンペーンが表示されます。'}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={updateMutation.isPending}>キャンセル</AlertDialogCancel>
-              <AlertDialogAction onClick={handleAcceptToggle} disabled={updateMutation.isPending}>
-                {updateMutation.isPending
-                  ? acceptEnabled
-                    ? '停止中...'
-                    : '再開中...'
-                  : acceptEnabled
-                    ? '停止する'
-                    : '再開する'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        capReached ? undefined : (
+          <AlertDialog open={open} onOpenChange={setOpen}>
+            {/* G-03 L236: 受付フラグ制御は System / Headquarter のみ */}
+            <AlertDialogTrigger
+              render={
+                <RoleGatedButton
+                  requiredPermission={Permission.CampaignsEdit}
+                  variant="outline"
+                  size="sm"
+                  fullWidth
+                >
+                  {isAccepting ? '受付を停止する' : '受付を再開する'}
+                </RoleGatedButton>
+              }
+            />
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {isAccepting
+                    ? 'このキャンペーンの受付を停止しますか？'
+                    : 'このキャンペーンの受付を再開しますか？'}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {isAccepting
+                    ? '受付停止中は入会フローでこのキャンペーンが表示されなくなります。既存の適用会員への影響はありません。'
+                    : '受付再開すると入会フローで再びこのキャンペーンが表示されます。'}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={updateMutation.isPending}>
+                  キャンセル
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() =>
+                    updateMutation.mutate({
+                      path: { id: campaign.id },
+                      body: { isAccepting: !isAccepting },
+                    })
+                  }
+                  disabled={updateMutation.isPending}
+                >
+                  {isAccepting ? '停止する' : '再開する'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )
       }
     />
   );

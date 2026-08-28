@@ -9,11 +9,15 @@ import {
   LockerSlotOpenType,
 } from '@/lib/api/types.gen';
 
+/** Initial page size shared by the 3 locker management tabs (default of the page-size select) */
+export const LOCKER_LIST_DEFAULT_PAGE_SIZE = 50;
+
+/** E-01 shape definitions: only 4 shapes — 3 rows × 9 / 7 / 5 / 2 columns */
 export const LOCKER_SHAPE_LABELS: Record<LockerShape, string> = {
   [LockerShape['3X9']]: '3段×9列',
-  [LockerShape['3X6']]: '3段×6列',
-  [LockerShape['2X10']]: '2段×10列',
-  [LockerShape['2X4']]: '2段×4列',
+  [LockerShape['3X7']]: '3段×7列',
+  [LockerShape['3X5']]: '3段×5列',
+  [LockerShape['3X2']]: '3段×2列',
 };
 
 export const LOCKER_OPTION_TYPE_LABELS: Record<LockerOptionType, string> = {
@@ -22,16 +26,23 @@ export const LOCKER_OPTION_TYPE_LABELS: Record<LockerOptionType, string> = {
   [LockerOptionType.PREMIUM]: 'プレミアムロッカー',
 };
 
+/** E-01 slot statuses: 3 states — available / in use / pending release */
 export const LOCKER_CONTRACT_STATUS_LABELS: Record<LockerContractStatus, string> = {
-  [LockerContractStatus.IN_USE]: '利用中',
+  [LockerContractStatus.IN_USE]: '使用中',
   [LockerContractStatus.PENDING_RELEASE]: '開放待ち',
-  [LockerContractStatus.AVAILABLE]: '利用可能',
+  [LockerContractStatus.AVAILABLE]: '利用可',
 };
 
 export const LOCKER_CONTRACT_STATUS_BADGE_CLASSES: Record<LockerContractStatus, string> = {
   [LockerContractStatus.IN_USE]: 'bg-info/15 text-info border-info/20',
   [LockerContractStatus.PENDING_RELEASE]: 'bg-warning/15 text-warning border-warning/20',
   [LockerContractStatus.AVAILABLE]: 'bg-muted text-muted-foreground border-border',
+};
+
+export const LOCKER_CONTRACT_STATUS_DOT_CLASSES: Record<LockerContractStatus, string> = {
+  [LockerContractStatus.IN_USE]: 'bg-info',
+  [LockerContractStatus.PENDING_RELEASE]: 'bg-warning',
+  [LockerContractStatus.AVAILABLE]: 'bg-muted-foreground',
 };
 
 export const LOCKER_PENDING_LOCATION_LABELS: Record<LockerPendingLocation, string> = {

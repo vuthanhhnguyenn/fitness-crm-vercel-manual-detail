@@ -1,30 +1,30 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 
+import { useAuthUser } from '@/contexts/auth-user.context';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { format } from 'date-fns';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { format, parse } from 'date-fns';
+import { ja } from 'date-fns/locale';
+import { Sparkles } from 'lucide-react';
 
-import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
-
+import { OptionalMark } from '@/components/common/field-marker';
+import { SearchableSelect } from '@/components/common/searchable-select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -35,251 +35,153 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { cn } from '@/lib/utils';
+import {
+  getCrmStoresByIdOptions,
+  getCrmStoresInfiniteOptions,
+} from '@/lib/api/@tanstack/react-query.gen';
+import type {
+  CampaignDetailResponse,
+  GetCrmStoresResponse,
+  PromoCodeScope,
+} from '@/lib/api/types.gen';
 
 import { UserRole } from '@/types/permission.type';
 
+import { CAMPAIGN_SEARCH_PAGE_LIMIT, PROMO_CODE_SCOPE_OPTIONS } from '../../_constants/constants';
+import type { PromoCodesTabHook } from '../_hooks/use-promo-codes-tab';
 import {
-  PROMO_CODE_STORE_SCOPE_LABELS,
-  PROMO_CODE_USAGE_CAP_MODE_LABELS,
-} from '../_constants/promo-code.constants';
-import {
-  type PromoCodeIssuanceDraft,
-  buildPromoCodeIssuanceSchema,
-  normalizePromoCodeValue,
+  PROMO_CODE_ISSUANCE_DEFAULTS,
+  type PromoCodeIssuanceValues,
+  promoCodeIssuanceSchema,
 } from '../_schemas/promo-code-issuance.schema';
-import { type PromoCodeListRowStatus } from './promo-code-table';
 
-interface CampaignOption {
-  id: string;
-  name: string;
-  code?: string;
+const DATE_FORMAT = 'yyyy-MM-dd';
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function toDate(value: string): Date | undefined {
+  return value ? parse(value, DATE_FORMAT, new Date(), { locale: ja }) : undefined;
 }
 
-export interface PromoCodeIssuanceResult {
-  code: string;
-  description: string | null;
-  campaignId: string;
-  campaignName: string;
-  usageCapMode: 'unlimited' | 'limited';
-  validFrom: string;
-  validTo: string;
-  usageCount: number;
-  usageCap: number | null;
-  usageCapLabel: string;
-  storeScope: 'all' | 'branch';
-  remainingLabel: string;
-  storeScopeLabel: string;
-  issuedByLabel: string;
-  status: PromoCodeListRowStatus;
-}
-
-interface PromoCodeCreateDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  campaignOptions: CampaignOption[];
-  defaultCampaignId: string;
-  defaultCampaignCode: string;
-  existingCodes: readonly string[];
-  currentRole: UserRole;
-  onCreate: (result: PromoCodeIssuanceResult) => Promise<boolean> | boolean;
-}
-
-function formatAutoCodePrefix(campaignCode: string): string {
-  const normalized = normalizePromoCodeValue(campaignCode).replace(/[^A-Z0-9]/g, '');
-  const prefix = normalized.slice(0, 5);
-  return prefix || 'STR01';
-}
-
-function generateUniquePromoCode(campaignCode: string, existingCodes: readonly string[]): string {
-  const prefix = formatAutoCodePrefix(campaignCode);
-  const existing = new Set(existingCodes.map(normalizePromoCodeValue));
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    let suffix = '';
-    for (let index = 0; index < 5; index += 1) {
-      suffix += chars[Math.floor(Math.random() * chars.length)]!;
-    }
-
-    const candidate = `${prefix}-${suffix}`;
-    if (!existing.has(candidate)) {
-      return candidate;
-    }
+/** G-06 FR-002 / G-03 FR-007: 命名規則「店舗ID＋英数字5桁」。OGF向けは「OGF＋英数字5桁」。 */
+function generateCode(scopeType: PromoCodeScope | '', storeCode: string): string {
+  let suffix = '';
+  for (let i = 0; i < 5; i += 1) {
+    suffix += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
   }
-
-  return `${prefix}-${Date.now().toString(36).slice(-5).toUpperCase()}`;
+  return `${scopeType === 'ogf_only' ? 'OGF' : storeCode}-${suffix}`;
 }
 
-export function PromoCodeCreateDialog({
-  open,
-  onOpenChange,
-  campaignOptions,
-  defaultCampaignId,
-  defaultCampaignCode,
-  existingCodes,
-  currentRole,
-  onCreate,
-}: PromoCodeCreateDialogProps) {
-  const schema = useMemo(() => buildPromoCodeIssuanceSchema(existingCodes), [existingCodes]);
-  const canChooseGlobalScope =
-    currentRole === UserRole.System ||
-    currentRole === UserRole.Headquarter ||
-    currentRole === UserRole.Manager;
+type PromoCodeCreateDialogProps = {
+  campaign: CampaignDetailResponse;
+  tab: PromoCodesTabHook;
+};
 
-  const form = useForm<PromoCodeIssuanceDraft, unknown, PromoCodeIssuanceDraft>({
-    resolver: zodResolver(schema) as never,
-    mode: 'onChange',
-    defaultValues: {
-      campaignId: defaultCampaignId,
-      codeMode: 'manual',
-      code: '',
-      description: '',
-      validFrom: '',
-      validTo: '',
-      usageCapMode: 'unlimited',
-      usageCap: '',
-      storeScope: 'branch',
+export function PromoCodeCreateDialog({ campaign, tab }: Readonly<PromoCodeCreateDialogProps>) {
+  const [storeSearch, setStoreSearch] = useState('');
+  const {
+    data: storesData,
+    isFetching: isStoresFetching,
+    fetchNextPage: fetchNextStores,
+    hasNextPage: hasMoreStores,
+    isFetchingNextPage: isFetchingMoreStores,
+  } = useInfiniteQuery({
+    ...getCrmStoresInfiniteOptions({
+      query: { limit: CAMPAIGN_SEARCH_PAGE_LIMIT, search: storeSearch || undefined },
+    }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: GetCrmStoresResponse, allPages) => {
+      const currentPage = allPages.length;
+      const totalPages = lastPage.pagination?.total_pages ?? 0;
+      return currentPage < totalPages ? currentPage + 1 : undefined;
     },
   });
-  const scrollToFirstError = useScrollToFirstError();
-  const [campaignIdValue, usageCapMode, validFrom, validTo] = useWatch({
-    control: form.control,
-    name: ['campaignId', 'usageCapMode', 'validFrom', 'validTo'],
+  const stores = useMemo(
+    () => storesData?.pages.flatMap((page) => page.stores ?? []) ?? [],
+    [storesData],
+  );
+
+  const form = useForm<PromoCodeIssuanceValues>({
+    resolver: zodResolver(promoCodeIssuanceSchema) as never,
+    mode: 'onChange',
+    defaultValues: { ...PROMO_CODE_ISSUANCE_DEFAULTS, campaignId: campaign.id },
   });
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const scopeType = useWatch({ control: form.control, name: 'scopeType' });
+  const issuedStoreId = useWatch({ control: form.control, name: 'issuedStoreId' });
 
-  const selectedCampaign =
-    campaignOptions.find((option) => option.id === campaignIdValue) ?? campaignOptions[0];
-  const campaignName = selectedCampaign?.name ?? '';
-  const campaignCode = selectedCampaign?.code ?? defaultCampaignCode;
-  const validFromDate = validFrom ? new Date(`${validFrom}T00:00:00`) : undefined;
-  const validToDate = validTo ? new Date(`${validTo}T00:00:00`) : undefined;
+  const selectedStoreFromSearch = stores.find((store) => store.id === issuedStoreId);
+  const { data: selectedStoreRes } = useQuery({
+    ...getCrmStoresByIdOptions({ path: { id: issuedStoreId } }),
+    enabled: !!issuedStoreId && !selectedStoreFromSearch,
+  });
+  const selectedStore = selectedStoreFromSearch ?? selectedStoreRes?.store;
 
-  const onSubmit = form.handleSubmit(async (parsed) => {
-    const usageCapLabel =
-      parsed.usageCapMode === 'unlimited' ? '無制限' : `${Number(parsed.usageCap)}回`;
-    const usageCap = parsed.usageCapMode === 'unlimited' ? null : Number(parsed.usageCap);
-    const storeScopeLabel =
-      parsed.storeScope === 'all' ? 'タイプA: 全店舗で使用可能' : 'タイプB: 発行店舗のみで使用可能';
-    const issuedByLabel = currentRole === UserRole.Staff ? '店舗スタッフ' : '本部';
+  const { user } = useAuthUser();
+  const isScopeLockedToStore = user?.role === UserRole.Staff;
+  const scopeOptions = isScopeLockedToStore
+    ? PROMO_CODE_SCOPE_OPTIONS.filter((option) => option.value === 'issuer_store_only')
+    : PROMO_CODE_SCOPE_OPTIONS;
 
-    setIsSubmitting(true);
-    try {
-      const created = await onCreate({
-        code: normalizePromoCodeValue(parsed.code),
-        description: parsed.description.trim() ? parsed.description.trim() : null,
-        campaignId: parsed.campaignId,
-        campaignName,
-        usageCapMode: parsed.usageCapMode,
-        validFrom: parsed.validFrom,
-        validTo: parsed.validTo,
-        usageCount: 0,
-        usageCap,
-        usageCapLabel,
-        storeScope: parsed.storeScope,
-        remainingLabel: usageCap === null ? '—' : `${usageCap}`,
-        storeScopeLabel,
-        issuedByLabel,
-        status: 'active',
+  useEffect(() => {
+    if (!tab.issueDialogOpen) {
+      form.reset({
+        ...PROMO_CODE_ISSUANCE_DEFAULTS,
+        campaignId: campaign.id,
+        ...(isScopeLockedToStore ? { scopeType: 'issuer_store_only' as const } : {}),
       });
-
-      if (created !== false) {
-        onOpenChange(false);
-      }
-    } finally {
-      setIsSubmitting(false);
     }
-  }, scrollToFirstError);
-
-  const storeScopeOptions = canChooseGlobalScope
-    ? [
-        { value: 'all' as const, label: 'タイプA: 全店舗で使用可能（本部のみ設定可）' },
-        { value: 'branch' as const, label: 'タイプB: 発行店舗のみで使用可能' },
-      ]
-    : [{ value: 'branch' as const, label: 'タイプB: 発行店舗のみで使用可能' }];
+  }, [tab.issueDialogOpen, campaign.id, form, isScopeLockedToStore]);
 
   const handleAutoGenerate = () => {
-    const nextCode = generateUniquePromoCode(campaignCode, existingCodes);
-
-    form.setValue('codeMode', 'auto', { shouldDirty: true, shouldValidate: true });
-    form.setValue('code', nextCode, { shouldDirty: true, shouldValidate: true });
+    const storeCode = selectedStore?.club_code ?? 'STR01';
+    form.setValue('code', generateCode(scopeType, storeCode), { shouldValidate: true });
+    form.setValue('generationMethod', 'manual');
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>プロモーションコードを発行</DialogTitle>
-          <p className="text-muted-foreground text-sm">
-            G-06 FR-001 コード発行に準拠。命名規則（G-03 FR-007）: 店舗ID＋英数字5桁 / OGF会員向け:
+    <AlertDialog open={tab.issueDialogOpen} onOpenChange={tab.setIssueDialogOpen}>
+      <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
+        <AlertDialogHeader>
+          <AlertDialogTitle>プロモーションコードを発行</AlertDialogTitle>
+          <AlertDialogDescription>
+            命名規則: 店舗ID＋英数字5桁 / OGF会員向け:
             OGF＋英数字5桁。登録時にユニーク性を自動判定します。
-          </p>
-        </DialogHeader>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
 
         <Form {...form}>
-          <form className="grid gap-4 py-1" onSubmit={onSubmit}>
-            <FormField
-              control={form.control}
-              name="campaignId"
-              render={({ field }) => (
-                <FormItem className="grid gap-2">
-                  <FormLabel className="text-muted-foreground text-xs">
-                    紐づけキャンペーン（G-06 FR-003）
-                  </FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                    }}
-                  >
-                    <FormControl>
-                      <SelectTrigger id="promo-campaign" className="w-full">
-                        <SelectValue placeholder="キャンペーンを選択">{campaignName}</SelectValue>
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {campaignOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <form
+            id="promo-code-issue-form"
+            className="flex flex-col gap-3 py-2"
+            onSubmit={form.handleSubmit(tab.issueCode)}
+          >
+            <div className="flex flex-col gap-1">
+              <Label className="text-muted-foreground text-xs">紐づけキャンペーン</Label>
+              <Input value={campaign.name} readOnly className="bg-muted" />
+            </div>
 
             <FormField
               control={form.control}
               name="code"
               render={({ field }) => (
-                <FormItem className="grid gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <FormLabel className="text-muted-foreground text-xs">
-                      コード（G-06 FR-002 形式選択）
-                    </FormLabel>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <FormItem>
+                  <Label className="text-muted-foreground text-xs">コード</Label>
+                  <div className="flex items-center gap-2">
                     <FormControl>
                       <Input
-                        id="promo-code"
-                        className="font-mono"
-                        value={field.value}
-                        onBlur={field.onBlur}
-                        onChange={(event) => {
-                          form.setValue('codeMode', 'manual', {
-                            shouldDirty: true,
-                            shouldValidate: true,
-                          });
-                          field.onChange(event.target.value.toUpperCase());
-                        }}
                         placeholder="例: STR01-ABCDE（手動入力 or 自動生成）"
+                        className="flex-1 font-mono"
+                        {...field}
                       />
                     </FormControl>
-                    <Button type="button" variant="outline" onClick={handleAutoGenerate}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0 gap-1"
+                      onClick={handleAutoGenerate}
+                    >
+                      <Sparkles className="size-4" />
                       自動生成
                     </Button>
                   </div>
@@ -295,188 +197,165 @@ export function PromoCodeCreateDialog({
               control={form.control}
               name="description"
               render={({ field }) => (
-                <FormItem className="grid gap-2">
-                  <Label htmlFor="promo-description" className="text-muted-foreground text-xs">
-                    説明（任意）
+                <FormItem>
+                  <Label className="text-muted-foreground text-xs">
+                    説明
+                    <OptionalMark />
                   </Label>
                   <FormControl>
-                    <Input
-                      id="promo-description"
-                      value={field.value ?? ''}
-                      onBlur={field.onBlur}
-                      onChange={field.onChange}
-                      placeholder="例: 春の入会キャンペーン用"
-                    />
+                    <Input placeholder="例: 春の入会キャンペーン用" {...field} />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground text-xs">有効期間（G-06 FR-004）</Label>
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr]">
+            <div className="flex flex-col gap-1">
+              <Label className="text-muted-foreground text-xs">有効期間</Label>
+              <div className="flex items-center gap-2">
                 <FormField
                   control={form.control}
                   name="validFrom"
-                  render={({ field, fieldState }) => {
-                    const date = field.value ? new Date(`${field.value}T00:00:00`) : undefined;
-                    return (
-                      <FormItem className="grid gap-2">
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormControl>
                         <DatePicker
-                          date={date}
-                          placeholder="日付を選択"
-                          onDateChange={(nextDate) => {
-                            field.onChange(nextDate ? format(nextDate, 'yyyy-MM-dd') : '');
-                          }}
-                          disabledDate={
-                            validToDate ? (dateValue) => dateValue > validToDate : undefined
+                          date={toDate(field.value)}
+                          onDateChange={(date) =>
+                            field.onChange(date ? format(date, DATE_FORMAT) : '')
                           }
-                          hasError={Boolean(fieldState.error)}
+                          placeholder="開始日"
                         />
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-                <span className="text-muted-foreground flex items-center justify-center text-xs">
-                  〜
-                </span>
+                <span className="text-muted-foreground text-xs">〜</span>
                 <FormField
                   control={form.control}
                   name="validTo"
-                  render={({ field, fieldState }) => {
-                    const date = field.value ? new Date(`${field.value}T00:00:00`) : undefined;
-                    return (
-                      <FormItem className="grid gap-2">
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormControl>
                         <DatePicker
-                          date={date}
-                          placeholder="日付を選択"
-                          onDateChange={(nextDate) => {
-                            field.onChange(nextDate ? format(nextDate, 'yyyy-MM-dd') : '');
-                          }}
-                          disabledDate={
-                            validFromDate ? (dateValue) => dateValue < validFromDate : undefined
+                          date={toDate(field.value)}
+                          onDateChange={(date) =>
+                            field.onChange(date ? format(date, DATE_FORMAT) : '')
                           }
-                          hasError={Boolean(fieldState.error)}
+                          placeholder="終了日"
                         />
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
             </div>
 
             <FormField
               control={form.control}
-              name="usageCapMode"
+              name="maxUses"
               render={({ field }) => (
-                <FormItem className="grid gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <FormLabel htmlFor="usage-cap-mode" className="text-muted-foreground text-xs">
-                      有効数（G-06 FR-005）
-                    </FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        if (value === 'unlimited') {
-                          form.setValue('usageCap', '', {
-                            shouldDirty: true,
-                            shouldValidate: true,
-                          });
-                        }
-                      }}
-                    >
-                      <SelectTrigger id="usage-cap-mode" className="w-[160px]">
-                        <SelectValue>{PROMO_CODE_USAGE_CAP_MODE_LABELS[field.value]}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unlimited">無制限</SelectItem>
-                        <SelectItem value="limited">回数指定</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <FormItem>
+                  <Label className="text-muted-foreground text-xs">使用上限</Label>
+                  <FormControl>
+                    <Input placeholder="例: 100（空欄で無制限）" {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {usageCapMode === 'limited' ? (
-              <FormField
-                control={form.control}
-                name="usageCap"
-                render={({ field }) => (
-                  <FormItem className="grid gap-2">
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={field.value}
-                        onBlur={field.onBlur}
-                        onChange={field.onChange}
-                        placeholder="例: 100（空欄で無制限）"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            ) : (
-              <p className="text-muted-foreground text-xs">無制限を選択した場合は入力不要です。</p>
-            )}
-
             <FormField
               control={form.control}
-              name="storeScope"
+              name="scopeType"
               render={({ field }) => (
-                <FormItem className="grid gap-2">
-                  <FormLabel htmlFor="store-scope" className="text-muted-foreground text-xs">
-                    適用店舗タイプ（G-06 FR-006）
-                  </FormLabel>
+                <FormItem>
+                  <Label className="text-muted-foreground text-xs">適用店舗タイプ</Label>
                   <Select
                     value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                    }}
-                    disabled={!canChooseGlobalScope}
+                    onValueChange={field.onChange}
+                    disabled={isScopeLockedToStore}
                   >
-                    <SelectTrigger
-                      id="store-scope"
-                      className={cn('w-full', !canChooseGlobalScope && 'opacity-100')}
-                    >
-                      <SelectValue>{PROMO_CODE_STORE_SCOPE_LABELS[field.value]}</SelectValue>
-                    </SelectTrigger>
+                    <FormControl>
+                      <SelectTrigger>
+                        {/* base-ui の Select.Value は既定で「値」を描画するためラベルを明示する。 */}
+                        <SelectValue placeholder="選択してください">
+                          {PROMO_CODE_SCOPE_OPTIONS.find((option) => option.value === field.value)
+                            ?.label ?? undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                    </FormControl>
                     <SelectContent>
-                      {storeScopeOptions.map((option) => (
+                      {scopeOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {canChooseGlobalScope ? (
-                    <p className="text-muted-foreground text-xs">はタイプA と B を選択できます。</p>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">Staff はタイプB 固定です。</p>
+                  {isScopeLockedToStore && (
+                    <p className="text-muted-foreground text-[10px]">
+                      店舗スタッフが発行するコードは「発行店舗のみ」に固定されます
+                    </p>
                   )}
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                キャンセル
-              </Button>
-              <Button type="submit" disabled={isSubmitting || form.formState.isSubmitting}>
-                発行する
-              </Button>
-            </DialogFooter>
+            {scopeType === 'issuer_store_only' && (
+              <FormField
+                control={form.control}
+                name="issuedStoreId"
+                render={({ field }) => (
+                  <FormItem>
+                    <Label className="text-muted-foreground text-xs">発行店舗</Label>
+                    <FormControl>
+                      <SearchableSelect
+                        value={field.value || null}
+                        valueLabel={selectedStore?.name}
+                        options={stores}
+                        placeholder="店舗を選択"
+                        searchPlaceholder="店舗名・クラブコードで検索..."
+                        emptyMessage="該当する店舗がありません"
+                        loadingMessage="検索中..."
+                        isLoading={isStoresFetching && !isFetchingMoreStores}
+                        hasMore={hasMoreStores}
+                        isLoadingMore={isFetchingMoreStores}
+                        onLoadMore={fetchNextStores}
+                        loadingMoreMessage="読み込み中..."
+                        onSearchChange={setStoreSearch}
+                        onSelect={(store) => field.onChange(store?.id ?? '')}
+                        getOptionKey={(store) => store.id}
+                        getOptionLabel={(store) => store.name}
+                        triggerClassName="h-9 w-full"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={tab.isIssuing}>キャンセル</AlertDialogCancel>
+          <AlertDialogAction
+            type="submit"
+            form="promo-code-issue-form"
+            disabled={tab.isIssuing}
+            onClick={(event) => {
+              event.preventDefault();
+              void form.handleSubmit(tab.issueCode)();
+            }}
+          >
+            発行する
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

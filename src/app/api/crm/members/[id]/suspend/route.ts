@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { validateProxyAgreement, validateSuspensionRange } from '@/app/api/_lib/member-operation';
+import { toStorageYearMonth } from '@/app/api/_lib/year-month';
 import { db } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    if (!SUSPENDABLE_STATUSES.includes(member.profile.status)) {
+    if (!SUSPENDABLE_STATUSES.includes(member.memberStatus)) {
       return NextResponse.json(
         { error: 'Member is not in a state that allows suspension' },
         { status: 409 },
@@ -90,13 +92,43 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: errors }, { status: 400 });
     }
 
-    const { start_month, end_month, reason, is_proxy, proxy_agreed_at, proxy_method } =
-      validationResult.data;
+    const {
+      start_month,
+      end_month,
+      reason,
+      return_points,
+      return_reason,
+      is_proxy,
+      proxy_agreed_at,
+      proxy_method,
+    } = validationResult.data;
+
+    // BR-SUS-001 (A-01): start not in the past, end on/after start, span ≤ 12 months.
+    // Shared with the 休会申請 form so client and server cannot disagree.
+    const rangeError = validateSuspensionRange({ start_month, end_month });
+    if (rangeError) {
+      return NextResponse.json({ error: rangeError.message }, { status: 400 });
+    }
+
+    // A-01 FR-017: a proxy application must carry a plausible agreement timestamp
+    const proxyError = validateProxyAgreement({ is_proxy, proxy_agreed_at });
+    if (proxyError) {
+      return NextResponse.json({ error: proxyError.message }, { status: 400 });
+    }
+
+    // FR-S001: a refund reason is required when refunding (audit trail)
+    if (return_points && !return_reason?.trim()) {
+      return NextResponse.json(
+        { error: 'return_reason is required when return_points is true' },
+        { status: 400 },
+      );
+    }
 
     const result = db.members.handleSuspension({
       id,
-      start_month,
-      end_month,
+      // The request contract is `YYYY-MM`; 休会 rows are stored in the `YYYY/MM` display format
+      start_month: toStorageYearMonth(start_month),
+      end_month: toStorageYearMonth(end_month),
       reason,
       is_proxy,
       proxy_agreed_at,

@@ -15,7 +15,6 @@ import type { Store } from '@/lib/api/types.gen';
 import type { LockerFormValues } from '../_schemas/locker-form.schema';
 
 const STORE_SEARCH_LIMIT = 20;
-const STORE_CACHE_MS = 5 * 60 * 1000;
 
 export function LockerFormBasicInfoSection() {
   const form = useFormContext<LockerFormValues>();
@@ -34,7 +33,6 @@ export function LockerFormBasicInfoSection() {
       },
     }),
     enabled: isStorePopoverOpen,
-    staleTime: STORE_CACHE_MS,
   });
 
   const stores = storesRes?.stores ?? [];
@@ -45,7 +43,6 @@ export function LockerFormBasicInfoSection() {
   const { data: selectedStoreRes } = useQuery({
     ...getCrmStoresByIdOptions({ path: { id: selectedStoreId } }),
     enabled: Boolean(selectedStoreId) && !selectedStoreFromOptions,
-    staleTime: STORE_CACHE_MS,
   });
 
   const selectedStoreLabel = selectedStoreId

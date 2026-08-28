@@ -59,12 +59,12 @@ export function LessonScheduleFormLesson() {
                           variant="outline"
                           role="combobox"
                           aria-expanded={open}
-                          className="h-8 w-full justify-between text-sm font-normal"
+                          className="h-8 w-full min-w-0 justify-between text-sm font-normal"
                         />
                       }
                     >
                       {selectedLesson ? (
-                        <span>
+                        <span className="min-w-0 flex-1 truncate text-left">
                           {selectedLesson.name}
                           {selectedLesson.duration ? ` (${selectedLesson.duration}分)` : ''}
                         </span>

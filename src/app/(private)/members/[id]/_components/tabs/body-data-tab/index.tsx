@@ -2,7 +2,7 @@
 
 import { formatDate } from '@/utils/format.util';
 import { useQuery } from '@tanstack/react-query';
-import { Activity } from 'lucide-react';
+import { Activity, Lock, ShieldOff } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
@@ -63,7 +63,61 @@ function MetricItem({ label, value, unit }: { label: string; value: number; unit
   );
 }
 
-export function BodyDataTab({ memberId }: { memberId: string }) {
+type BodyDataConsentStatus = 'granted' | 'pending' | 'denied';
+
+export function BodyDataTab({
+  memberId,
+  consentStatus,
+}: {
+  memberId: string;
+  consentStatus: BodyDataConsentStatus;
+}) {
+  // pending / denied consent: for privacy, never fetch or render any body data —
+  // show the message only (FR-013).
+  if (consentStatus !== 'granted') {
+    const isDenied = consentStatus === 'denied';
+    return (
+      <div className="flex flex-col gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">ボディーデータ</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4">
+            <div className="flex flex-col items-center gap-4 py-8 text-center">
+              <div
+                className={`flex size-12 items-center justify-center rounded-full ${
+                  isDenied ? 'bg-destructive/10' : 'bg-muted'
+                }`}
+              >
+                {isDenied ? (
+                  <ShieldOff className="text-destructive size-6" />
+                ) : (
+                  <Lock className="text-muted-foreground size-6" />
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold">
+                  {isDenied
+                    ? '会員が情報連携を拒否しています'
+                    : 'この会員はCRMへのボディデータ連携に同意していません。'}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  {isDenied
+                    ? 'ボディーデータは閲覧できません。'
+                    : 'データを表示するには、会員がアプリから同意操作を行う必要があります。'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return <BodyDataContent memberId={memberId} />;
+}
+
+function BodyDataContent({ memberId }: { memberId: string }) {
   const { data, isLoading, isError, refetch } = useQuery(
     getCrmMembersByIdBodyDataOptions({
       path: { id: memberId },
@@ -74,14 +128,18 @@ export function BodyDataTab({ memberId }: { memberId: string }) {
     <DataStateBoundary
       isLoading={isLoading}
       isError={isError}
-      isEmpty={!data}
+      // FR-013 異常系: with zero measurements the summary / composition blocks would render all
+      // zeros, so treat "no history" as empty for the whole tab, not just the history table.
+      isEmpty={!data || data.history.length === 0}
+      emptyTitle="まだボディーデータの記録がありません"
+      emptyDescription="会員がアプリで測定を記録すると、ここに表示されます。"
       onRetry={() => refetch()}
     >
       {data ? (
         <div className="flex flex-col gap-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">
+              <CardTitle className="text-base font-semibold">
                 最新記録サマリー（{formatDate(data.latest.date)}）
               </CardTitle>
             </CardHeader>
@@ -100,10 +158,10 @@ export function BodyDataTab({ memberId }: { memberId: string }) {
             <div className="flex w-full flex-col gap-4 md:w-[60%]">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">
+                  <CardTitle className="text-base font-semibold">
                     体組成データ
                     <span className="text-muted-foreground ml-1 text-xs font-normal">
-                      {SOURCE_LABELS[data.bodyComposition.source]} 連携
+                      Body Planner 連携
                     </span>
                   </CardTitle>
                 </CardHeader>
@@ -150,7 +208,7 @@ export function BodyDataTab({ memberId }: { memberId: string }) {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">
+                  <CardTitle className="text-base font-semibold">
                     身体データ
                     <span className="text-muted-foreground ml-1 text-xs font-normal">
                       3DScanner 連携 / 手動入力
@@ -176,58 +234,15 @@ export function BodyDataTab({ memberId }: { memberId: string }) {
             </div>
 
             <div className="flex w-full flex-col gap-4 md:w-[40%]">
-              <Card className="gap-0 py-0">
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">測定履歴</CardTitle>
-                </CardHeader>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="text-xs font-semibold">測定日</TableHead>
-                      <TableHead className="text-xs font-semibold">データソース</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">体重</TableHead>
-                      <TableHead className="text-right text-xs font-semibold">体脂肪率</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.history.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={4}
-                          className="text-muted-foreground py-6 text-center text-sm"
-                        >
-                          まだボディーデータの記録がありません
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      data.history.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {formatDate(item.date)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-[10px]">
-                              {SOURCE_LABELS[item.source]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right text-sm">{item.weight} kg</TableCell>
-                          <TableCell className="text-right text-sm">{item.fatPercent} %</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </Card>
-
               <Card>
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     <Activity className="text-muted-foreground size-4" />
-                    <CardTitle className="text-sm">体重推移</CardTitle>
+                    <CardTitle className="text-base font-semibold">体重推移</CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent className="px-4 pb-4">
-                  <ChartContainer config={BODY_WEIGHT_CHART_CONFIG} className="h-[180px] w-full">
+                  <ChartContainer config={BODY_WEIGHT_CHART_CONFIG} className="h-45 w-full">
                     <LineChart
                       data={data.weightChart}
                       margin={{ top: 8, right: 4, left: -24, bottom: 0 }}
@@ -260,6 +275,39 @@ export function BodyDataTab({ memberId }: { memberId: string }) {
                     </LineChart>
                   </ChartContainer>
                 </CardContent>
+              </Card>
+
+              <Card className="gap-0 py-0">
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-base font-semibold">測定履歴</CardTitle>
+                </CardHeader>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="text-xs font-semibold">測定日</TableHead>
+                      <TableHead className="text-xs font-semibold">データソース</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">体重</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">体脂肪率</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  {/* No empty row needed: zero measurements is handled by the tab-level boundary */}
+                  <TableBody>
+                    {data.history.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {formatDate(item.date)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px]">
+                            {SOURCE_LABELS[item.source]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-sm">{item.weight} kg</TableCell>
+                        <TableCell className="text-right text-sm">{item.fatPercent} %</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </Card>
             </div>
           </div>

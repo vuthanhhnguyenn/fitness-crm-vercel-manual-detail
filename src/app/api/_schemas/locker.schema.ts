@@ -4,9 +4,10 @@ import { z } from 'zod';
 
 extendZodWithOpenApi(z);
 
-export const LockerShapeSchema = z.enum(['3x9', '3x6', '2x10', '2x4']).openapi({
+/** E-01 shape definitions: only 4 shapes — 3x9 / 3x7 / 3x5 / 3x2 */
+export const LockerShapeSchema = z.enum(['3x9', '3x7', '3x5', '3x2']).openapi({
   title: 'LockerShape',
-  description: 'Locker shape / arrangement pattern',
+  description: 'Locker shape / arrangement pattern (E-01: 3x9 / 3x7 / 3x5 / 3x2 only)',
 });
 
 export const LockerNumberingPatternSchema = z
@@ -170,8 +171,9 @@ export const LockerPaginationSchema = z
   .object({
     page: z.number().int().openapi({ example: 1 }),
     limit: z.number().int().openapi({ example: 30 }),
-    total: z.number().int().openapi({ example: 8 }),
+    total: z.number().int().openapi({ example: 8, description: '検索条件適用後の総件数' }),
     total_pages: z.number().int().openapi({ example: 1 }),
+    all_total: z.number().int().openapi({ example: 8, description: '検索条件適用前の総件数' }),
   })
   .openapi({
     title: 'LockerPagination',
@@ -181,7 +183,7 @@ export const LockerPaginationSchema = z
 export const GetLockersQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1).openapi({ example: 1 }),
-    limit: z.coerce.number().int().min(1).max(100).default(30).openapi({ example: 30 }),
+    limit: z.coerce.number().int().min(1).max(200).default(50).openapi({ example: 50 }),
     search: z.string().optional().openapi({ description: 'Search by locker id or area' }),
     shape: LockerShapeSchema.optional().openapi({ description: 'Locker shape filter' }),
     sort_by: LockerSortFieldSchema.default('locker_id').openapi({ description: 'Sort field' }),
@@ -195,7 +197,7 @@ export const GetLockersQuerySchema = z
 export const GetLockerContractsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1).openapi({ example: 1 }),
-    limit: z.coerce.number().int().min(1).max(100).default(30).openapi({ example: 30 }),
+    limit: z.coerce.number().int().min(1).max(200).default(50).openapi({ example: 50 }),
     search: z.string().optional().openapi({ description: 'Search by contract id or member name' }),
     contract_type: LockerOptionTypeSchema.optional().openapi({
       description: 'Contract type filter',
@@ -216,7 +218,7 @@ export const GetLockerContractsQuerySchema = z
 export const GetLockerPendingSlotsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1).openapi({ example: 1 }),
-    limit: z.coerce.number().int().min(1).max(100).default(30).openapi({ example: 30 }),
+    limit: z.coerce.number().int().min(1).max(200).default(50).openapi({ example: 50 }),
     search: z.string().optional().openapi({ description: 'Search by slot number or member name' }),
     store_id: z.string().optional().openapi({ description: 'Store filter' }),
     locker_location: LockerPendingLocationSchema.optional().openapi({
@@ -378,6 +380,8 @@ export const LockerContractDetailSchema = LockerContractListItemSchema.extend({
   slot_size: z
     .string()
     .openapi({ example: 'L（W35 × D48 × H40 cm）', description: 'Slot size label' }),
+  /** E-01: hide the PIN section for cylinder-lock slots */
+  lock_type: LockerLockTypeSchema.openapi({ description: 'Assigned slot lock type' }),
   member_phone: z.string().openapi({ example: '090-1234-5678', description: 'Member phone' }),
   member_email: z.string().openapi({ example: 'tanaka@example.com', description: 'Member email' }),
   termination_date: z.string().nullable().openapi({
@@ -405,34 +409,10 @@ export const GetLockerContractDetailResponseSchema = z
     description: 'Locker contract detail response',
   });
 
-export const CreateLockerContractRequestSchema = z
-  .object({
-    member_id: z.string().min(1).openapi({ example: 'M-00042', description: 'Member id' }),
-    locker_id: z
-      .string()
-      .min(1)
-      .openapi({ example: 'locker-001', description: 'Locker internal id' }),
-    slot_number: z.string().min(1).openapi({ example: 'A-013', description: 'Slot number' }),
-    contract_type_code: z
-      .string()
-      .min(1)
-      .openapi({ example: 'LK-STD-001', description: 'G-02 contract type code' }),
-    start_date: z.string().min(1).openapi({
-      example: '2025-04-01T00:00:00Z',
-      description: 'Contract start date-time (ISO 8601 UTC)',
-    }),
-    password: z
-      .string()
-      .regex(/^\d{4}$/)
-      .nullable()
-      .optional()
-      .openapi({ example: '3847', description: 'Dial password (4 digits)' }),
-  })
-  .openapi({
-    title: 'CreateLockerContractRequest',
-    description: 'Request to create a locker contract',
-  });
-
+/**
+ * E-01: locker contracts are edit-only in the CRM (new contracts are concluded in the member-side flow),
+ * so no contract-creation request is exposed.
+ */
 export const UpdateLockerContractRequestSchema = z
   .object({
     locker_id: z.string().min(1).optional().openapi({ description: 'Locker internal id' }),
@@ -447,6 +427,8 @@ export const UpdateLockerContractRequestSchema = z
       .min(1)
       .optional()
       .openapi({ description: 'Contract start date-time (ISO 8601 UTC)' }),
+    // FR-006: the end date is written by the cancellation flow (see CancelLockerContractRequest),
+    // which enforces the cancellation-fee rule (#36). It is deliberately not patchable here.
     password: z
       .string()
       .regex(/^\d{4}$/)
@@ -460,16 +442,6 @@ export const UpdateLockerContractRequestSchema = z
   .openapi({
     title: 'UpdateLockerContractRequest',
     description: 'Request to update a locker contract',
-  });
-
-export const CreateLockerContractResponseSchema = z
-  .object({
-    message: z.string().openapi({ example: 'ロッカー契約を登録しました' }),
-    contract: LockerContractDetailSchema,
-  })
-  .openapi({
-    title: 'CreateLockerContractResponse',
-    description: 'Locker contract create response',
   });
 
 export const UpdateLockerContractResponseSchema = z
@@ -626,6 +598,19 @@ export const LockerSlotItemSchema = z
     height_cm: z.number().int().openapi({ example: 40, description: 'Slot height in cm' }),
     depth_cm: z.number().int().openapi({ example: 50, description: 'Slot depth in cm' }),
     password: z.string().nullable().openapi({ example: '3847', description: 'Dial password' }),
+    /**
+     * FR-005 / FR-013: the contract type master applied to this slot, resolved server-side.
+     * Screens can then label a slot without loading the whole G-02 locker option master,
+     * which their Select paginates 20 at a time.
+     */
+    contract_type: LockerContractTypeMasterSchema.nullable().openapi({
+      description: 'Contract type master applied to this slot',
+    }),
+    /** FR-009: date the PIN was last changed (operational aid) */
+    password_changed_at: z.string().nullable().openapi({
+      example: '2026-02-14T00:00:00Z',
+      description: 'Dial password last changed at (ISO 8601 UTC)',
+    }),
     member_name: z
       .string()
       .nullable()
@@ -650,10 +635,14 @@ export const LockerSlotItemSchema = z
       .string()
       .nullable()
       .openapi({ example: 'CNT-001', description: 'Locker contract id' }),
-    contract_type_code: z
-      .string()
-      .nullable()
-      .openapi({ example: 'LK-DSC-001', description: 'Assigned contract type code' }),
+    /**
+     * FR-013: derived from the cabinet — `bottom_contract_type_code` when `is_bottom_row`,
+     * otherwise `contract_type_code`. Never a free per-slot choice.
+     */
+    contract_type_code: z.string().nullable().openapi({
+      example: 'LK-DSC-001',
+      description: 'Fee option code applying to this slot (derived from the locker)',
+    }),
     individual_fee: z
       .number()
       .int()
@@ -699,6 +688,18 @@ export const LockerSlotSummarySchema = z
     description: 'Locker slot usage summary',
   });
 
+/** E-01 FR-002: slot size W×H×D (in cm). Shown on the member-facing slot selection screen per FR-010 */
+export const LockerSlotSizeSchema = z
+  .object({
+    width_cm: z.number().int().positive().openapi({ example: 35, description: 'Width in cm' }),
+    height_cm: z.number().int().positive().openapi({ example: 40, description: 'Height in cm' }),
+    depth_cm: z.number().int().positive().openapi({ example: 48, description: 'Depth in cm' }),
+  })
+  .openapi({
+    title: 'LockerSlotSize',
+    description: 'Locker slot physical size in centimetres',
+  });
+
 export const LockerSlotLockSettingSchema = z
   .object({
     slot_number: z.string().openapi({ example: 'A-001', description: 'Slot number' }),
@@ -727,15 +728,14 @@ export const LockerDetailSchema = z
     slot_numbering_pattern: LockerNumberingPatternSchema.openapi({
       description: 'Slot numbering direction pattern',
     }),
-    start_number: z
-      .number()
-      .int()
-      .openapi({ example: 1, description: 'Slot numbering start value' }),
     default_open_type: LockerSlotOpenTypeSchema.openapi({
       description: 'Default open type for slots',
     }),
     default_lock_type: LockerLockTypeSchema.openapi({
       description: 'Default lock type for slots',
+    }),
+    default_slot_size: LockerSlotSizeSchema.openapi({
+      description: 'Default slot size (W×H×D, cm) applied to every slot',
     }),
     slot_lock_settings: z
       .array(LockerSlotLockSettingSchema)
@@ -755,10 +755,26 @@ export const LockerDetailSchema = z
     option_contract_master: LockerOptionMasterRefSchema.nullable().openapi({
       description: 'Assigned option contract master',
     }),
-    contract_type_code: z
-      .string()
-      .nullable()
-      .openapi({ example: 'LK-3x9-PREMIUM-001', description: 'Locker contract type code' }),
+    /**
+     * FR-013 fee options carried by the cabinet, as designed backend-side
+     * (`lockers.option_id` / `lockers.bottom_option_id`): the standard-row code applies to
+     * every slot except `is_bottom_row`, the bottom-row code to those flagged bottom row.
+     * A slot's applicable fee is therefore derived, never chosen freely.
+     */
+    contract_type_code: z.string().nullable().openapi({
+      example: 'LK-STD-001',
+      description: 'Standard-row fee option code (applies to every slot except the bottom row)',
+    }),
+    bottom_contract_type_code: z.string().nullable().openapi({
+      example: 'LK-DSC-001',
+      description: 'Bottom-row fee option code (applies to slots flagged is_bottom_row)',
+    }),
+    standard_option_contract_master: LockerOptionMasterRefSchema.nullable().openapi({
+      description: 'Resolved master of the standard-row fee option',
+    }),
+    bottom_option_contract_master: LockerOptionMasterRefSchema.nullable().openapi({
+      description: 'Resolved master of the bottom-row fee option',
+    }),
     guide_text: z.string().nullable().openapi({
       example: '更衣室入口から右手奥、男性専用エリアの隣',
       description: 'Guide text for staff',
@@ -798,7 +814,7 @@ export const GetLockerDetailResponseSchema = z
 export const GetLockerHistoryQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1).openapi({ example: 1 }),
-    limit: z.coerce.number().int().min(1).max(100).default(30).openapi({ example: 30 }),
+    limit: z.coerce.number().int().min(1).max(200).default(50).openapi({ example: 50 }),
     sort_by: z
       .enum(['date', 'user', 'action', 'detail'])
       .default('date')
@@ -883,23 +899,24 @@ export const CreateLockerRequestSchema = z
     slot_numbering_pattern: LockerNumberingPatternSchema.openapi({
       description: 'Slot numbering direction pattern',
     }),
-    start_number: z
-      .number()
-      .int()
-      .min(1)
-      .default(1)
-      .openapi({ example: 1, description: 'Slot numbering start value' }),
     option_type: LockerOptionTypeSchema.openapi({ description: 'Option contract type' }),
-    contract_type_code: z
-      .string()
-      .nullable()
-      .optional()
-      .openapi({ example: 'LK-3x9-PREMIUM-001', description: 'G-02 contract type code' }),
+    contract_type_code: z.string().nullable().optional().openapi({
+      example: 'LK-STD-001',
+      description: 'Standard-row fee option code (G-02)',
+    }),
+    /** FR-013: optional — when set, applies to the slots flagged `is_bottom_row` */
+    bottom_contract_type_code: z.string().nullable().optional().openapi({
+      example: 'LK-DSC-001',
+      description: 'Bottom-row fee option code (G-02)',
+    }),
     default_open_type: LockerSlotOpenTypeSchema.openapi({
       description: 'Default open type for slots',
     }),
     default_lock_type: LockerLockTypeSchema.openapi({
       description: 'Default lock type for slots',
+    }),
+    default_slot_size: LockerSlotSizeSchema.openapi({
+      description: 'Default slot size (W×H×D, cm) applied to every slot',
     }),
     slot_lock_settings: z
       .array(LockerSlotLockSettingSchema)
@@ -1021,11 +1038,15 @@ export const UpdateLockerSlotRequestSchema = z
       .nullable()
       .optional()
       .openapi({ example: '3847', description: 'Dial password (4 digits)' }),
-    contract_type_code: z
-      .string()
-      .nullable()
-      .optional()
-      .openapi({ example: 'LK-DSC-001', description: 'G-02 contract type code' }),
+    /**
+     * FR-013: must be one of the cabinet's two fee options (`contract_type_code` /
+     * `bottom_contract_type_code`); anything else is rejected, mirroring the designed
+     * backend validation on the slot-contract endpoint.
+     */
+    contract_type_code: z.string().nullable().optional().openapi({
+      example: 'LK-DSC-001',
+      description: "Fee option code — must belong to the locker's standard/bottom pair",
+    }),
   })
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
     message: 'At least one field is required',
@@ -1101,6 +1122,7 @@ export type LockerPendingSlotListItem = z.infer<typeof LockerPendingSlotListItem
 export type LockerOptionMasterRef = z.infer<typeof LockerOptionMasterRefSchema>;
 export type LockerContractTypeMaster = z.infer<typeof LockerContractTypeMasterSchema>;
 export type LockerReminderNotification = z.infer<typeof LockerReminderNotificationSchema>;
+export type LockerSlotSize = z.infer<typeof LockerSlotSizeSchema>;
 export type LockerSlotItem = z.infer<typeof LockerSlotItemSchema>;
 export type LockerSlotSummary = z.infer<typeof LockerSlotSummarySchema>;
 export type GetLockersQuery = z.infer<typeof GetLockersQuerySchema>;
@@ -1124,9 +1146,7 @@ export type GetLockersResponse = z.infer<typeof GetLockersResponseSchema>;
 export type GetLockerContractsResponse = z.infer<typeof GetLockerContractsResponseSchema>;
 export type LockerContractDetail = z.infer<typeof LockerContractDetailSchema>;
 export type GetLockerContractDetailResponse = z.infer<typeof GetLockerContractDetailResponseSchema>;
-export type CreateLockerContractRequest = z.infer<typeof CreateLockerContractRequestSchema>;
 export type UpdateLockerContractRequest = z.infer<typeof UpdateLockerContractRequestSchema>;
-export type CreateLockerContractResponse = z.infer<typeof CreateLockerContractResponseSchema>;
 export type UpdateLockerContractResponse = z.infer<typeof UpdateLockerContractResponseSchema>;
 export type CancelLockerContractRequest = z.infer<typeof CancelLockerContractRequestSchema>;
 export type CancelLockerContractResponse = z.infer<typeof CancelLockerContractResponseSchema>;

@@ -3,369 +3,271 @@ import { z } from 'zod';
 
 extendZodWithOpenApi(z);
 
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+export const TermsTypeSchema = z
+  .enum(['membership', 'privacy_policy', 'payment', 'companion', 'withdrawal', 'leave_of_absence'])
+  .openapi({
+    title: 'TermsType',
+    description:
+      '規約タイプ: membership=会員規約, privacy_policy=プライバシーポリシー, payment=決済規約, companion=同伴規約, withdrawal=退会規約, leave_of_absence=休会規約',
+  });
 
-const OptionalDateInputSchema = z.preprocess((value) => {
-  if (value === '' || value === undefined || value === null) return null;
-  return value;
-}, z.string().regex(DATE_REGEX).nullable());
-
-const OptionalTextSchema = z.preprocess((value) => {
-  if (value === '' || value === undefined || value === null) return null;
-  return value;
-}, z.string().max(1000).nullable());
-
-const OptionalDisplayOrderInputSchema = z.preprocess((value) => {
-  if (value === '' || value === undefined || value === null) return null;
-  if (typeof value === 'number') return String(value);
-  return value;
-}, z.string().trim().nullable());
-
-export const InternalTermsTypeSchema = z
-  .enum(['membership', 'privacy', 'payment', 'companion', 'withdrawal', 'suspension'])
-  .openapi({ title: 'InternalTermsType', example: 'membership' });
-
-export const TermsStatusSchema = z
-  .enum(['published', 'expired', 'draft'])
-  .openapi({ title: 'TermsStatus', example: 'published' });
-
-export const TermsVersionStatusSchema = z
-  .enum(['active', 'expired', 'draft'])
-  .openapi({ title: 'TermsVersionStatus', example: 'active' });
-
-export const BrandLabelSchema = z.enum(['JOYFIT', 'FIT365']).openapi({
-  title: 'BrandLabel',
-  example: 'JOYFIT',
+export const TermsBrandSchema = z.enum(['joyfit', 'fit365']).openapi({
+  title: 'TermsBrand',
+  description: '対象ブランド (Y-04は2ブランド共通スコープ)',
 });
 
-export const VersionTypeSchema = z
-  .enum(['original', 'version'])
-  .openapi({ title: 'VersionType', example: 'version' });
-
-export const TermsConsentSourceSchema = z.string().min(1).openapi({
-  title: 'TermsConsentSource',
-  example: 'app_launch',
+export const TermsStatusSchema = z.enum(['published', 'expired', 'draft']).openapi({
+  title: 'TermsStatus',
+  description: 'ステータス (現在時刻から自動算出、保存されない)',
 });
 
-export const TermsFileSchema = z
-  .object({
-    name: z.string().min(1),
-    size: z.string().min(1),
-    url: z.string().nullable(),
-  })
-  .openapi({ title: 'TermsFile' });
+// -- Row schema --
 
-export const VersionHistoryItemSchema = z
+export const TermsSchema = z
   .object({
-    version: z.string().min(1).max(50),
-    versionType: VersionTypeSchema,
-    date: z.string().min(1),
-    period: z.string().min(1),
-    summary: z.string().min(1),
-    status: TermsVersionStatusSchema,
-    file: TermsFileSchema,
+    id: z.string().openapi({ example: 'TM-001', description: '規約ID' }),
+    parent_terms_id: z
+      .string()
+      .nullable()
+      .openapi({ description: 'ルート（オリジナル）規約のID。オリジナル自身ではnull' }),
+    prev_terms_id: z
+      .string()
+      .nullable()
+      .openapi({ description: '直前バージョンのID。オリジナル自身ではnull' }),
+    terms_type: TermsTypeSchema,
+    brand_enum: TermsBrandSchema,
+    title: z.string().openapi({ description: '規約名' }),
+    version: z.string().openapi({ example: 'v1.0', description: 'バージョンラベル' }),
+    pdf_url: z.string().openapi({ description: 'PDFファイルURL' }),
+    pdf_file_name: z.string().openapi({ description: 'PDFファイル名' }),
+    pdf_file_size: z.number().openapi({ description: 'PDFファイルサイズ (bytes)' }),
+    body_text: z.string().openapi({ description: '抽出された規約本文テキスト' }),
+    effective_from: z.string().openapi({ example: '2026-04-01', description: '適用開始日' }),
+    effective_to: z.string().nullable().openapi({ description: '適用終了予定日' }),
+    display_order: z.number().nullable().openapi({ description: '表示順' }),
+    requires_consent: z.boolean().openapi({ description: '承諾ボタン表示' }),
+    remarks: z.string().nullable().openapi({ description: '備考 (バージョン履歴では変更概要)' }),
+    is_deleted: z.boolean().openapi({ description: '論理削除フラグ' }),
+    created_by: z.string().openapi({ description: '登録者名' }),
+    updated_by: z.string().openapi({ description: '最終更新者名' }),
+    created_at: z.string().openapi({ description: '作成日時 (ISO 8601)' }),
+    updated_at: z.string().openapi({ description: '最終更新日時 (ISO 8601)' }),
   })
-  .openapi({ title: 'VersionHistoryItem' });
+  .openapi({
+    title: 'Terms',
+    description: '規約文書情報 (1行 = 1バージョン)',
+  });
 
-export const TermsConsentRecordSchema = z
-  .object({
-    consentId: z.string().min(1),
-    memberId: z.string().min(1),
-    termsId: z.string().min(1),
-    source: TermsConsentSourceSchema,
-    consentedAt: z.string().min(1),
-  })
-  .openapi({ title: 'TermsConsentRecord' });
+// -- Request schemas --
 
-export const TermsDocumentSchema = z
+export const GetTermsQuerySchema = z
   .object({
-    id: z.string().min(1),
-    parentTermsId: z.string().nullable(),
-    prevTermsId: z.string().nullable(),
-    termsType: InternalTermsTypeSchema,
-    brandEnum: BrandLabelSchema,
-    title: z.string().min(1).max(255),
-    version: z.string().min(1).max(50),
-    pdfS3Key: z.string().min(1),
-    pdfUrl: z.string().nullable(),
-    pdfFileName: z.string().nullable().optional(),
-    bodyText: z.string().nullable().optional(),
-    effectiveFrom: z.string().regex(DATE_REGEX),
-    effectiveTo: z.string().regex(DATE_REGEX).nullable(),
-    displayOrder: z.number().int().min(0).nullable(),
-    requiresConsent: z.boolean(),
-    remarks: z.string().max(1000).nullable(),
-    isActive: z.boolean(),
-    createdBy: z.string().nullable(),
-    updatedBy: z.string().min(1),
-    createdAt: z.string().min(1),
-    updatedAt: z.string().min(1),
-    deletedAt: z.string().nullable(),
+    termsType: TermsTypeSchema.optional(),
+    brandEnum: TermsBrandSchema.optional(),
+    status: TermsStatusSchema.optional(),
+    query: z.string().optional().openapi({ description: 'ID・規約名部分一致検索' }),
+    includeDeleted: z
+      .preprocess((value) => value === 'true' || value === true, z.boolean())
+      .optional()
+      .default(false),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce
+      .number()
+      .int()
+      .refine(
+        (value) => [25, 50, 100, 200].includes(value),
+        'limit must be one of 25, 50, 100, 200',
+      )
+      .default(50),
   })
-  .openapi({ title: 'TermsDocument' });
+  .openapi({
+    title: 'GetTermsQuery',
+    description: '規約文書一覧取得クエリ',
+  });
 
 export const CreateTermsBodySchema = z
   .object({
-    brandEnum: BrandLabelSchema,
-    termsType: InternalTermsTypeSchema,
-    title: z.string().trim().min(1).max(255),
-    version: z.string().trim().min(1).max(50),
-    effectiveFrom: z.string().regex(DATE_REGEX),
-    effectiveTo: OptionalDateInputSchema.optional(),
-    displayOrder: OptionalDisplayOrderInputSchema.optional(),
+    termsType: TermsTypeSchema,
+    brandEnum: TermsBrandSchema,
+    title: z.string().min(1, '規約名は必須です。'),
+    version: z.string().min(1, 'バージョンは必須です。'),
+    effectiveFrom: z.string().min(1, '適用開始日は必須です。'),
+    effectiveTo: z.string().nullable().optional(),
+    displayOrder: z.number().int().min(1).nullable().optional(),
     requiresConsent: z.boolean(),
-    remarks: OptionalTextSchema.optional(),
-    pdfS3Key: z.string().trim().min(1),
-    pdfUrl: z.string().nullable().optional(),
-    pdfFileName: z.string().trim().min(1).nullable().optional(),
+    remarks: z.string().nullable().optional(),
+    pdfUrl: z.string().min(1, 'PDFファイルは必須です。'),
+    pdfFileName: z.string().min(1),
+    pdfFileSize: z.number(),
+    parentTermsId: z.string().nullable().optional(),
+    prevTermsId: z.string().nullable().optional(),
   })
-  .superRefine((data, ctx) => {
-    if (data.effectiveTo && data.effectiveTo < data.effectiveFrom) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['effectiveTo'],
-        message: 'effectiveTo must be greater than or equal to effectiveFrom',
-      });
-    }
-  })
-  .openapi({ title: 'CreateTermsBody' });
+  .refine(
+    (data) => !data.effectiveTo || new Date(data.effectiveTo) > new Date(data.effectiveFrom),
+    {
+      message: '適用終了予定日は適用開始日より後の日付を入力してください。',
+      path: ['effectiveTo'],
+    },
+  )
+  .openapi({
+    title: 'CreateTermsBody',
+    description: '規約文書作成リクエスト',
+  });
 
+// `termsType`/`brandEnum` are intentionally absent — immutable after creation (FR-012).
 export const UpdateTermsBodySchema = z
   .object({
-    title: z.string().trim().min(1).max(255).optional(),
-    version: z.string().trim().min(1).max(50).optional(),
-    effectiveFrom: z.string().regex(DATE_REGEX).optional(),
-    effectiveTo: OptionalDateInputSchema.optional(),
-    displayOrder: OptionalDisplayOrderInputSchema.optional(),
+    title: z.string().min(1).optional(),
+    version: z.string().min(1).optional(),
+    effectiveFrom: z.string().min(1).optional(),
+    effectiveTo: z.string().nullable().optional(),
+    displayOrder: z.number().int().min(1).nullable().optional(),
     requiresConsent: z.boolean().optional(),
-    remarks: OptionalTextSchema.optional(),
-    pdfS3Key: z.string().trim().min(1).optional(),
-    pdfUrl: z.string().nullable().optional(),
-    pdfFileName: z.string().trim().min(1).nullable().optional(),
+    remarks: z.string().nullable().optional(),
+    pdfUrl: z.string().min(1).optional(),
+    pdfFileName: z.string().min(1).optional(),
+    pdfFileSize: z.number().optional(),
   })
-  .superRefine((data, ctx) => {
-    if (data.effectiveFrom && data.effectiveTo && data.effectiveTo < data.effectiveFrom) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['effectiveTo'],
-        message: 'effectiveTo must be greater than or equal to effectiveFrom',
-      });
-    }
-  })
-  .openapi({ title: 'UpdateTermsBody' });
+  .refine(
+    (data) => {
+      const provided = [data.pdfUrl, data.pdfFileName, data.pdfFileSize].filter(
+        (value) => value !== undefined,
+      );
+      return provided.length === 0 || provided.length === 3;
+    },
+    {
+      message: 'PDFファイル情報 (pdfUrl/pdfFileName/pdfFileSize) はすべて指定してください。',
+      path: ['pdfUrl'],
+    },
+  )
+  .openapi({
+    title: 'UpdateTermsBody',
+    description: '規約文書更新リクエスト (termsType/brandEnumは作成後変更不可)',
+  });
 
-export const CreateTermsVersionBodySchema = z
+// -- Response schemas --
+
+export const TermsListItemResponseSchema = z
   .object({
-    title: z.string().trim().min(1).max(255),
-    version: z.string().trim().min(1).max(50),
-    effectiveFrom: z.string().regex(DATE_REGEX),
-    effectiveTo: OptionalDateInputSchema.optional(),
-    displayOrder: OptionalDisplayOrderInputSchema.optional(),
-    requiresConsent: z.boolean(),
-    remarks: OptionalTextSchema.optional(),
-    pdfS3Key: z.string().trim().min(1),
-    pdfUrl: z.string().nullable().optional(),
-    pdfFileName: z.string().trim().min(1).nullable().optional(),
+    id: TermsSchema.shape.id,
+    termsType: TermsSchema.shape.terms_type,
+    brandEnum: TermsSchema.shape.brand_enum,
+    title: TermsSchema.shape.title,
+    version: TermsSchema.shape.version,
+    effectiveFrom: TermsSchema.shape.effective_from,
+    displayOrder: TermsSchema.shape.display_order,
+    status: TermsStatusSchema.openapi({ description: '算出されたステータス' }),
+    isDeleted: TermsSchema.shape.is_deleted,
   })
-  .superRefine((data, ctx) => {
-    if (data.effectiveTo && data.effectiveTo < data.effectiveFrom) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['effectiveTo'],
-        message: 'effectiveTo must be greater than or equal to effectiveFrom',
-      });
-    }
-  })
-  .openapi({ title: 'CreateTermsVersionBody' });
+  .openapi({
+    title: 'TermsListItemResponse',
+    description: '規約文書一覧アイテム',
+  });
 
-export const TermsListSortSchema = z
-  .enum(['displayOrder', 'effectiveFrom', 'createdAt'])
-  .openapi({ title: 'TermsListSort', example: 'displayOrder' });
-
-export const TermsListOrderSchema = z
-  .enum(['asc', 'desc'])
-  .openapi({ title: 'TermsListOrder', example: 'asc' });
-
-export const TermsListQuerySchema = z
+export const TermsVersionEntrySchema = z
   .object({
-    page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(100).default(20),
-    sort: TermsListSortSchema.default('displayOrder'),
-    order: TermsListOrderSchema.default('asc'),
-    search: z.string().trim().max(100).optional(),
-    status: TermsStatusSchema.optional(),
-    termsType: InternalTermsTypeSchema.optional(),
-    brandEnum: BrandLabelSchema.optional(),
-    includeDeleted: z
-      .preprocess((value) => {
-        if (value === undefined || value === null || value === '') return false;
-        if (typeof value === 'boolean') return value;
-        if (typeof value === 'string') return value === 'true';
-        return false;
-      }, z.boolean())
-      .default(false),
-  })
-  .openapi({ title: 'TermsListQuery' });
-
-export const TermsListItemSchema = z
-  .object({
-    id: z.string().min(1),
-    title: z.string().min(1).max(255),
-    termsType: InternalTermsTypeSchema,
-    version: z.string().min(1).max(50),
-    brandEnum: BrandLabelSchema,
-    effectiveFrom: z.string().regex(DATE_REGEX),
-    effectiveTo: z.string().regex(DATE_REGEX).nullable(),
-    displayOrder: z.number().int().min(0).nullable(),
-    requiresConsent: z.boolean(),
-    remarks: z.string().max(1000).nullable(),
+    id: TermsSchema.shape.id,
+    version: TermsSchema.shape.version,
+    versionKind: z
+      .enum(['original', 'version'])
+      .openapi({ description: 'original=オリジナル規約, version=バージョン規約' }),
     status: TermsStatusSchema,
-    isDeleted: z.boolean(),
+    effectiveFrom: TermsSchema.shape.effective_from,
+    effectiveTo: TermsSchema.shape.effective_to,
+    changeSummary: TermsSchema.shape.remarks,
+    isCurrentlyApplied: z.boolean(),
+    pdfUrl: TermsSchema.shape.pdf_url.optional(),
+    pdfFileName: TermsSchema.shape.pdf_file_name.optional(),
+    pdfFileSize: TermsSchema.shape.pdf_file_size.optional(),
   })
-  .openapi({ title: 'TermsListItem' });
+  .openapi({
+    title: 'TermsVersionEntry',
+    description: 'バージョン履歴の1エントリ (現行適用中エントリのみpdfUrl/pdfFileNameを含む)',
+  });
 
-export const TermsListResponseSchema = z
+export const TermsDetailResponseSchema = z
   .object({
-    items: z.array(TermsListItemSchema),
-    totalAllItems: z.number().int().min(0),
+    id: TermsSchema.shape.id,
+    parentTermsId: TermsSchema.shape.parent_terms_id,
+    prevTermsId: TermsSchema.shape.prev_terms_id,
+    termsType: TermsSchema.shape.terms_type,
+    brandEnum: TermsSchema.shape.brand_enum,
+    title: TermsSchema.shape.title,
+    version: TermsSchema.shape.version,
+    pdfUrl: TermsSchema.shape.pdf_url,
+    pdfFileName: TermsSchema.shape.pdf_file_name,
+    pdfFileSize: TermsSchema.shape.pdf_file_size,
+    bodyText: TermsSchema.shape.body_text,
+    effectiveFrom: TermsSchema.shape.effective_from,
+    effectiveTo: TermsSchema.shape.effective_to,
+    displayOrder: TermsSchema.shape.display_order,
+    requiresConsent: TermsSchema.shape.requires_consent,
+    remarks: TermsSchema.shape.remarks,
+    isDeleted: TermsSchema.shape.is_deleted,
+    createdBy: TermsSchema.shape.created_by,
+    updatedBy: TermsSchema.shape.updated_by,
+    createdAt: TermsSchema.shape.created_at,
+    updatedAt: TermsSchema.shape.updated_at,
+    status: TermsStatusSchema,
+    versionKind: z.enum(['original', 'version']),
+    isCurrentlyApplied: z.boolean(),
+    relatedTermsRef: z
+      .object({ id: z.string(), title: z.string(), version: z.string() })
+      .nullable()
+      .openapi({ description: '関連規約 (オリジナル/派生元の参照)。ない場合はnull' }),
+    versions: z
+      .array(TermsVersionEntrySchema)
+      .openapi({ description: 'ライン全体のバージョン履歴 (適用開始日昇順)' }),
+  })
+  .openapi({
+    title: 'TermsDetailResponse',
+    description: '規約文書詳細情報',
+  });
+
+export const GetTermsResponseSchema = z
+  .object({
+    items: z.array(TermsListItemResponseSchema),
     pagination: z.object({
-      page: z.number().int().min(1),
-      limit: z.number().int().min(1),
-      totalItems: z.number().int().min(0),
-      totalPages: z.number().int().min(1),
+      page: z.number(),
+      limit: z.number(),
+      totalItems: z.number(),
+      totalAllItems: z.number().openapi({ description: '絞り込み前の全件数' }),
+      totalPages: z.number(),
     }),
   })
-  .openapi({ title: 'TermsListResponse' });
+  .openapi({
+    title: 'GetTermsResponse',
+    description: '規約文書一覧レスポンス',
+  });
 
-export const TermsDetailSchema = z
-  .object({
-    id: z.string().min(1),
-    title: z.string().min(1).max(255),
-    termsType: InternalTermsTypeSchema,
-    brandEnum: BrandLabelSchema,
-    status: TermsStatusSchema,
-    currentVersion: z.string().min(1).max(50),
-    effectiveFrom: z.string().regex(DATE_REGEX),
-    effectiveTo: z.string().regex(DATE_REGEX).nullable(),
-    displayOrder: z.number().int().min(0).nullable(),
-    requiresConsent: z.boolean(),
-    remarks: z.string().max(1000).nullable(),
-    bodyText: z.string().nullable().optional(),
-    currentFile: TermsFileSchema,
-    versions: z.array(VersionHistoryItemSchema),
-    createdBy: z.string().nullable(),
-    updatedBy: z.string().min(1),
-    createdAt: z.string().min(1),
-    updatedAt: z.string().min(1),
-    isDeleted: z.boolean(),
-  })
-  .openapi({ title: 'TermsDetail' });
+export const CreateTermsResponseSchema = TermsDetailResponseSchema.openapi({
+  title: 'CreateTermsResponse',
+  description: '規約文書作成レスポンス',
+});
 
-export const ProcedurePurposeSchema = z
-  .enum(['app_launch', 'withdrawal', 'suspension'])
-  .openapi({ title: 'ProcedurePurpose', example: 'app_launch' });
-
-export const GetActiveTermsQuerySchema = z
-  .object({
-    brand: BrandLabelSchema,
-    purpose: ProcedurePurposeSchema.optional(),
-    memberId: z.string().optional(),
-  })
-  .openapi({ title: 'GetActiveTermsQuery' });
-
-export const ActiveTermsItemSchema = z
-  .object({
-    id: z.string().min(1),
-    title: z.string().min(1).max(255),
-    version: z.string().min(1).max(50),
-    pdfUrl: z.string().nullable(),
-    requiresConsent: z.boolean(),
-  })
-  .openapi({ title: 'ActiveTermsItem' });
-
-export const ActiveTermsResponseSchema = z
-  .object({
-    items: z.array(ActiveTermsItemSchema),
-  })
-  .openapi({ title: 'ActiveTermsResponse' });
-
-export const RecordTermsConsentBodySchema = z
-  .object({
-    memberId: z.string().min(1),
-    termsIds: z.array(z.string().min(1)).min(1),
-    source: TermsConsentSourceSchema,
-  })
-  .openapi({ title: 'RecordTermsConsentBody' });
-
-export const RecordTermsConsentResponseSchema = z
-  .object({
-    recorded: z.number().int().min(0),
-  })
-  .openapi({ title: 'RecordTermsConsentResponse' });
+export const UpdateTermsResponseSchema = TermsDetailResponseSchema.openapi({
+  title: 'UpdateTermsResponse',
+  description: '規約文書更新レスポンス',
+});
 
 export const DeleteTermsResponseSchema = z
   .object({
     message: z.string().openapi({ example: '規約を削除しました' }),
   })
-  .openapi({ title: 'DeleteTermsResponse' });
+  .openapi({
+    title: 'DeleteTermsResponse',
+    description: '規約文書削除レスポンス',
+  });
 
-export const TermsErrorResponseSchema = z
-  .object({
-    code: z.string(),
-    message: z.string(),
-    userMessage: z.string(),
-    traceId: z.string().nullable(),
-  })
-  .openapi({ title: 'TermsErrorResponse' });
+// -- Type exports --
 
-export type InternalTermsType = z.infer<typeof InternalTermsTypeSchema>;
+export type TermsType = z.infer<typeof TermsTypeSchema>;
+export type TermsBrand = z.infer<typeof TermsBrandSchema>;
 export type TermsStatus = z.infer<typeof TermsStatusSchema>;
-export type TermsVersionStatus = z.infer<typeof TermsVersionStatusSchema>;
-export type BrandLabel = z.infer<typeof BrandLabelSchema>;
-export type VersionType = z.infer<typeof VersionTypeSchema>;
-export type TermsFile = z.infer<typeof TermsFileSchema>;
-export type VersionHistoryItem = z.infer<typeof VersionHistoryItemSchema>;
-export type TermsConsentRecord = z.infer<typeof TermsConsentRecordSchema>;
-export type TermsDocument = z.infer<typeof TermsDocumentSchema>;
+export type Terms = z.infer<typeof TermsSchema>;
+export type GetTermsQuery = z.infer<typeof GetTermsQuerySchema>;
 export type CreateTermsBody = z.infer<typeof CreateTermsBodySchema>;
 export type UpdateTermsBody = z.infer<typeof UpdateTermsBodySchema>;
-export type CreateTermsVersionBody = z.infer<typeof CreateTermsVersionBodySchema>;
-export type TermsListSort = z.infer<typeof TermsListSortSchema>;
-export type TermsListOrder = z.infer<typeof TermsListOrderSchema>;
-export type TermsListQuery = z.infer<typeof TermsListQuerySchema>;
-export type TermsListItem = z.infer<typeof TermsListItemSchema>;
-export type TermsListResponse = z.infer<typeof TermsListResponseSchema>;
-export type TermsDetail = z.infer<typeof TermsDetailSchema>;
-export type ProcedurePurpose = z.infer<typeof ProcedurePurposeSchema>;
-export type GetActiveTermsQuery = z.infer<typeof GetActiveTermsQuerySchema>;
-export type ActiveTermsItem = z.infer<typeof ActiveTermsItemSchema>;
-export type ActiveTermsResponse = z.infer<typeof ActiveTermsResponseSchema>;
-export type RecordTermsConsentBody = z.infer<typeof RecordTermsConsentBodySchema>;
-export type RecordTermsConsentResponse = z.infer<typeof RecordTermsConsentResponseSchema>;
-export type DeleteTermsResponse = z.infer<typeof DeleteTermsResponseSchema>;
-
-export const TERMS_TYPE_LABELS: Record<InternalTermsType, string> = {
-  membership: '会員規約',
-  privacy: 'プライバシーポリシー',
-  payment: '決済規約',
-  companion: '同伴規約',
-  withdrawal: '退会規約',
-  suspension: '休会規約',
-};
-
-export const TERMS_STATUS_LABELS: Record<TermsStatus, string> = {
-  published: '公開中',
-  expired: '適用終了',
-  draft: '下書き',
-};
-
-export const TERMS_VERSION_STATUS_LABELS: Record<TermsVersionStatus, string> = {
-  active: '適用中',
-  expired: '適用終了',
-  draft: '下書き',
-};
-
-export const VERSION_TYPE_LABELS: Record<VersionType, string> = {
-  original: 'オリジナル規約',
-  version: 'バージョン規約',
-};
+export type TermsListItemResponse = z.infer<typeof TermsListItemResponseSchema>;
+export type TermsVersionEntry = z.infer<typeof TermsVersionEntrySchema>;
+export type TermsDetailResponse = z.infer<typeof TermsDetailResponseSchema>;

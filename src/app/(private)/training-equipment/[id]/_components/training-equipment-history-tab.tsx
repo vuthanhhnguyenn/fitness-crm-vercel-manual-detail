@@ -4,7 +4,7 @@ import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList, Clock } from 'lucide-react';
 
-import { Loading } from '@/components/common/data-state-boundary/loading';
+import { DataStateBoundary } from '@/components/common/data-state-boundary';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import {
@@ -16,46 +16,85 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-import { getCrmTrainingEquipmentByEquipmentIdHistoryOptions } from '@/lib/api/@tanstack/react-query.gen';
+import { getCrmTrainingEquipmentByEquipmentIdStatusHistoryOptions } from '@/lib/api/@tanstack/react-query.gen';
+import type { InstallationStatus } from '@/lib/api/types.gen';
 
+import { TRAINING_EQUIPMENT_HISTORY_PAGE_SIZE } from '../../_constants/training-equipment.constants';
 import {
-  getTrainingEquipmentStatusBadgeClass,
-  getTrainingEquipmentStatusDotClass,
-  getTrainingEquipmentStatusLabel,
+  getInstallationStatusBadgeClass,
+  getInstallationStatusDotClass,
+  getInstallationStatusLabel,
 } from '../../_utils/training-equipment-display.util';
 
 type TrainingEquipmentHistoryTabProps = { equipmentId: string; enabled?: boolean };
 
-function getAverageIntervalDays(items: Array<{ changed_at: string }>): number | null {
-  if (items.length < 2) return null;
+function StatusBadge({ status }: { status: InstallationStatus }) {
+  return (
+    <Badge
+      variant="outline"
+      className={`gap-1 text-xs font-medium ${getInstallationStatusBadgeClass(status)}`}
+    >
+      <span className={`size-1.5 rounded-full ${getInstallationStatusDotClass(status)}`} />
+      {getInstallationStatusLabel(status)}
+    </Badge>
+  );
+}
+
+const DAY_IN_MS = 1000 * 60 * 60 * 24;
+
+/** Footer count of changes within the last year. Every row stays listed; only the summary is capped to one year. */
+function countWithinLastYear(items: Array<{ changedAt: string }>): number {
+  const threshold = Date.now() - 365 * DAY_IN_MS;
+  return items.filter((item) => {
+    const changedAt = new Date(item.changedAt).getTime();
+    return !Number.isNaN(changedAt) && changedAt >= threshold;
+  }).length;
+}
+
+function getAverageIntervalDays(items: Array<{ changedAt: string }>): number | null {
   const timestamps = items
-    .map((item) => new Date(item.changed_at).getTime())
+    .map((item) => new Date(item.changedAt).getTime())
     .filter((value) => !Number.isNaN(value))
-    .sort((a, b) => b - a);
+    .sort((left, right) => right - left);
   if (timestamps.length < 2) return null;
 
   const intervals: number[] = [];
   for (let index = 0; index < timestamps.length - 1; index += 1) {
-    intervals.push((timestamps[index] - timestamps[index + 1]) / (1000 * 60 * 60 * 24));
+    intervals.push((timestamps[index] - timestamps[index + 1]) / DAY_IN_MS);
   }
   return Math.round(intervals.reduce((sum, value) => sum + value, 0) / intervals.length);
 }
 
+/** FR-011: read-only in Phase 1 (no edit or delete actions are offered). */
 export function TrainingEquipmentHistoryTab({
   equipmentId,
   enabled = true,
 }: TrainingEquipmentHistoryTabProps) {
-  const { data, isLoading } = useQuery({
-    ...getCrmTrainingEquipmentByEquipmentIdHistoryOptions({ path: { equipmentId } }),
+  const { data, isLoading, isError, refetch } = useQuery({
+    // The prototype defines no pager UI, so fetch up to what a single page can display.
+    ...getCrmTrainingEquipmentByEquipmentIdStatusHistoryOptions({
+      path: { equipmentId },
+      query: { limit: TRAINING_EQUIPMENT_HISTORY_PAGE_SIZE },
+    }),
     enabled,
   });
   const items = data?.items ?? [];
+  // When not every row was fetched, the summary below only counts what was fetched.
+  const totalItems = data?.pagination?.totalItems ?? items.length;
+  const isTruncated = totalItems > items.length;
 
-  if (isLoading) {
-    return <Loading />;
+  if (isLoading || isError) {
+    return (
+      <DataStateBoundary
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={false}
+        onRetry={() => refetch()}
+        errorTitle="変更履歴の取得に失敗しました"
+      />
+    );
   }
 
-  const recentCount = items.length;
   const averageInterval = getAverageIntervalDays(items);
 
   return (
@@ -65,7 +104,7 @@ export function TrainingEquipmentHistoryTab({
           <TableRow className="bg-muted/50">
             <TableHead className="text-xs font-semibold">日時</TableHead>
             <TableHead className="text-xs font-semibold">操作者</TableHead>
-            <TableHead className="text-xs font-semibold">ステータス変化</TableHead>
+            <TableHead className="text-xs font-semibold">設置状態変化</TableHead>
             <TableHead className="text-xs font-semibold">変更理由</TableHead>
           </TableRow>
         </TableHeader>
@@ -80,43 +119,36 @@ export function TrainingEquipmentHistoryTab({
             items.map((row) => (
               <TableRow key={row.id}>
                 <TableCell className="text-sm whitespace-nowrap">
-                  {formatDateYYYYMMDD_HHMM(row.changed_at, '—')}
+                  {formatDateYYYYMMDD_HHMM(row.changedAt, '—')}
                 </TableCell>
-                <TableCell className="text-sm">{row.changed_by}</TableCell>
+                <TableCell className="text-sm">{row.changedByName ?? '—'}</TableCell>
                 <TableCell className="text-sm">
                   <span className="inline-flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={`gap-1 text-xs font-medium ${getTrainingEquipmentStatusBadgeClass(row.from_status)}`}
-                    >
-                      <span
-                        className={`size-1.5 rounded-full ${getTrainingEquipmentStatusDotClass(row.from_status)}`}
-                      />
-                      {getTrainingEquipmentStatusLabel(row.from_status)}
-                    </Badge>
+                    {row.previousStatus ? (
+                      <StatusBadge status={row.previousStatus} />
+                    ) : (
+                      <span className="text-muted-foreground text-xs">未設定</span>
+                    )}
                     <span className="text-muted-foreground">→</span>
-                    <Badge
-                      variant="outline"
-                      className={`gap-1 text-xs font-medium ${getTrainingEquipmentStatusBadgeClass(row.to_status)}`}
-                    >
-                      <span
-                        className={`size-1.5 rounded-full ${getTrainingEquipmentStatusDotClass(row.to_status)}`}
-                      />
-                      {getTrainingEquipmentStatusLabel(row.to_status)}
-                    </Badge>
+                    <StatusBadge status={row.newStatus} />
                   </span>
                 </TableCell>
-                <TableCell className="max-w-[280px] text-sm">{row.reason}</TableCell>
+                {/* The shared cell is `whitespace-nowrap`, which would stretch the table far past
+                    the viewport for a reason at its 500-character limit. */}
+                <TableCell className="max-w-105 text-sm wrap-break-word whitespace-normal">
+                  {row.changedReason}
+                </TableCell>
               </TableRow>
             ))
           )}
         </TableBody>
       </Table>
       {items.length > 0 && (
-        <div className="bg-muted/50 flex items-center gap-4 border-t px-4 py-3">
+        <div className="bg-muted/50 flex flex-wrap items-center gap-x-4 gap-y-1 border-t px-4 py-3">
           <div className="text-muted-foreground flex items-center gap-2 text-xs">
             <ClipboardList className="size-3" />
-            直近1年の対応: <span className="text-foreground font-semibold">{recentCount}回</span>
+            直近1年の対応:{' '}
+            <span className="text-foreground font-semibold">{countWithinLastYear(items)}回</span>
           </div>
           <span className="text-border">|</span>
           <div className="text-muted-foreground flex items-center gap-2 text-xs">
@@ -126,6 +158,11 @@ export function TrainingEquipmentHistoryTab({
               {averageInterval != null ? `${averageInterval}日` : '—'}
             </span>
           </div>
+          {isTruncated && (
+            <p className="text-warning basis-full text-xs">
+              全{totalItems}件のうち最新{items.length}件を表示しています（上の集計も表示分のみ）
+            </p>
+          )}
         </div>
       )}
     </Card>

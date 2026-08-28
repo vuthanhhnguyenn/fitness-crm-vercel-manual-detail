@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
   CreateMemoRequestSchema,
@@ -7,6 +8,9 @@ import {
   ErrorResponseSchema,
 } from '@/app/api/_schemas/membership-application.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { hasPermissions } from '@/utils/permission.util';
+
+import { Permission, UserRole } from '@/types/permission.type';
 
 // Register OpenAPI documentation for POST route
 registerRoute({
@@ -24,67 +28,58 @@ registerRoute({
       schema: { type: 'string' },
     },
   ],
-  requestBody: {
-    schema: CreateMemoRequestSchema,
-  },
+  requestBody: { schema: CreateMemoRequestSchema },
   responses: [
-    {
-      status: 200,
-      schema: CreateMemoResponseSchema,
-      description: 'Memo created successfully',
-    },
-    {
-      status: 400,
-      schema: ErrorResponseSchema,
-      description: 'Bad request - invalid body',
-    },
-    {
-      status: 404,
-      schema: ErrorResponseSchema,
-      description: 'Application not found',
-    },
-    {
-      status: 500,
-      schema: ErrorResponseSchema,
-      description: 'Internal server error',
-    },
+    { status: 200, schema: CreateMemoResponseSchema, description: 'Memo created successfully' },
+    { status: 400, schema: ErrorResponseSchema, description: 'Bad request - invalid body' },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthenticated' },
+    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
+    { status: 404, schema: ErrorResponseSchema, description: 'Application not found' },
+    { status: 500, schema: ErrorResponseSchema, description: 'Internal server error' },
   ],
 });
 
 // POST /api/crm/membership-applications/{id}/memos - メモ追加
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await params;
-    const body = await request.json();
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    // Memos require only View — Observer reaches them by design (FR-063).
+    if (
+      !hasPermissions(authResult.user.role as UserRole, [Permission.MembershipApplicationsView])
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const allowedStoreIds = getAllowedStoreIds(authResult.user);
 
-    // Validate request body
+    const { id } = await params;
+    const body: unknown = await request.json();
     const validationResult = CreateMemoRequestSchema.safeParse(body);
     if (!validationResult.success) {
       const errors = validationResult.error.issues.map((issue) => issue.message).join(', ');
       return NextResponse.json({ error: errors }, { status: 400 });
     }
-
     const { content } = validationResult.data;
-
-    // Check if application exists
-    const application = db.membershipApplications.getById(id);
-    if (!application) {
-      return NextResponse.json({ error: 'Membership application not found' }, { status: 404 });
+    // Whitespace-only content is rejected — the client also disables the
+    // add action for the same condition.
+    if (content.trim().length === 0) {
+      return NextResponse.json({ error: 'Memo content must not be blank' }, { status: 400 });
     }
 
-    // Add memo - using 管理者A as default operator
-    // In a real app, this would come from the authenticated user context
-    const operator = '管理者A';
-    const updatedTimeline = db.membershipApplications.addMemo(id, content, operator);
+    const timeline = db.membershipApplications.addMemo(
+      id,
+      content,
+      authResult.user.name,
+      allowedStoreIds,
+    );
 
-    if (!updatedTimeline || updatedTimeline.length === 0) {
-      return NextResponse.json({ error: 'Failed to add memo' }, { status: 500 });
+    if (timeline === 'not_found') {
+      return NextResponse.json({ error: 'Application not found' }, { status: 404 });
     }
 
-    // Return the newly created memo (first item in timeline)
-    const newMemo = updatedTimeline[0];
-
-    return NextResponse.json(newMemo, { status: 200 });
+    return NextResponse.json({ timeline }, { status: 200 });
   } catch (error) {
     console.error('Error adding memo:', error);
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });

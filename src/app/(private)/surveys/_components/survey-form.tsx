@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 
 import { GetCrmSurveysResponse } from '@/lib/api/types.gen';
+import type { SurveyStoreVisibility } from '@/lib/api/types.gen';
 import { cn } from '@/lib/utils';
 
 import { SURVEY_TRIGGER_LABELS } from '../_constants/constants';
@@ -33,15 +34,20 @@ interface SurveyFormProps {
   isEdit?: boolean;
   isSubmitting?: boolean;
   surveyId?: string;
+  storeId?: string | null;
   existingSurveys: GetCrmSurveysResponse['surveys'];
   onCancel: () => void;
-  onSubmit: (values: SurveyFormSubmitValues) => void;
+  onSubmit: (
+    values: SurveyFormSubmitValues,
+    visibility: SurveyStoreVisibility['questions'] | null,
+  ) => void;
 }
 
 export function SurveyForm({
   isEdit = false,
   isSubmitting = false,
   surveyId,
+  storeId,
   existingSurveys,
   onCancel,
   onSubmit,
@@ -55,6 +61,9 @@ export function SurveyForm({
   const [pendingSubmitValues, setPendingSubmitValues] = useState<SurveyFormSubmitValues | null>(
     null,
   );
+  const [visibilityQuestions, setVisibilityQuestions] = useState<
+    SurveyStoreVisibility['questions'] | null
+  >(null);
 
   const duplicateSurvey = useSurveyDuplicateTrigger(existingSurveys, trigger, surveyId);
 
@@ -66,7 +75,7 @@ export function SurveyForm({
       return;
     }
 
-    onSubmit(values);
+    onSubmit(values, visibilityQuestions);
   });
 
   const confirmDuplicateSave = () => {
@@ -76,10 +85,13 @@ export function SurveyForm({
       return;
     }
 
-    onSubmit({
-      ...pendingSubmitValues,
-      replaceExistingSurveyId: duplicateSurvey.id,
-    });
+    onSubmit(
+      {
+        ...pendingSubmitValues,
+        replaceExistingSurveyId: duplicateSurvey.id,
+      },
+      visibilityQuestions,
+    );
     setDuplicateDialogOpen(false);
     setPendingSubmitValues(null);
   };
@@ -126,7 +138,13 @@ export function SurveyForm({
             }}
           />
 
-          {isEdit && <SurveyFormQuestionVisibilitySection />}
+          {isEdit && surveyId ? (
+            <SurveyFormQuestionVisibilitySection
+              surveyId={surveyId}
+              storeId={storeId ?? null}
+              onChange={setVisibilityQuestions}
+            />
+          ) : null}
 
           <SurveyFormStatusSection />
 

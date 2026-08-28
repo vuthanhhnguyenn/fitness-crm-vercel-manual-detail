@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { validateResumeMonth } from '@/app/api/_lib/member-operation';
 import { db } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    if (member.profile.status !== MemberStatus.SUSPENDED) {
+    if (member.memberStatus !== MemberStatus.SUSPENDED) {
       return NextResponse.json({ error: 'Member is not in suspended state' }, { status: 409 });
     }
 
@@ -79,6 +80,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { resume_month } = validationResult.data;
+
+    // Q3 decision: releasing shortens the active suspension's end month, so the resume month
+    // may not be in the past — a retroactive release would need an invoice correction (F-01),
+    // which is out of scope.
+    const resumeError = validateResumeMonth(resume_month);
+    if (resumeError) {
+      return NextResponse.json({ error: resumeError.message }, { status: 400 });
+    }
 
     const result = db.members.handleSuspendRelease({ id, resume_month });
     if (!result) {

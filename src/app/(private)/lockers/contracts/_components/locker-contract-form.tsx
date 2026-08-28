@@ -1,13 +1,10 @@
 'use client';
 
-import { useFormContext, useWatch } from 'react-hook-form';
-
 import type {
   GetCrmLockersByIdResponse,
   GetCrmLockersContractsByIdResponse,
 } from '@/lib/api/types.gen';
 
-import type { LockerContractFormValues } from '../_schemas/locker-contract-form.schema';
 import { LockerContractAssignmentSection } from './locker-contract-assignment-section';
 import { LockerContractContractInfoSection } from './locker-contract-contract-info-section';
 import { LockerContractMemberSection } from './locker-contract-member-section';
@@ -18,27 +15,24 @@ type LockerContractDetail = NonNullable<GetCrmLockersContractsByIdResponse>['con
 type LockerDetail = NonNullable<GetCrmLockersByIdResponse>['locker'];
 
 type LockerContractFormProps = {
-  mode?: 'create' | 'edit';
-  contract?: LockerContractDetail;
+  contract: LockerContractDetail;
   locker?: LockerDetail;
 };
 
-/** Form UI shared by ロッカー契約新規 and ロッカー契約編集 */
-export function LockerContractForm({ mode = 'create', contract, locker }: LockerContractFormProps) {
-  const form = useFormContext<LockerContractFormValues>();
-  const memberId = useWatch({ control: form.control, name: 'member_id' });
-
+/**
+ * Locker contract edit form.
+ * E-01: locker contracts are edit-only in the CRM (new contracts are concluded outside the CRM),
+ * so the contract holder is read-only; only the assigned slot, contract info, and PIN can be changed.
+ */
+export function LockerContractForm({ contract, locker }: LockerContractFormProps) {
   return (
     <div className="space-y-6">
-      {mode === 'create' ? <LockerContractUnpaidAlert memberId={memberId} /> : null}
+      {/* FR-005 error case: unpaid balance check */}
+      <LockerContractUnpaidAlert memberId={contract.member_id} />
 
-      <LockerContractMemberSection mode={mode} contract={contract} />
-      <LockerContractAssignmentSection
-        mode={mode}
-        locker={locker}
-        currentSlotNumber={mode === 'edit' ? contract?.locker_number : undefined}
-      />
-      <LockerContractContractInfoSection contract={contract} />
+      <LockerContractMemberSection contract={contract} />
+      <LockerContractAssignmentSection locker={locker} currentSlotNumber={contract.locker_number} />
+      <LockerContractContractInfoSection contract={contract} locker={locker} />
       <LockerContractPasswordSection locker={locker} />
     </div>
   );

@@ -33,8 +33,15 @@ export function FranchiseCompaniesTableColumns({
     {
       accessorKey: 'display_name',
       header: ({ column }) => <DataTableColumnHeader column={column} title="法人名（表示名）" />,
-      cell: ({ row }) => <span className="text-xs font-medium">{row.original.display_name}</span>,
-      meta: { className: 'min-w-[280px]' },
+      cell: ({ row }) => (
+        <span
+          className="block max-w-[320px] truncate text-xs font-medium"
+          title={row.original.display_name}
+        >
+          {row.original.display_name}
+        </span>
+      ),
+      meta: { className: 'min-w-[200px]' },
     },
     {
       accessorKey: 'type',
@@ -52,13 +59,11 @@ export function FranchiseCompaniesTableColumns({
     },
     {
       accessorKey: 'managed_store_count',
-      header: () => <span className="text-right text-xs font-semibold">管轄店舗数</span>,
+      header: () => <span className="text-xs font-semibold">管轄店舗数</span>,
       cell: ({ row }) => (
-        <span className="block text-right text-xs tabular-nums">
-          {row.original.managed_store_count}
-        </span>
+        <span className="block text-xs tabular-nums">{row.original.managed_store_count}</span>
       ),
-      meta: { className: 'w-[120px]' },
+      meta: { className: 'w-[120px] text-right' },
       enableSorting: false,
     },
     {

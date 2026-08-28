@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { MOCK_PAYMENT_HISTORY } from '@/app/api/_mock-db';
+import { filterPaymentHistoryByPeriod } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
   PaymentHistoryListResponseSchema,
+  PaymentPeriodSchema,
 } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
 import { z } from 'zod';
@@ -41,15 +42,21 @@ registerRoute({
       name: 'period',
       in: 'query',
       required: false,
-      description: 'Filter by period: all, thisMonth, lastMonth, 3months, 6months',
-      schema: { type: 'string' },
+      description: 'Filter by period',
+      schema: {
+        type: 'string',
+        enum: ['all', 'thisMonth', 'lastMonth', '3months', '6months'],
+      },
     },
     {
       name: 'type',
       in: 'query',
       required: false,
-      description: 'Filter by type: all, sale, refund',
-      schema: { type: 'string' },
+      description: 'Filter by type',
+      schema: {
+        type: 'string',
+        enum: ['all', 'sale', 'refund'],
+      },
     },
   ],
   responses: [
@@ -80,13 +87,13 @@ registerRoute({
 const PaymentHistoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  period: z.enum(['all', 'thisMonth', 'lastMonth', '3months', '6months']).default('all'),
+  period: PaymentPeriodSchema.default('all'),
   type: z.enum(['all', 'sale', 'refund']).default('all'),
 });
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await params; // Verify params can be awaited (member exists check moved to middleware)
+    const { id } = await params;
 
     // Parse and validate query parameters
     const query = Object.fromEntries(_request.nextUrl.searchParams);
@@ -103,33 +110,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const { page, limit, period, type } = queryResult.data;
 
-    // Filter by period (mock: hardcoded relative to 2026-04-22)
-    let filtered = [...MOCK_PAYMENT_HISTORY];
-
-    if (period !== 'all') {
-      const now = new Date('2026-04-22');
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
-
-      filtered = filtered.filter((item) => {
-        const itemDate = new Date(item.date.replaceAll('/', '-'));
-
-        switch (period) {
-          case 'thisMonth':
-            return itemDate >= monthStart;
-          case 'lastMonth':
-            return itemDate >= lastMonthStart && itemDate < monthStart;
-          case '3months':
-            return itemDate >= threeMonthsAgo;
-          case '6months':
-            return itemDate >= sixMonthsAgo;
-          default:
-            return true;
-        }
-      });
-    }
+    // Shares the same period filter as the payment summary
+    let filtered = filterPaymentHistoryByPeriod(period, id);
 
     // Filter by type
     if (type !== 'all') {
@@ -144,7 +126,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json(
       {
-        items: items.map((item) => ({
+        items: items.map((item, index) => ({
+          // Mock: the seed rows carry no primary key, so derive a stable id from the
+          // member + position in the (deterministically ordered) filtered list.
+          id: `payment-history-${id}-${startIdx + index}`,
           date: item.date,
           type: item.type,
           content: item.content,

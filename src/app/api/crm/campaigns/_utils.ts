@@ -1,200 +1,168 @@
+/**
+ * ルート層のヘルパー。
+ *
+ * 純粋な派生ロジック (受付状態・縛り期間・変更履歴の差分) は
+ * `_mock-db/tables/campaign.table.ts` 側にあり、ここでは `db` を使った
+ * 名前解決とレスポンス整形、および NextResponse のエラー組み立てだけを行う。
+ */
+import { NextResponse } from 'next/server';
+
 import { db } from '@/app/api/_mock-db';
-import type {
-  CampaignDetail,
-  CampaignGenderCondition,
-  CampaignPromoCodePreviewItem,
-  CampaignUpsertAutoGrant,
-  CampaignUpsertDiscount,
-  UpsertCampaignBody,
+import {
+  type CampaignNameResolver,
+  buildLockInExample,
+  deriveAcceptState,
+} from '@/app/api/_mock-db/tables/campaign.table';
+import {
+  CAMPAIGN_ERROR_CODES,
+  type CampaignDetailResponse,
+  type CampaignListItemResponse,
+  type CampaignOptionDiscount,
+  type CampaignRow,
 } from '@/app/api/_schemas/campaign.schema';
 
-function toDisplayDate(value: string): string {
-  return value.replaceAll('-', '/');
+function planNameOf(planId: string): string {
+  return db.mainContracts.getById(planId)?.name ?? planId;
 }
 
-function getAcceptStatusMessage(status: CampaignDetail['accept_status']): string {
-  return status === 'active'
-    ? '受付中です。募集期間内の新規申請を受け付けています。'
-    : '受付停止中です。現在は新規受付を行っていません。';
+function optionNameOf(optionId: string): string {
+  return db.optionMasters.getById(optionId)?.name ?? optionId;
 }
 
-function getAcceptStatusActionLabel(status: CampaignDetail['accept_status']): string {
-  return status === 'active' ? '受付を停止する' : '受付を再開する';
+function storeNameOf(storeId: string): string {
+  return db.stores.getById(storeId)?.name ?? storeId;
 }
 
-function getApplicationStartMonthLabel(input: UpsertCampaignBody): string {
-  switch (input.application_start_month_type) {
-    case 'first_month':
-      return '初月（利用開始月）';
-    case 'next_month':
-      return '翌月（利用開始月の翌月）';
-    case 'custom_month':
-      return `${input.application_custom_month ?? 1}ヶ月目から`;
-    default:
-      return '初月（利用開始月）';
-  }
-}
+/** テーブル層の純関数に渡す名前解決。 */
+export const campaignNameResolver: CampaignNameResolver = {
+  planName: planNameOf,
+  optionName: optionNameOf,
+  storeName: storeNameOf,
+};
 
-function getGenderLabel(gender: CampaignGenderCondition): string {
-  switch (gender) {
-    case 'male':
-      return '男性';
-    case 'female':
-      return '女性';
-    case 'other':
-      return 'その他';
-    default:
-      return gender;
-  }
-}
-
-function buildDiscountDisplay(
-  discount: CampaignUpsertDiscount,
-): Pick<CampaignDetail['discount'], 'title' | 'description' | 'value_text'> {
-  const amountText = discount.amount !== null ? `${discount.amount.toLocaleString()}円引き` : null;
-  const rateText = discount.rate !== null ? `${discount.rate}% OFF` : null;
-  const baseText = amountText ?? rateText ?? '設定なし';
-
+export function toCampaignListItem(row: CampaignRow): CampaignListItemResponse {
   return {
-    title: '月額割引',
-    description: discount.first_month_enabled ? `初月 ${baseText}` : '設定なし',
-    value_text: discount.second_month_enabled ? `翌月 ${baseText}` : '設定なし',
+    id: row.id,
+    brandEnum: row.brand_enum,
+    campaignCode: row.campaign_code,
+    name: row.name,
+    planId: row.plan_id,
+    planName: planNameOf(row.plan_id),
+    recruitmentStart: row.recruitment_start,
+    recruitmentEnd: row.recruitment_end,
+    isAccepting: row.is_accepting,
+    activeContractCount: row.active_contract_count,
+    pendingApplicationCount: row.pending_application_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    entryCap: row.entry_cap,
+    acceptState: deriveAcceptState(row),
+    hasPromotionCode: db.promoCodes.hasAnyByCampaignId(row.id),
   };
 }
 
-function buildAutoGrantTargetText(autoGrant: CampaignUpsertAutoGrant): string {
-  if (!autoGrant.enabled) return '―';
-  if (autoGrant.target_type === 'all') return '全員';
-  if (autoGrant.gender_conditions.length === 0) return '条件あり';
-  return autoGrant.gender_conditions.map(getGenderLabel).join(' / ');
-}
+export function toCampaignDetail(row: CampaignRow): CampaignDetailResponse {
+  const links = db.storeCampaignLinks.getByCampaignId(row.id);
 
-function buildAutoGrantDescription(
-  optionNames: string[],
-  autoGrant: CampaignUpsertAutoGrant,
-): string {
-  if (!autoGrant.enabled) return '自動付与は設定されていません。';
-  if (optionNames.length === 0) return '条件を満たした会員に自動付与します。';
-  return `条件を満たした会員に ${optionNames.join(' / ')} を自動付与します。`;
-}
-
-function buildPromoCodePreviewRows(campaignId: string): CampaignPromoCodePreviewItem[] {
-  return db.promoCodes.getListByCampaignId(campaignId).map((promoCode) => ({
-    code: promoCode.code,
-    description: promoCode.description,
-    valid_from: promoCode.valid_from,
-    valid_to: promoCode.valid_to,
-    status: promoCode.status,
+  const optionDiscounts: CampaignOptionDiscount[] = row.option_discounts.map((entry) => ({
+    optionId: entry.optionId,
+    optionName: optionNameOf(entry.optionId),
+    discountMonth1: entry.discountMonth1,
+    discountMonth1Type: entry.discountMonth1Type,
+    discountMonth1Value: entry.discountMonth1Value,
+    discountMonth2: entry.discountMonth2,
+    discountMonth2Type: entry.discountMonth2Type,
+    discountMonth2Value: entry.discountMonth2Value,
   }));
-}
-
-export function buildCampaignDetail(
-  id: string,
-  input: UpsertCampaignBody,
-  actor: string,
-  existing?: CampaignDetail,
-): CampaignDetail {
-  const now = new Date();
-  const nowDisplay = now.toLocaleString('ja-JP', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-
-  const mainContract = db.mainContracts.getById(input.main_contract_id);
-  const optionNames = input.auto_grant.option_ids
-    .map((optionId) => db.optionMasters.getById(optionId)?.name)
-    .filter((name): name is string => Boolean(name));
-  const discountDisplay = buildDiscountDisplay(input.discount);
-
-  const recruitmentPeriodStart = toDisplayDate(input.recruitment_period_start);
-  const recruitmentPeriodEnd = toDisplayDate(input.recruitment_period_end);
-  const usagePeriodStart = toDisplayDate(input.usage_period_start);
-  const usagePeriodEnd = toDisplayDate(input.usage_period_end);
 
   return {
-    id,
-    name: input.name,
-    code: input.code,
-    brand: input.brand,
-    note: input.note ?? null,
-    accept_status: input.accept_status,
-    status: input.status,
-    accept_status_message: getAcceptStatusMessage(input.accept_status),
-    accept_status_action_label: getAcceptStatusActionLabel(input.accept_status),
-    main_contract_name: mainContract?.name ?? input.main_contract_id,
-    main_contract_id: input.main_contract_id,
-    recruitment_period_start: recruitmentPeriodStart,
-    recruitment_period_end: recruitmentPeriodEnd,
-    usage_period_start: usagePeriodStart,
-    usage_period_end: usagePeriodEnd,
-    application_period_start: getApplicationStartMonthLabel(input),
-    application_period_end: `${input.application_duration_months}ヶ月`,
-    application_start_month_type: input.application_start_month_type,
-    application_custom_month: input.application_custom_month ?? null,
-    application_duration_months: input.application_duration_months,
-    discount: {
-      ...discountDisplay,
-      first_month_enabled: input.discount.first_month_enabled,
-      second_month_enabled: input.discount.second_month_enabled,
-      amount: input.discount.amount,
-      rate: input.discount.rate,
-    },
-    periods: [
-      {
-        period_type: 'recruitment',
-        label: '募集期間',
-        start_date: recruitmentPeriodStart,
-        end_date: recruitmentPeriodEnd,
+    ...toCampaignListItem(row),
+    remarks: row.remarks,
+    usageStart: row.usage_start,
+    usageEnd: row.usage_end,
+    applyStartMonth: row.apply_start_month,
+    applyStartSpecificN: row.apply_start_specific_n,
+    applyDurationMonths: row.apply_duration_months,
+    planDiscountMonth1: row.plan_discount_month1,
+    planDiscountMonth1Type: row.plan_discount_month1_type,
+    planDiscountMonth1Value: row.plan_discount_month1_value,
+    planDiscountMonth2: row.plan_discount_month2,
+    planDiscountMonth2Type: row.plan_discount_month2_type,
+    planDiscountMonth2Value: row.plan_discount_month2_value,
+    campaignOptionDiscounts: optionDiscounts,
+    campaignAutoOptions: row.auto_options.map((entry) => ({
+      optionId: entry.optionId,
+      optionName: optionNameOf(entry.optionId),
+      targetSexes: entry.targetSexes,
+    })),
+    storeCount: links.length,
+    promotionCodeCount: db.promoCodes.countActiveByCampaignId(row.id),
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+    lockInMonths: row.lock_in_months,
+    lockInExample: buildLockInExample(row),
+    publishScope: row.publish_scope,
+    publishStores: row.publish_store_ids.map((storeId) => ({
+      storeId,
+      storeName: storeNameOf(storeId),
+    })),
+    conditionOptions: row.condition_option_ids.map((optionId) => ({
+      optionId,
+      optionName: optionNameOf(optionId),
+    })),
+    referral: row.referral,
+    stats: {
+      appliedMemberCount: row.active_contract_count,
+      pendingApplicationCount: row.pending_application_count,
+      monthlyNewApplicationCount: row.monthly_new_application_count,
+      enrollmentChannels: {
+        mobile: row.channel_mobile_count,
+        manual: row.channel_manual_count,
+        referral: row.channel_referral_count,
       },
-      {
-        period_type: 'usage',
-        label: '利用開始期間',
-        start_date: usagePeriodStart,
-        end_date: usagePeriodEnd,
-      },
-      {
-        period_type: 'application',
-        label: 'キャンペーン適用期間',
-        start_date: getApplicationStartMonthLabel(input),
-        end_date: `${input.application_duration_months}ヶ月`,
-      },
-    ],
-    auto_grant: {
-      enabled: input.auto_grant.enabled,
-      title: '自動付与設定',
-      timing_text: input.auto_grant.enabled ? '会員登録完了後 即時' : '手動適用',
-      target_text: buildAutoGrantTargetText(input.auto_grant),
-      description: buildAutoGrantDescription(optionNames, input.auto_grant),
-      target_type: input.auto_grant.target_type,
-      gender_conditions: input.auto_grant.gender_conditions,
-      option_ids: input.auto_grant.option_ids,
-      option_names: optionNames,
     },
-    stats: existing?.stats ?? {
-      applied_member_count: 0,
-      application_count: 0,
-      monthly_new_application_count: 0,
-    },
-    metadata: {
-      created_at: existing?.metadata.created_at ?? nowDisplay,
-      created_by: existing?.metadata.created_by ?? actor,
-      updated_at: nowDisplay,
-      updated_by: actor,
-    },
-    promo_code_previews: [
-      ...(existing?.promo_code_previews ?? []),
-      ...buildPromoCodePreviewRows(id),
-    ].reduce<CampaignPromoCodePreviewItem[]>((acc, item) => {
-      if (acc.some((row) => row.code === item.code)) {
-        return acc.map((row) => (row.code === item.code ? item : row));
-      }
-
-      acc.push(item);
-      return acc;
-    }, []),
+    storeUsages: links.map((link) => ({
+      storeId: link.store_id,
+      storeName: storeNameOf(link.store_id),
+      linkedAt: link.linked_at,
+      linkedBy: link.linked_by,
+    })),
   };
 }
+
+export function campaignError(
+  status: number,
+  code: string,
+  message: string,
+  userMessage: string,
+): NextResponse {
+  return NextResponse.json({ code, message, userMessage }, { status });
+}
+
+export const campaignErrors = {
+  validation: (userMessage: string) =>
+    campaignError(400, CAMPAIGN_ERROR_CODES.validation, 'Validation failed', userMessage),
+  notFound: () =>
+    campaignError(
+      404,
+      CAMPAIGN_ERROR_CODES.notFound,
+      'Campaign not found',
+      'キャンペーンが見つかりません',
+    ),
+  codeDuplicate: () =>
+    campaignError(
+      409,
+      CAMPAIGN_ERROR_CODES.codeDuplicate,
+      'Campaign code already exists',
+      'このコードは既に使われています',
+    ),
+  inUse: () =>
+    campaignError(
+      409,
+      CAMPAIGN_ERROR_CODES.inUse,
+      'Campaign is referenced by active contracts or pending applications',
+      '適用中の会員または申請があるため、受付可否以外は変更できません。受付を停止し、新しいキャンペーンを登録してください。',
+    ),
+  internal: (message: string) =>
+    campaignError(500, 'E-SYS-001', message, 'サーバーエラーが発生しました'),
+} as const;

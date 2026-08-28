@@ -55,6 +55,8 @@ export function AuthUserProvider({ children }: { children: ReactNode }) {
             email: user.email,
             role: user.role as UserRole,
             position: user.position,
+            staffId: user.staff_id,
+            managedStoreIds: user.managed_store_ids,
           }
         : null,
       isLoading,

@@ -5,8 +5,9 @@ import { useFormContext, useWatch } from 'react-hook-form';
 
 import Image from 'next/image';
 
-import { useQuery } from '@tanstack/react-query';
-import { ImageIcon, Map, Trash2, Upload } from 'lucide-react';
+import { ImageIcon, Loader2, Map, Trash2, Upload } from 'lucide-react';
+
+import { useImageUpload } from '@/hooks/use-image-upload.hook';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,19 +21,12 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 
-import { getCrmLockersUsedLocationSymbolsOptions } from '@/lib/api/@tanstack/react-query.gen';
+import { cn } from '@/lib/utils';
 
 import { LOCKER_AREA_OPTIONS } from '../_constants/locker-form.constants';
+import { useLockerLocationDuplicate } from '../_hooks/use-locker-location-duplicate.hook';
 import type { LockerFormValues } from '../_schemas/locker-form.schema';
 import { LockerFormFloorMap } from './locker-form-floor-map';
-
-const fileToBase64 = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-    reader.readAsDataURL(file);
-  });
 
 type LockerFormAreaSectionProps = {
   excludeLockerId?: string;
@@ -45,18 +39,20 @@ export function LockerFormAreaSection({ excludeLockerId }: LockerFormAreaSection
   const locationSymbol = useWatch({ control: form.control, name: 'location_symbol' });
   const imageUrl = useWatch({ control: form.control, name: 'image_url' });
 
-  const { data: usedSymbolsRes } = useQuery({
-    ...getCrmLockersUsedLocationSymbolsOptions({
-      query: {
-        store_id: storeId,
-        ...(excludeLockerId ? { exclude_locker_id: excludeLockerId } : {}),
-      },
-    }),
-    enabled: Boolean(storeId),
+  /**
+   * FR-012 異常系: format / size limits. `useImageUpload` rejects anything that is not
+   * JPG・PNG・WebP or is over 5MB with a toast, so an invalid file never reaches the form.
+   */
+  const { uploadFile, isUploading } = useImageUpload({
+    category: 'other',
+    errorMessage: 'ロッカー写真のアップロードに失敗しました',
   });
 
-  const usedSymbols = usedSymbolsRes?.location_symbols ?? [];
-  const isLocationDuplicate = Boolean(locationSymbol) && usedSymbols.includes(locationSymbol);
+  const isLocationDuplicate = useLockerLocationDuplicate({
+    storeId,
+    locationSymbol,
+    excludeLockerId,
+  });
 
   return (
     <Card>
@@ -165,9 +161,11 @@ export function LockerFormAreaSection({ excludeLockerId }: LockerFormAreaSection
         <FormField
           control={form.control}
           name="image_url"
-          render={({ field }) => (
+          render={({ field, fieldState }) => (
             <FormItem className="mt-4">
-              <FormLabel>ロッカー写真</FormLabel>
+              <FormLabel>
+                ロッカー写真<span className="text-destructive ml-0.5">*</span>
+              </FormLabel>
               {imageUrl ? (
                 <div>
                   <div className="relative w-48 overflow-hidden rounded-lg border">
@@ -194,37 +192,54 @@ export function LockerFormAreaSection({ excludeLockerId }: LockerFormAreaSection
                     variant="outline"
                     size="sm"
                     className="mt-3 gap-2 text-xs"
+                    disabled={isUploading}
                     onClick={() => photoInputRef.current?.click()}
                   >
-                    <Upload className="size-4" />
+                    {isUploading ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Upload className="size-4" />
+                    )}
                     写真を変更
                   </Button>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:border-primary/40 flex w-full cursor-pointer flex-col items-center rounded-lg border-2 border-dashed p-6 text-center transition-colors"
-                  onClick={() => photoInputRef.current?.click()}
-                >
-                  <ImageIcon className="mx-auto mb-2 size-6" />
-                  <span className="border-input bg-background hover:bg-accent inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium">
-                    <Upload className="size-4" />
-                    写真を追加
-                  </span>
-                  <p className="mt-2 text-xs">JPG/PNG、最大5MB、推奨サイズ 800x600px</p>
-                </button>
+                // `aria-invalid` on the wrapper lets the scroll-to-first-error helper reach this field
+                <div aria-invalid={Boolean(fieldState.error)}>
+                  <button
+                    type="button"
+                    disabled={isUploading}
+                    className={cn(
+                      'text-muted-foreground hover:border-primary/40 flex w-full cursor-pointer flex-col items-center rounded-lg border-2 border-dashed p-6 text-center transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                      fieldState.error && 'border-destructive',
+                    )}
+                    onClick={() => photoInputRef.current?.click()}
+                  >
+                    {isUploading ? (
+                      <Loader2 className="mx-auto mb-2 size-6 animate-spin" />
+                    ) : (
+                      <ImageIcon className="mx-auto mb-2 size-6" />
+                    )}
+                    <span className="border-input bg-background hover:bg-accent inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium">
+                      <Upload className="size-4" />
+                      {isUploading ? 'アップロード中...' : '写真を追加'}
+                    </span>
+                    <p className="mt-2 text-xs">JPG/PNG、最大5MB、推奨サイズ 800x600px</p>
+                  </button>
+                </div>
               )}
               <input
                 ref={photoInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png"
                 className="hidden"
                 onChange={async (event) => {
                   const file = event.target.files?.[0];
-                  if (!file) return;
-                  const base64 = await fileToBase64(file);
-                  field.onChange(base64);
                   event.target.value = '';
+                  if (!file) return;
+                  // Returns null (and toasts) when the file breaks the format / size limits.
+                  const url = await uploadFile(file);
+                  if (url) field.onChange(url);
                 }}
               />
               <FormMessage />

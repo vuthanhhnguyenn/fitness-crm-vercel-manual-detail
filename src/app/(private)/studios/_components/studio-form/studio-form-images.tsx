@@ -18,7 +18,10 @@ export function StudioFormImages() {
   const images = useWatch({ control: form.control, name: 'images' });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { uploadFiles, isUploading } = useImageUpload({ category: 'studio' });
+  const { uploadFiles, isUploading } = useImageUpload({
+    category: 'studio',
+    acceptedTypes: ['image/jpeg', 'image/png', 'image/webp'],
+  });
 
   const appendImages = async (files: File[]) => {
     if (files.length === 0) return;

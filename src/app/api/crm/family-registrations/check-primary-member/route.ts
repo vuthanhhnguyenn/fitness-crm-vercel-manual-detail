@@ -39,11 +39,11 @@ export async function POST(request: NextRequest) {
   const { brand, settings, members } = db.family.getFamilyMembers(primary_member_id);
 
   const reasons: string[] = [];
-  if (primary.profile.status !== 'active') reasons.push('primary_member_status_not_active');
+  if (primary.memberStatus !== 'active') reasons.push('primary_member_status_not_active');
   const hasUnpaid = (primary as any)._listMeta?.has_unpaid ?? false;
   if (hasUnpaid) reasons.push('primary_member_has_unpaid');
   if (members.length >= settings.family_member_limit) reasons.push('family_member_limit_reached');
-  if (primary.profile.is_black_listed) reasons.push('primary_member_blacklisted');
+  if (primary.blacklist?.isActive) reasons.push('primary_member_blacklisted');
 
   return NextResponse.json({
     ok: reasons.length === 0,

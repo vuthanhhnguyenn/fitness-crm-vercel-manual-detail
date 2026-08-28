@@ -15,7 +15,13 @@ export type LockerFeeSeed = {
 
 export type LockerDetailSeedMeta = LockerSlotLockSettingsMeta & {
   option_contract_code: string | null;
+  /**
+   * FR-013 fee options carried by the cabinet (designed backend: `lockers.option_id` /
+   * `lockers.bottom_option_id`). The standard code applies to every slot except the bottom
+   * row; the bottom code to the slots flagged `is_bottom_row`.
+   */
   contract_type_code: string | null;
+  bottom_contract_type_code: string | null;
   guide_text: string | null;
   note: string | null;
   image_url: string | null;
@@ -24,7 +30,6 @@ export type LockerDetailSeedMeta = LockerSlotLockSettingsMeta & {
   slot_prefix: string;
   slot_columns: number;
   slot_numbering_pattern: LockerNumberingPattern;
-  start_number: number;
   default_slot_size: {
     width_cm: number;
     height_cm: number;
@@ -33,7 +38,13 @@ export type LockerDetailSeedMeta = LockerSlotLockSettingsMeta & {
   default_open_type: LockerSlotOpenType;
   slot_size_by_slot: Record<string, { width_cm: number; height_cm: number; depth_cm: number }>;
   open_type_by_slot: Record<string, LockerSlotOpenType>;
+  /**
+   * FR-013 例外的 override: per-slot fee option, only for slots that deviate from the code
+   * derived from `is_bottom_row`. A value here must still be one of the cabinet's two codes.
+   */
   contract_type_code_by_slot: Record<string, string>;
+  /** FR-009: date the PIN was last changed. Slots without one treat the contract start date as the initial setting date */
+  password_changed_at_by_slot: Record<string, string>;
   individual_fee_by_slot: Record<string, LockerFeeSeed>;
   reminder_notifications_by_slot: Record<string, LockerReminderNotification[]>;
 };

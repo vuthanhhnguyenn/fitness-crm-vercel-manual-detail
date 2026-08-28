@@ -24,7 +24,7 @@ export const TAB_TO_KIND: Record<Exclude<LessonTab, 'personal'>, 'studio' | 'bod
 
 export type LessonBrand = 'joyfit' | 'fit365';
 export type LessonStatus = 'active' | 'inactive';
-export type LessonPricingType = 'included' | 'paid';
+export type LessonPricingType = 'included' | 'monthly' | 'per_use';
 export type LessonGenderRestriction = 'none' | 'male' | 'female';
 
 export const LESSON_BRAND_LABELS: Record<LessonBrand, string> = {
@@ -44,7 +44,8 @@ export const LESSON_STATUS_CLASSES: Record<LessonStatus, string> = {
 
 export const LESSON_PRICING_TYPE_LABELS: Record<LessonPricingType, string> = {
   included: '会費内',
-  paid: '都度有料',
+  monthly: '有料（月払）',
+  per_use: '都度有料',
 };
 
 export const LESSON_GENDER_RESTRICTION_LABELS: Record<LessonGenderRestriction, string> = {

@@ -1,14 +1,13 @@
-import type { LeaveDetail, LeaveListItem } from '@/app/api/_schemas/leave.schema';
-
-import { MemberStatus } from '@/lib/api/types.gen';
-
 import type { DbType } from '../_db.types';
 import {
-  type BlacklistRow,
+  ORIGIN_STAGE_STATUSES,
+  TERMINAL_STATUSES,
   TRANSFER_SEED_DATA,
   type TransferRow,
   TransferStatus,
+  buildApprovalHistory,
 } from '../seeds/transfer.seed';
+import type { TransferActionResult, TransferActor } from '../types/transfers.type';
 
 export function createTransferTables(getDb: () => DbType) {
   return {
@@ -29,9 +28,22 @@ export function createTransferTables(getDb: () => DbType) {
         to_store_name: string;
         brand: string;
         reason?: string;
+        applicant_name?: string;
+        applicant_role?: string;
+        exclusion_reasons?: TransferRow['exclusion_reasons'];
+        unpaid_amount?: number | null;
+        unpaid_period?: string | null;
+        campaign_lock_remaining_days?: number | null;
+        // A-01 FR-017: carried through so a staff-made transfer keeps its 代理申請 trail
+        is_proxy?: boolean;
+        proxy_agreed_at?: string;
+        proxy_method?: string;
       }): TransferRow {
         const now = new Date().toISOString();
         const id = `TR-${String(this._rows.length + 1).padStart(3, '0')}`;
+        const brand = input.brand as TransferRow['brand'];
+        const isJoyfit = brand === 'joyfit';
+        const exclusions = isJoyfit ? (input.exclusion_reasons ?? []) : [];
         const newRow: TransferRow = {
           id,
           member_id: input.member_id,
@@ -40,543 +52,200 @@ export function createTransferTables(getDb: () => DbType) {
           from_store_name: input.from_store_name,
           to_store_id: input.to_store_id,
           to_store_name: input.to_store_name,
-          brand: input.brand as TransferRow['brand'],
+          brand,
           applied_at: now,
           scheduled_date: now,
           status: TransferStatus.Pending,
+          // FR-006: eligibility is JOYFIT-only and is derived from the exclusions, so the
+          // `exclusion_reasons` non-empty ⟺ `auto_transfer_eligible === false` invariant holds.
+          auto_transfer_eligible: isJoyfit ? exclusions.length === 0 : null,
+          exclusion_reasons: exclusions,
+          unpaid_amount: exclusions.includes('unpaid') ? (input.unpaid_amount ?? 0) : null,
+          campaign_lock_remaining_days: exclusions.includes('campaign_lock')
+            ? (input.campaign_lock_remaining_days ?? 0)
+            : null,
           reason: input.reason ?? '',
-          applicant_name: 'スタッフ',
-          applicant_role: 'staff',
+          is_proxy: input.is_proxy,
+          proxy_agreed_at: input.proxy_agreed_at,
+          proxy_method: input.proxy_method,
+          applicant_name: input.applicant_name ?? 'スタッフ',
+          applicant_role: input.applicant_role ?? 'スタッフ',
           updated_at: now,
-          approval_history: [
-            {
-              step: 1,
-              label: '申請',
-              store_type: null,
-              completed: true,
-              completed_at: now,
-              completed_by: 'スタッフ',
-              is_automatic: false,
-            },
-            {
-              step: 2,
-              label: '移籍元承認',
-              store_type: 'from',
-              completed: false,
-              completed_at: null,
-              completed_by: null,
-              is_automatic: false,
-            },
-            {
-              step: 3,
-              label: '移籍先承認',
-              store_type: 'to',
-              completed: false,
-              completed_at: null,
-              completed_by: null,
-              is_automatic: false,
-            },
-          ],
+          // FR-007: brand-aware. The pre-update version hardcoded a FIT365-shaped 3-step
+          // history for every brand, so JOYFIT requests showed a 移籍先承認 step that never runs.
+          approval_history: buildApprovalHistory(brand, TransferStatus.Pending, now),
+          unpaid_period: exclusions.includes('unpaid') ? (input.unpaid_period ?? null) : null,
+          decisions: [],
+          unlock: null,
         };
         this._rows.push(newRow);
         return newRow;
       },
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      approve(id: string, _comment?: string): TransferRow | undefined {
+
+      /**
+       * FR-006. A JOYFIT row with any remaining exclusion reason may not be approved, even
+       * through a direct API call. `unlock()` clears the campaign lock; nothing clears 未納.
+       */
+      isBlockedByExclusion(row: TransferRow): boolean {
+        return row.brand === 'joyfit' && row.exclusion_reasons.length > 0;
+      },
+
+      /**
+       * Moves the member's primary contract store to the transfer's destination — the whole
+       * point of a transfer, and something no code path performed before this change
+       * (FR-010 / FR-011).
+       */
+      _applyCompletionSideEffect(row: TransferRow): void {
+        const members = getDb().members;
+        members._seed();
+        const idx = members._members.findIndex((m) => m.memberId === row.member_id);
+        if (idx === -1) return;
+        const current = members._members[idx]!;
+        const destination = getDb().stores.getById(row.to_store_id);
+        members._members[idx] = {
+          ...current,
+          primaryStore: {
+            ...current.primaryStore,
+            storeId: row.to_store_id,
+            code: destination?.club_code ?? current.primaryStore.code,
+            name: destination?.name ?? row.to_store_name,
+          },
+        };
+      },
+
+      approve(id: string, actor: TransferActor, comment?: string): TransferActionResult {
         const idx = this._rows.findIndex((r) => r.id === id);
-        if (idx === -1) return undefined;
+        if (idx === -1) return { ok: false, reason: 'not_found' };
         const row = this._rows[idx]!;
-        if (row.status === TransferStatus.Completed || row.status === TransferStatus.Rejected)
-          return undefined;
+        if (TERMINAL_STATUSES.includes(row.status as TransferStatus)) {
+          return { ok: false, reason: 'terminal' };
+        }
+
+        const atOriginStage = ORIGIN_STAGE_STATUSES.includes(row.status as TransferStatus);
+        const atDestinationStage = row.status === TransferStatus.FromStoreApproved;
+
+        // The origin store's approval is what triggers automatic execution, so the exclusion
+        // guard belongs here. A FIT365 row never carries exclusions.
+        if (atOriginStage && this.isBlockedByExclusion(row)) {
+          return { ok: false, reason: 'excluded' };
+        }
+
         const now = new Date().toISOString();
         let nextStatus: TransferRow['status'];
-        let approvedStep: number;
-        if (row.status === TransferStatus.Pending) {
-          nextStatus = TransferStatus.FromStoreApproved;
-          approvedStep = 2;
-        } else if (row.status === TransferStatus.FromStoreApproved && row.brand === 'fit365') {
-          nextStatus = TransferStatus.Approved;
-          approvedStep = 3;
+        // Step numbers follow the brand-aware history: JOYFIT [申請, 移籍元承認, 自動実行],
+        // FIT365 [申請, 移籍元承認, 移籍先承認, 移籍実行].
+        let completedSteps: number[];
+
+        if (atOriginStage) {
+          if (row.brand === 'joyfit') {
+            // JOYFIT auto-executes on origin approval — it must not stall at an intermediate
+            // state the way the pre-update code did (it left JOYFIT permanently stuck).
+            nextStatus = TransferStatus.Completed;
+            completedSteps = [2, 3];
+          } else {
+            nextStatus = TransferStatus.FromStoreApproved;
+            completedSteps = [2];
+          }
+        } else if (atDestinationStage && row.brand === 'fit365') {
+          nextStatus = TransferStatus.Completed;
+          completedSteps = [3, 4];
         } else {
-          return undefined;
+          return { ok: false, reason: 'invalid_transition' };
         }
-        const updatedHistory = row.approval_history.map((h) =>
-          h.step === approvedStep
-            ? { ...h, completed: true, completed_at: now, completed_by: 'ログインユーザー' }
-            : h,
-        );
+
         const updated: TransferRow = {
           ...row,
           status: nextStatus,
           updated_at: now,
-          approval_history: updatedHistory,
+          approval_history: row.approval_history.map((step) =>
+            completedSteps.includes(step.step)
+              ? {
+                  ...step,
+                  completed: true,
+                  completed_at: now,
+                  // An automatic step is executed by the system, not by the approver.
+                  completed_by: step.is_automatic ? null : actor.name,
+                }
+              : step,
+          ),
+          // FR-008: the comment is persisted. The pre-update implementation validated it and
+          // then threw it away.
+          decisions: [
+            ...row.decisions,
+            {
+              action: 'approve',
+              comment: comment?.trim() ? comment.trim() : null,
+              actor_name: actor.name,
+              actor_role: actor.role,
+              store_type: actor.store_type,
+              decided_at: now,
+            },
+          ],
         };
         this._rows[idx] = updated;
-        return updated;
+
+        if (nextStatus === TransferStatus.Completed) {
+          this._applyCompletionSideEffect(updated);
+        }
+        return { ok: true, row: updated };
       },
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      reject(id: string, _comment?: string): TransferRow | undefined {
+
+      reject(id: string, actor: TransferActor, comment?: string): TransferActionResult {
         const idx = this._rows.findIndex((r) => r.id === id);
-        if (idx === -1) return undefined;
+        if (idx === -1) return { ok: false, reason: 'not_found' };
         const row = this._rows[idx]!;
-        if (row.status === TransferStatus.Completed || row.status === TransferStatus.Rejected)
-          return undefined;
+        if (TERMINAL_STATUSES.includes(row.status as TransferStatus)) {
+          return { ok: false, reason: 'terminal' };
+        }
         const now = new Date().toISOString();
-        const updated: TransferRow = { ...row, status: TransferStatus.Rejected, updated_at: now };
+        const updated: TransferRow = {
+          ...row,
+          status: TransferStatus.Rejected,
+          updated_at: now,
+          // The rejected step is recorded as decided-but-not-approved: it keeps its
+          // `completed: false` so the timeline shows where the flow stopped, while the
+          // decision log carries who rejected it and why.
+          approval_history: row.approval_history,
+          decisions: [
+            ...row.decisions,
+            {
+              action: 'reject',
+              comment: comment?.trim() ? comment.trim() : null,
+              actor_name: actor.name,
+              actor_role: actor.role,
+              store_type: actor.store_type,
+              decided_at: now,
+            },
+          ],
+        };
         this._rows[idx] = updated;
-        return updated;
+        return { ok: true, row: updated };
       },
-    },
 
-    memberLeaves: {
-      _rows: [] as LeaveListItem[],
-      _details: {} as Record<string, LeaveDetail>,
-      _seeded: false,
-      _seed(): void {
-        if (this._seeded) return;
-        this._seeded = true;
-        getDb().members._seed();
-
-        const targetStatuses = new Set<string>([
-          MemberStatus.SUSPENDED,
-          MemberStatus.PENDING_WITHDRAWAL,
-          MemberStatus.WITHDRAWN,
-          MemberStatus.FORCE_WITHDRAWN,
-        ]);
-
-        const candidates = getDb().members._members.filter((m) =>
-          targetStatuses.has(m.profile.status),
-        );
-
-        const baseDate = new Date('2026-01-01');
-        const toJpDate = (d: Date): string =>
-          `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
-        const toJpMonth = (d: Date): string =>
-          `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-
-        this._rows = candidates.map((m, i) => {
-          const memberStatus = m.profile.status;
-          const appliedDate = new Date(baseDate);
-          appliedDate.setDate(appliedDate.getDate() + i * 7);
-          const scheduledDate = new Date(appliedDate);
-          scheduledDate.setDate(scheduledDate.getDate() + 14);
-
-          let leaveStatus: LeaveListItem['status'];
-          let leaveType: LeaveListItem['type'];
-          let endDate: string | null = null;
-          let unpaidAmount = 0;
-
-          if (memberStatus === MemberStatus.SUSPENDED) {
-            leaveType = 'suspension';
-            leaveStatus = i % 2 === 0 ? 'suspended' : 'suspension_scheduled';
-            const endD = new Date(scheduledDate);
-            endD.setMonth(endD.getMonth() + 2);
-            endDate = toJpMonth(endD);
-            unpaidAmount = i % 5 === 0 ? 1100 * ((i % 3) + 1) : 0;
-          } else if (memberStatus === MemberStatus.PENDING_WITHDRAWAL) {
-            leaveType = 'withdrawal';
-            leaveStatus = 'withdrawal_pending';
-            unpaidAmount = i % 3 === 0 ? 7700 : 0;
-          } else if (memberStatus === MemberStatus.WITHDRAWN) {
-            leaveType = 'withdrawal';
-            leaveStatus = i % 2 === 0 ? 'withdrawal_scheduled' : 'withdrawal_pending';
-            unpaidAmount = 0;
-          } else {
-            leaveType = 'withdrawal';
-            leaveStatus = 'completed';
-            unpaidAmount = 0;
-          }
-
-          const scheduledDateStr =
-            leaveType === 'suspension' ? toJpMonth(scheduledDate) : toJpDate(scheduledDate);
-
-          return {
-            id: `LV-${String(i + 1).padStart(3, '0')}`,
-            member_id: m.basic_info.id,
-            member_name: m.basic_info.name_kanji,
-            brand: m.profile.brand,
-            store_id: m.profile.store_id,
-            store_name: m.profile.store_name,
-            type: leaveType,
-            status: leaveStatus,
-            applied_at: toJpDate(appliedDate),
-            scheduled_date: scheduledDateStr,
-            end_date: endDate,
-            unpaid_amount: unpaidAmount,
-          } satisfies LeaveListItem;
-        });
-
-        const consentMethods = ['来店', 'オンライン', '電話'];
-        this._rows.forEach((row, i) => {
-          const appliedDateTime = `${row.applied_at} ${String(9 + (i % 8)).padStart(2, '0')}:${String((i * 7) % 60).padStart(2, '0')}`;
-          const isProxy = i % 3 === 0;
-          this._details[row.id] = {
-            id: row.id,
-            member_id: row.member_id,
-            member_name: row.member_name,
-            brand: row.brand,
-            store_id: row.store_id,
-            store_name: row.store_name,
-            type: row.type,
-            status: row.status,
-            applied_at: appliedDateTime,
-            scheduled_date: row.scheduled_date,
-            end_date: row.end_date,
-            reason: [
-              '海外出張のため',
-              '体調不良のため',
-              '育児のため',
-              '経済的理由のため',
-              '転居のため',
-            ][i % 5]!,
-            applicant: `${row.member_name}（本人）`,
-            is_proxy_applied: isProxy,
-            proxy_applicant: isProxy ? `スタッフ${i + 1}（スタッフ）` : null,
-            consent_at: isProxy
-              ? new Date(
-                  `${row.applied_at} ${String(9 + (i % 8)).padStart(2, '0')}:00`,
-                ).toISOString()
-              : null,
-            consent_method: isProxy ? (consentMethods[i % 3] ?? '来店') : null,
-            suspension_fee: row.type === 'suspension' ? 1100 : null,
-            applied_campaign: 'なし',
-            unused_lessons: (i * 2) % 5,
-            unpaid_amount: row.unpaid_amount,
-            created_at: appliedDateTime,
-            updated_at: appliedDateTime,
-          } satisfies LeaveDetail;
-        });
-      },
-      list(): LeaveListItem[] {
-        this._seed();
-        return this._rows;
-      },
-      getById(id: string): LeaveDetail | undefined {
-        this._seed();
-        return this._details[id];
-      },
-      getActiveSuspensionByMemberId(memberId: string): LeaveDetail | undefined {
-        this._seed();
-        const row = this._rows.find(
-          (r) =>
-            r.member_id === memberId &&
-            r.type === 'suspension' &&
-            (r.status === 'suspended' || r.status === 'suspension_scheduled'),
-        );
-        return row ? this._details[row.id] : undefined;
-      },
-      _updateDetail(id: string, patch: Partial<LeaveDetail>): LeaveDetail | undefined {
-        const detail = this._details[id];
-        if (!detail) return undefined;
-        const now = new Date()
-          .toLocaleString('ja-JP', {
-            timeZone: 'Asia/Tokyo',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-          .replace(/\//g, '/')
-          .replace(',', '');
-        const updated: LeaveDetail = { ...detail, ...patch, updated_at: now };
-        this._details[id] = updated;
-        const listIdx = this._rows.findIndex((r) => r.id === id);
-        if (listIdx !== -1 && patch.status)
-          this._rows[listIdx] = { ...this._rows[listIdx]!, status: patch.status };
-        if (patch.status && updated.member_id) {
-          const memberIdx = getDb().members._members.findIndex(
-            (m) => m.basic_info.id === updated.member_id,
-          );
-          if (memberIdx !== -1) {
-            let memberStatus: MemberStatus | null = null;
-            if (patch.status === 'suspended') memberStatus = 'suspended';
-            else if (patch.status === 'suspension_scheduled') memberStatus = 'active';
-            else if (patch.status === 'withdrawal_pending') memberStatus = 'pending_withdrawal';
-            else if (patch.status === 'completed') memberStatus = 'force_withdrawn';
-            if (memberStatus) {
-              getDb().members._members[memberIdx] = {
-                ...getDb().members._members[memberIdx]!,
-                profile: { ...getDb().members._members[memberIdx]!.profile, status: memberStatus },
-              };
-            }
-          }
+      /**
+       * FR-012 manual override. Releases only the campaign lock — a co-present 未納 keeps the
+       * row excluded, matching the V0 where the unpaid alert carries no override control.
+       */
+      unlock(id: string, reason: string, operatorName: string): TransferActionResult {
+        const idx = this._rows.findIndex((r) => r.id === id);
+        if (idx === -1) return { ok: false, reason: 'not_found' };
+        const row = this._rows[idx]!;
+        if (!row.exclusion_reasons.includes('campaign_lock')) {
+          return { ok: false, reason: 'no_campaign_lock' };
         }
-        return updated;
-      },
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      approve(id: string, _comment?: string): LeaveDetail | undefined {
-        this._seed();
-        const detail = this._details[id];
-        if (!detail) return undefined;
-        let nextStatus: LeaveDetail['status'] | null = null;
-        if (detail.type === 'suspension' && detail.status === 'suspension_scheduled')
-          nextStatus = 'suspended';
-        else if (detail.type === 'withdrawal' && detail.status === 'withdrawal_scheduled')
-          nextStatus = 'withdrawal_pending';
-        else return undefined;
-        return this._updateDetail(id, { status: nextStatus });
-      },
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      reject(id: string, _reason: string): LeaveDetail | undefined {
-        this._seed();
-        const detail = this._details[id];
-        if (!detail) return undefined;
-        const canReject =
-          detail.status === 'suspension_scheduled' || detail.status === 'withdrawal_scheduled';
-        if (!canReject) return undefined;
-        const updated = this._updateDetail(id, { status: 'completed' });
-        if (updated?.member_id) {
-          const memberIdx = getDb().members._members.findIndex(
-            (m) => m.basic_info.id === updated.member_id,
-          );
-          if (memberIdx !== -1)
-            getDb().members._members[memberIdx] = {
-              ...getDb().members._members[memberIdx]!,
-              profile: { ...getDb().members._members[memberIdx]!.profile, status: 'active' },
-            };
-        }
-        return updated;
-      },
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      cancelWithdrawal(id: string, _comment?: string): LeaveDetail | undefined {
-        this._seed();
-        const detail = this._details[id];
-        if (!detail) return undefined;
-        if (detail.status !== 'withdrawal_scheduled') return undefined;
-        const updated = this._updateDetail(id, { status: 'completed' });
-        if (updated?.member_id) {
-          const memberIdx = getDb().members._members.findIndex(
-            (m) => m.basic_info.id === updated.member_id,
-          );
-          if (memberIdx !== -1)
-            getDb().members._members[memberIdx] = {
-              ...getDb().members._members[memberIdx]!,
-              profile: { ...getDb().members._members[memberIdx]!.profile, status: 'active' },
-            };
-        }
-        return updated;
-      },
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      executeWithdrawal(id: string, _comment?: string): LeaveDetail | undefined {
-        this._seed();
-        const detail = this._details[id];
-        if (!detail) return undefined;
-        if (detail.status !== 'withdrawal_pending') return undefined;
-        return this._updateDetail(id, { status: 'completed' });
-      },
-      create(input: { member_id: string; scheduled_date: string; reason: string }): LeaveDetail {
-        this._seed();
-        const member = getDb().members._members.find((m) => m.basic_info.id === input.member_id);
-        const now = new Date()
-          .toLocaleString('ja-JP', {
-            timeZone: 'Asia/Tokyo',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-          .replace(',', '');
-        const newId = `LV-${String(this._rows.length + 1).padStart(3, '0')}`;
-        const listItem: LeaveListItem = {
-          id: newId,
-          member_id: input.member_id,
-          member_name: member?.basic_info.name_kanji ?? '',
-          brand: member?.profile.brand ?? '',
-          store_id: member?.profile.store_id ?? '',
-          store_name: member?.profile.store_name ?? '',
-          type: 'withdrawal',
-          status: 'withdrawal_pending',
-          applied_at: now.split(' ')[0]!,
-          scheduled_date: input.scheduled_date,
-          end_date: null,
-          unpaid_amount: 0,
-        };
-        this._rows.push(listItem);
-        const detail: LeaveDetail = {
-          id: newId,
-          member_id: input.member_id,
-          member_name: listItem.member_name,
-          brand: listItem.brand,
-          store_id: listItem.store_id,
-          store_name: listItem.store_name,
-          type: 'withdrawal',
-          status: 'withdrawal_pending',
-          applied_at: now,
-          scheduled_date: input.scheduled_date,
-          end_date: null,
-          reason: input.reason,
-          applicant: `${listItem.member_name}（本人）`,
-          is_proxy_applied: false,
-          proxy_applicant: null,
-          consent_at: null,
-          consent_method: null,
-          suspension_fee: null,
-          applied_campaign: 'なし',
-          unused_lessons: 0,
-          unpaid_amount: 0,
-          created_at: now,
+        const now = new Date().toISOString();
+        const remaining = row.exclusion_reasons.filter((r) => r !== 'campaign_lock');
+        const updated: TransferRow = {
+          ...row,
+          exclusion_reasons: remaining,
+          auto_transfer_eligible: row.brand === 'joyfit' ? remaining.length === 0 : null,
+          // Kept so the detail screen can still report what was overridden (PAR049).
+          campaign_lock_remaining_days: row.campaign_lock_remaining_days,
+          unlock: { reason: reason.trim(), operator_name: operatorName, unlocked_at: now },
           updated_at: now,
         };
-        this._details[newId] = detail;
-        return detail;
-      },
-      createSuspension(input: {
-        member_id: string;
-        start_month: string;
-        end_month: string;
-        reason?: string;
-        is_proxy?: boolean;
-        proxy_agreed_at?: string;
-        proxy_method?: string;
-      }): LeaveDetail {
-        this._seed();
-        const member = getDb().members._members.find((m) => m.basic_info.id === input.member_id);
-        const now = new Date()
-          .toLocaleString('ja-JP', {
-            timeZone: 'Asia/Tokyo',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-          .replace(',', '');
-        const newId = `LV-${String(this._rows.length + 1).padStart(3, '0')}`;
-        const listItem: LeaveListItem = {
-          id: newId,
-          member_id: input.member_id,
-          member_name: member?.basic_info.name_kanji ?? '',
-          brand: member?.profile.brand ?? '',
-          store_id: member?.profile.store_id ?? '',
-          store_name: member?.profile.store_name ?? '',
-          type: 'suspension',
-          status: 'suspension_scheduled',
-          applied_at: now.split(' ')[0]!,
-          scheduled_date: input.start_month,
-          end_date: input.end_month,
-          unpaid_amount: 0,
-        };
-        this._rows.push(listItem);
-        const detail: LeaveDetail = {
-          id: newId,
-          member_id: input.member_id,
-          member_name: listItem.member_name,
-          brand: listItem.brand,
-          store_id: listItem.store_id,
-          store_name: listItem.store_name,
-          type: 'suspension',
-          status: 'suspension_scheduled',
-          applied_at: now,
-          scheduled_date: input.start_month,
-          end_date: input.end_month,
-          reason: input.reason ?? '',
-          applicant: input.is_proxy
-            ? `${listItem.member_name}（代理）`
-            : `${listItem.member_name}（本人）`,
-          is_proxy_applied: input.is_proxy ?? false,
-          proxy_applicant: input.is_proxy ? 'スタッフ（代理）' : null,
-          consent_at: input.proxy_agreed_at ?? null,
-          consent_method: input.proxy_method ?? null,
-          suspension_fee: 1100,
-          applied_campaign: 'なし',
-          unused_lessons: 0,
-          unpaid_amount: 0,
-          created_at: now,
-          updated_at: now,
-        };
-        this._details[newId] = detail;
-        return detail;
-      },
-    },
-
-    memberBlacklist: {
-      _rows: [] as BlacklistRow[],
-      _seeded: false,
-      _seed() {
-        if (this._seeded) return;
-        this._seeded = true;
-        getDb().members._seed();
-
-        const forceWithdrawn = getDb().members._members.filter(
-          (m) => m.profile.status === MemberStatus.FORCE_WITHDRAWN,
-        );
-        const withdrawn = getDb().members._members.filter(
-          (m) => m.profile.status === MemberStatus.WITHDRAWN,
-        );
-        const manualReasons: BlacklistRow['manualReason'][] = [
-          'nuisance',
-          'unpaid',
-          'fraudulent_use',
-          'other',
-        ];
-        const baseDate = new Date('2026-01-01');
-
-        forceWithdrawn.forEach((m, i) => {
-          const registeredAt = new Date(baseDate);
-          registeredAt.setDate(registeredAt.getDate() + i * 14);
-          this._rows.push({
-            id: `BL-FW-${String(i + 1).padStart(3, '0')}`,
-            memberId: m.basic_info.member_number,
-            memberName: m.basic_info.name_kanji,
-            storeName: m.profile.store_name,
-            registrationSource: 'forced_withdrawal',
-            manualReason: null,
-            unpaidAmount: i % 3 === 0 ? (i + 1) * 3300 : 0,
-            registeredAt: registeredAt.toISOString(),
-            memo: null,
-            registeredBy: 'System',
-            matchConditions: {
-              nameAndBirthdate: true,
-              email: i % 2 === 0,
-              phone: i % 3 !== 0,
-              address: i % 4 === 0,
-            },
-          });
-        });
-
-        const staffNames = ['佐藤 花子', '鈴木 次郎', '高橋 美咲', '田中 健一', '伊藤 直子'];
-        withdrawn.slice(0, 5).forEach((m, i) => {
-          const registeredAt = new Date(baseDate);
-          registeredAt.setDate(registeredAt.getDate() + i * 21 + 7);
-          this._rows.push({
-            id: `BL-MN-${String(i + 1).padStart(3, '0')}`,
-            memberId: m.basic_info.member_number,
-            memberName: m.basic_info.name_kanji,
-            storeName: m.profile.store_name,
-            registrationSource: 'manual',
-            manualReason: manualReasons[i % manualReasons.length]!,
-            unpaidAmount: i % 2 === 0 ? (i + 1) * 1100 : 0,
-            registeredAt: registeredAt.toISOString(),
-            memo: i % 2 === 0 ? '手動登録済み' : null,
-            registeredBy: staffNames[i % staffNames.length]!,
-            matchConditions: {
-              nameAndBirthdate: i % 2 === 0,
-              email: i % 3 !== 0,
-              phone: true,
-              address: i % 2 !== 0,
-            },
-          });
-        });
-      },
-      getList(): BlacklistRow[] {
-        this._seed();
-        return this._rows;
-      },
-      getById(id: string): BlacklistRow | undefined {
-        this._seed();
-        return this._rows.find((r) => r.id === id);
-      },
-      create(input: Omit<BlacklistRow, 'id' | 'registeredAt'>): BlacklistRow {
-        this._seed();
-        const newRow: BlacklistRow = {
-          ...input,
-          id: `BL-${Date.now()}`,
-          registeredAt: new Date().toISOString(),
-        };
-        this._rows.push(newRow);
-        return newRow;
+        this._rows[idx] = updated;
+        return { ok: true, row: updated };
       },
     },
   };

@@ -21,9 +21,9 @@ export const StaffRoleSchema = z
 /**
  * Staff Status Schema - ステータス
  */
-export const StaffStatusSchema = z.enum(['active', 'inactive']).openapi({
+export const StaffStatusSchema = z.enum(['active', 'inactive', 'invited']).openapi({
   title: 'StaffStatus',
-  description: 'Staff account status: active=有効, inactive=無効',
+  description: 'Staff account status: active=有効, inactive=無効, invited=招待中',
 });
 
 /**
@@ -333,16 +333,34 @@ export const StaffListItemSchema = z
     linked_store_id: z.string().optional().openapi({
       description: 'Present when linkage_type=direct_store',
     }),
+    linked_store_name: z.string().optional().openapi({
+      example: 'JOYFIT新宿店',
+      description: 'Denormalized store name; present when linkage_type=direct_store',
+    }),
     linked_fc_company_id: z.string().optional().openapi({
       description: 'Present when linkage_type=fc_company',
+    }),
+    linked_fc_company_name: z.string().optional().openapi({
+      example: 'サンプルFC株式会社',
+      description: 'Denormalized FC company name; present when linkage_type=fc_company',
     }),
     status: StaffStatusSchema.openapi({
       example: 'active',
       description: 'Account status',
     }),
-    last_login: z.string().openapi({
-      example: '2026-03-25 10:00',
-      description: 'Last login datetime',
+    last_login: z.string().nullable().openapi({
+      example: '2026-03-25T10:00:00Z',
+      description: 'Last login datetime (ISO), null if never logged in',
+    }),
+    invited_at: z.string().nullable().openapi({
+      example: null,
+      description: 'ISO datetime the invite was (re)sent; set only while status=invited',
+    }),
+    managed_store_ids: z.array(z.string()).optional().openapi({
+      description: 'Store IDs this Manager oversees; populated only when role=manager',
+    }),
+    deleted_at: z.string().nullable().optional().openapi({
+      description: 'Soft-delete marker; excluded from default list/detail results when set',
     }),
   })
   .openapi({
@@ -403,9 +421,23 @@ export const StaffDetailSchema = z
     editable_scopes: z.array(StaffEditableScopeSchema).openapi({
       description: '編集可能情報',
     }),
-    last_login: z.string().openapi({
-      example: '2026-03-25 10:00',
-      description: 'Last login datetime',
+    last_login: z.string().nullable().openapi({
+      example: '2026-03-25T10:00:00Z',
+      description: 'Last login datetime (ISO), null if never logged in',
+    }),
+    invited_at: z.string().nullable().openapi({
+      example: null,
+      description: 'ISO datetime the invite was (re)sent; set only while status=invited',
+    }),
+    managed_store_ids: z.array(z.string()).optional().openapi({
+      description: 'Store IDs this Manager oversees; populated only when role=manager',
+    }),
+    deleted_at: z.string().nullable().optional().openapi({
+      description: 'Soft-delete marker; excluded from default list/detail results when set',
+    }),
+    note: z.string().nullable().optional().openapi({
+      example: '2024年4月入社。',
+      description: '備考 (free-text note)',
     }),
     created_at: z.string().openapi({
       example: '2024-01-15T10:00:00Z',
@@ -432,7 +464,7 @@ export const GetStaffsQuerySchema = z
       example: 1,
       description: 'Page number',
     }),
-    limit: z.coerce.number().int().min(1).max(100).default(30).openapi({
+    limit: z.coerce.number().int().min(1).max(500).default(30).openapi({
       example: 30,
       description: 'Items per page',
     }),
@@ -452,6 +484,10 @@ export const GetStaffsQuerySchema = z
     position_id: z.coerce.number().int().positive().optional().openapi({
       example: 6,
       description: 'Filter by position master id (職位)',
+    }),
+    store_id: z.string().optional().openapi({
+      example: 'store-001',
+      description: 'Filter by linked store id (所属店舗)',
     }),
     sort_by: z
       .enum(['staff_id', 'name', 'role', 'position_name', 'status', 'last_login'])
@@ -541,6 +577,9 @@ export const UpdateStaffRequestSchema = z
     status: StaffStatusSchema.optional().openapi({
       description: 'Account status',
     }),
+    note: z.string().nullable().optional().openapi({
+      description: '備考 (free-text note)',
+    }),
   })
   .openapi({
     title: 'UpdateStaffRequest',
@@ -566,61 +605,6 @@ export const UpdateStaffResponseSchema = z
   });
 
 /**
- * Invite Staff Request Schema
- */
-export const InviteStaffItemSchema = z.object({
-  email: z.string().email().openapi({
-    example: 'staff@joyfit.co.jp',
-    description: 'Email address to invite',
-  }),
-  role: StaffRoleSchema.openapi({
-    example: 'staff',
-    description: 'Staff role for this email',
-  }),
-  brand: StaffBrandSchema.optional().openapi({
-    example: 'joyfit',
-    description: 'Brand to assign for this email (optional)',
-  }),
-});
-
-export const InviteStaffRequestSchema = z
-  .object({
-    invitees: z
-      .array(InviteStaffItemSchema)
-      .min(1)
-      .openapi({
-        example: [{ email: 'staff@joyfit.co.jp', role: 'staff', brand: 'joyfit' }],
-        description: 'Invite list with per-email role and brand',
-      }),
-  })
-  .openapi({
-    title: 'InviteStaffRequest',
-    description: 'Request body to invite staff',
-  });
-
-/**
- * Invite Staff Response Schema
- */
-export const InviteStaffResponseSchema = z
-  .object({
-    message: z.string().openapi({
-      example: '招待メールを送信しました',
-      description: 'Success message',
-    }),
-    invited_count: z.number().openapi({
-      example: 2,
-      description: 'Number of invitations sent',
-    }),
-    staffs: z.array(StaffListItemSchema).openapi({
-      description: 'Newly created staff entries',
-    }),
-  })
-  .openapi({
-    title: 'InviteStaffResponse',
-    description: 'Response after inviting staff',
-  });
-
-/**
  * Delete Staff Response Schema
  */
 export const DeleteStaffResponseSchema = z
@@ -642,11 +626,11 @@ export const DeleteStaffRequestSchema = z
   .object({
     delete_reason: z
       .string()
-      .min(1, { message: '削除理由は必須です' })
       .max(255, { message: '削除理由は255文字以内で入力してください' })
+      .optional()
       .openapi({
         example: '退職に伴うアカウント削除',
-        description: 'Reason for deleting the staff account',
+        description: 'Reason for deleting the staff account (optional)',
       }),
   })
   .openapi({
@@ -654,8 +638,219 @@ export const DeleteStaffRequestSchema = z
     description: 'Request body to delete a staff member',
   });
 
+// ─── Permission Change History ────────────────────────────────────────────────
+
+/**
+ * Permission Change History Entry Schema (staff_permission_history table)
+ */
+export const StaffPermissionHistoryEntrySchema = z
+  .object({
+    id: z.number().int().openapi({ example: 1, description: 'History row PK' }),
+    staff_id: z.string().openapi({ example: '1', description: 'FK → staff.id' }),
+    changed_at: z.string().openapi({
+      example: '2026-03-20T14:30:00Z',
+      description: 'ISO datetime the change was made',
+    }),
+    operator_name: z.string().openapi({
+      example: '田中 太郎',
+      description: 'Denormalized display name of the staff who made the change',
+    }),
+    operator_position: z.string().openapi({
+      example: '本部管理者',
+      description: 'Denormalized position label of the operator',
+    }),
+    change_description: z.string().openapi({
+      example: 'ロール変更: Trainer → Staff',
+      description: 'Human-readable summary of the change',
+    }),
+  })
+  .openapi({
+    title: 'StaffPermissionHistoryEntry',
+    description: 'One entry in a staff account permission change history (append-only)',
+  });
+
+/**
+ * Get Staff Permission History Response Schema
+ */
+export const GetStaffPermissionHistoryResponseSchema = z
+  .object({
+    history: z.array(StaffPermissionHistoryEntrySchema).openapi({
+      description: 'Permission change history entries, newest first',
+    }),
+    pagination: z
+      .object({
+        page: z.number().openapi({ example: 1 }),
+        limit: z.number().openapi({ example: 30 }),
+        total: z.number().openapi({ example: 3 }),
+        total_pages: z.number().openapi({ example: 1 }),
+      })
+      .openapi({ title: 'StaffPermissionHistoryPagination' }),
+  })
+  .openapi({
+    title: 'GetStaffPermissionHistoryResponse',
+    description: 'Paginated permission change history for a staff account',
+  });
+
+export const GetStaffPermissionHistoryQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1).openapi({ example: 1 }),
+    limit: z.coerce.number().int().min(1).max(100).default(30).openapi({ example: 30 }),
+  })
+  .openapi({
+    title: 'GetStaffPermissionHistoryQuery',
+    description: 'Query parameters for staff permission history',
+  });
+
+// ─── Deactivate / Resend Invite / Magic Link ──────────────────────────────────
+
+/**
+ * Deactivate Staff Request Schema
+ */
+export const DeactivateStaffRequestSchema = z
+  .object({
+    reason: z.string().max(255).optional().openapi({
+      example: '退職のため',
+      description: 'Optional reason for deactivation',
+    }),
+  })
+  .openapi({
+    title: 'DeactivateStaffRequest',
+    description: 'Request body to deactivate a staff member',
+  });
+
+/**
+ * Deactivate Staff Response Schema
+ */
+export const DeactivateStaffResponseSchema = z
+  .object({
+    message: z.string().openapi({
+      example: 'スタッフを無効化しました',
+      description: 'Success message',
+    }),
+    staff: StaffDetailSchema.openapi({
+      description: 'Updated staff detail',
+    }),
+  })
+  .openapi({
+    title: 'DeactivateStaffResponse',
+    description: 'Response after deactivating a staff member',
+  });
+
+/**
+ * Activate (reactivate) Staff Response Schema
+ */
+export const ActivateStaffResponseSchema = z
+  .object({
+    message: z.string().openapi({
+      example: 'スタッフを有効化しました',
+      description: 'Success message',
+    }),
+    staff: StaffDetailSchema.openapi({
+      description: 'Updated staff detail',
+    }),
+  })
+  .openapi({
+    title: 'ActivateStaffResponse',
+    description: 'Response after reactivating a staff member',
+  });
+
+/**
+ * Resend Invite Response Schema
+ */
+export const ResendInviteResponseSchema = z
+  .object({
+    message: z.string().openapi({
+      example: '招待メールを再送しました',
+      description: 'Success message',
+    }),
+  })
+  .openapi({
+    title: 'ResendInviteResponse',
+    description: 'Response after resending an invitation',
+  });
+
+/**
+ * Magic Link Response Schema
+ */
+export const MagicLinkResponseSchema = z
+  .object({
+    message: z.string().openapi({
+      example: 'CRMのログイン用URLを送信しました',
+      description: 'Success message',
+    }),
+    sent_to: z.string().email().openapi({
+      example: 'tanaka@joyfit.co.jp',
+      description: 'Email address the magic link was sent to',
+    }),
+  })
+  .openapi({
+    title: 'MagicLinkResponse',
+    description: 'Response after issuing a magic login link',
+  });
+
+// ─── Bulk Create Staffs ────────────────────────────────────────────────────────
+
+export const CreateStaffsItemSchema = z.object({
+  last_name: z.string().min(1, { message: '姓は必須です' }).openapi({
+    example: '田中',
+    description: '名前（姓）',
+  }),
+  first_name: z.string().min(1, { message: '名は必須です' }).openapi({
+    example: '太郎',
+    description: '名前（名）',
+  }),
+  email: z.string().email({ message: 'メール形式が正しくありません' }).openapi({
+    example: 'tanaka@joyfit.co.jp',
+    description: 'メールアドレス',
+  }),
+});
+
+export const CreateStaffsRequestSchema = z
+  .object({
+    staff: z.array(CreateStaffsItemSchema).min(1).openapi({
+      description: 'Rows to create in this batch',
+    }),
+    role: StaffRoleSchema.openapi({
+      example: 'staff',
+      description: 'Role applied to every row in the batch',
+    }),
+    position_id: z.number().int().optional().openapi({
+      description: '職位マスター (positions.id), applied to every row',
+    }),
+    staff_linkage: StaffLinkageSchema.optional().openapi({
+      description: '店舗/FC 紐づけ, applied to every row',
+    }),
+    note: z.string().optional().openapi({
+      description: '備考, applied to every row',
+    }),
+  })
+  .openapi({
+    title: 'CreateStaffsRequest',
+    description: 'Request body to bulk-create staff accounts (スタッフ新規登録)',
+  });
+
+export const CreateStaffsResponseSchema = z
+  .object({
+    message: z.string().openapi({
+      example: '3名のスタッフを登録しました',
+      description: 'Success message',
+    }),
+    created_count: z.number().openapi({
+      example: 3,
+      description: 'Number of accounts created',
+    }),
+    staffs: z.array(StaffListItemSchema).openapi({
+      description: 'Newly created staff entries',
+    }),
+  })
+  .openapi({
+    title: 'CreateStaffsResponse',
+    description: 'Response after bulk-creating staff accounts',
+  });
+
 // ─── Export Types ─────────────────────────────────────────────────────────────
 
+export type StaffRole = z.infer<typeof StaffRoleSchema>;
 export type StaffListItem = z.infer<typeof StaffListItemSchema>;
 export type StaffDetail = z.infer<typeof StaffDetailSchema>;
 export type StaffPersonalInfo = z.infer<typeof StaffPersonalInfoSchema>;
@@ -670,9 +865,20 @@ export type GetStaffsResponse = z.infer<typeof GetStaffsResponseSchema>;
 export type GetStaffDetailResponse = z.infer<typeof GetStaffDetailResponseSchema>;
 export type UpdateStaffRequest = z.infer<typeof UpdateStaffRequestSchema>;
 export type UpdateStaffResponse = z.infer<typeof UpdateStaffResponseSchema>;
-export type InviteStaffRequest = z.infer<typeof InviteStaffRequestSchema>;
-export type InviteStaffResponse = z.infer<typeof InviteStaffResponseSchema>;
 export type DeleteStaffRequest = z.infer<typeof DeleteStaffRequestSchema>;
 export type DeleteStaffResponse = z.infer<typeof DeleteStaffResponseSchema>;
+export type StaffPermissionHistoryEntry = z.infer<typeof StaffPermissionHistoryEntrySchema>;
+export type GetStaffPermissionHistoryResponse = z.infer<
+  typeof GetStaffPermissionHistoryResponseSchema
+>;
+export type GetStaffPermissionHistoryQuery = z.infer<typeof GetStaffPermissionHistoryQuerySchema>;
+export type DeactivateStaffRequest = z.infer<typeof DeactivateStaffRequestSchema>;
+export type DeactivateStaffResponse = z.infer<typeof DeactivateStaffResponseSchema>;
+export type ActivateStaffResponse = z.infer<typeof ActivateStaffResponseSchema>;
+export type ResendInviteResponse = z.infer<typeof ResendInviteResponseSchema>;
+export type MagicLinkResponse = z.infer<typeof MagicLinkResponseSchema>;
+export type CreateStaffsItem = z.infer<typeof CreateStaffsItemSchema>;
+export type CreateStaffsRequest = z.infer<typeof CreateStaffsRequestSchema>;
+export type CreateStaffsResponse = z.infer<typeof CreateStaffsResponseSchema>;
 
 export { ErrorResponseSchema } from './auth.schema';

@@ -30,7 +30,7 @@ registerRoute({
       description: 'Period filter for training records',
       schema: {
         type: 'string',
-        enum: ['all', 'this_month', 'last_3_months'],
+        enum: ['all', 'this_month', 'last_3_months', 'last_1_year'],
       },
     },
   ],
@@ -120,7 +120,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     ];
 
-    const monthsByPeriod = period === 'this_month' ? 1 : period === 'last_3_months' ? 3 : null;
+    const monthsByPeriod =
+      period === 'this_month'
+        ? 1
+        : period === 'last_3_months'
+          ? 3
+          : period === 'last_1_year'
+            ? 12
+            : null;
     const now = new Date();
     const filteredHistory =
       monthsByPeriod === null

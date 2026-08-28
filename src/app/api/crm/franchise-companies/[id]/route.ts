@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import {
+  formatOperatorName,
+  getAllowedFranchiseCompanyIds,
+  getAuthUserFromRequest,
+} from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import { ErrorResponseSchema } from '@/app/api/_schemas/auth.schema';
 import {
@@ -100,9 +105,24 @@ function buildLinkedStores(companyId: string): FranchiseCompanyLinkedStore[] {
     }));
 }
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+function countManagedStores(companyId: string): number {
+  return db.stores.getList().filter((store) => store.fc_company_id === companyId).length;
+}
+
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+
     const { id } = await context.params;
+
+    const allowedIds = getAllowedFranchiseCompanyIds(authResult.user);
+    if (allowedIds !== null && !allowedIds.includes(id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const company = db.franchiseCompanies.getById(id);
 
     if (!company) {
@@ -126,7 +146,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
         fc_contract_renewal_date: company.fc_contract_renewal_date,
         royalty_rate: company.royalty_rate,
         note: company.note,
-        managed_store_count: company.managed_store_count,
+        auth_method: company.auth_method,
+        managed_store_count: countManagedStores(id),
         status: company.status,
         created_at: company.created_at,
         updated_at: company.updated_at,
@@ -156,14 +177,17 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json({ error: errors }, { status: 400 });
     }
 
-    const updated = db.franchiseCompanies.update(id, validation.data);
+    const authResult = getAuthUserFromRequest(request);
+    const operator = authResult.ok ? formatOperatorName(authResult.user) : undefined;
+
+    const updated = db.franchiseCompanies.update(id, validation.data, operator);
     if (!updated) {
       return NextResponse.json({ error: 'Franchise company not found' }, { status: 404 });
     }
 
     const response: UpdateFranchiseCompanyResponse = {
-      message: 'FC企業を更新しました',
-      franchise_company: updated,
+      message: 'FC企業の変更を保存しました',
+      franchise_company: { ...updated, managed_store_count: countManagedStores(id) },
     };
 
     return NextResponse.json(response);
@@ -173,7 +197,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   }
 }
 
-export async function DELETE(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
     const company = db.franchiseCompanies.getById(id);
@@ -181,11 +205,14 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
       return NextResponse.json({ error: 'Franchise company not found' }, { status: 404 });
     }
 
-    if (company.managed_store_count > 0) {
+    if (countManagedStores(id) > 0) {
       return NextResponse.json({ error: '管轄店舗があるため削除できません' }, { status: 400 });
     }
 
-    const deleted = db.franchiseCompanies.delete(id);
+    const authResult = getAuthUserFromRequest(request);
+    const operator = authResult.ok ? formatOperatorName(authResult.user) : undefined;
+
+    const deleted = db.franchiseCompanies.delete(id, operator);
     if (!deleted) {
       return NextResponse.json({ error: 'Franchise company not found' }, { status: 404 });
     }

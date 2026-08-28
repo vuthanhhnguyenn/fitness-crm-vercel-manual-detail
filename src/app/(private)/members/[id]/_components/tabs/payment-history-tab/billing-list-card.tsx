@@ -3,7 +3,8 @@
 import { useState } from 'react';
 
 import { PAGE_SIZE } from '@/constants/app.constants';
-import { useQuery } from '@tanstack/react-query';
+import { formatDate, formatYen } from '@/utils/format.util';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
 import { TablePagination } from '@/components/common/table-pagination';
@@ -29,45 +30,43 @@ interface BillingListCardProps {
 
 export function BillingListCard({ memberId }: BillingListCardProps) {
   const [page, setPage] = useState(1);
-  const { data, isLoading, isError, refetch } = useQuery(
-    getCrmMembersByIdBillingOptions({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
+    ...getCrmMembersByIdBillingOptions({
       path: { id: memberId },
       query: { page, limit: PAGE_SIZE },
     }),
-  );
+    // Keep the previous page's rows so paging does not flash back to the skeleton
+    placeholderData: keepPreviousData,
+  });
 
-  const isEmpty = !data?.items || data.items.length === 0;
+  // The card header and the pagination live outside the boundary so they stay usable while
+  // Loading/Error. `isEmpty` is derived from the whole query being absent (`!data`), not from
+  // row count, so a page with 0 rows shows the table's own empty row. See DataStateBoundary docs.
+  const isEmpty = !data;
   const total = data?.total ?? 0;
   const limit = data?.limit ?? PAGE_SIZE;
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <DataStateBoundary
-      isLoading={isLoading}
-      isError={isError}
-      isEmpty={isEmpty}
-      onRetry={refetch}
-      emptyTitle="請求履歴はありません"
-      skeleton={
-        <Card className="gap-0 py-0">
-          <CardHeader className="px-4 py-3">
-            <CardTitle className="text-sm">請求一覧</CardTitle>
-          </CardHeader>
+    <Card className="gap-0 py-0">
+      <CardHeader className="px-4 py-3">
+        <CardTitle className="text-base font-semibold">請求一覧</CardTitle>
+      </CardHeader>
+      <DataStateBoundary
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={isEmpty}
+        onRetry={refetch}
+        emptyTitle="請求履歴はありません"
+        errorTitle="請求一覧の取得に失敗しました"
+        skeleton={
           <div className="space-y-3 px-4 pb-4">
             {Array.from({ length: 6 }).map((_, index) => (
               <Skeleton key={`billing-list-row-${index}`} className="h-9 w-full" />
             ))}
           </div>
-          <CardContent className="px-4 pt-0 pb-4">
-            <Skeleton className="h-8 w-full" />
-          </CardContent>
-        </Card>
-      }
-    >
-      <Card className="gap-0 py-0">
-        <CardHeader className="px-4 py-3">
-          <CardTitle className="text-sm">請求一覧</CardTitle>
-        </CardHeader>
+        }
+      >
         <Table size="md">
           <TableHeader>
             <TableRow className="bg-muted/50">
@@ -81,7 +80,7 @@ export function BillingListCard({ memberId }: BillingListCardProps) {
           <TableBody>
             {data?.items && data.items.length > 0 ? (
               data.items.map((item) => (
-                <TableRow key={`${item.month}-${item.type}-${item.billingDate}`}>
+                <TableRow key={item.id}>
                   <TableCell className="text-sm font-medium">{item.month}</TableCell>
                   <TableCell>
                     <Badge
@@ -91,14 +90,12 @@ export function BillingListCard({ memberId }: BillingListCardProps) {
                       {item.type === 'oneTime' ? '都度' : '月次'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right text-sm">
-                    ¥{item.amount.toLocaleString()}
-                  </TableCell>
+                  <TableCell className="text-right text-sm">{formatYen(item.amount)}</TableCell>
                   <TableCell>
                     <BillingStatusBadge status={item.status} />
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {item.billingDate}
+                    {formatDate(item.billingDate)}
                   </TableCell>
                 </TableRow>
               ))
@@ -111,16 +108,17 @@ export function BillingListCard({ memberId }: BillingListCardProps) {
             )}
           </TableBody>
         </Table>
-        <CardContent className="px-0 py-0">
-          <TablePagination
-            currentPage={page}
-            totalPages={totalPages}
-            total={total}
-            limit={limit}
-            onPageChange={setPage}
-          />
-        </CardContent>
-      </Card>
-    </DataStateBoundary>
+      </DataStateBoundary>
+      <CardContent className="px-0 py-0">
+        <TablePagination
+          currentPage={page}
+          totalPages={totalPages}
+          total={total}
+          limit={limit}
+          isLoading={isFetching}
+          onPageChange={setPage}
+        />
+      </CardContent>
+    </Card>
   );
 }

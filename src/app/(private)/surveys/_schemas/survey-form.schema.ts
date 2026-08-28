@@ -27,6 +27,21 @@ export const surveyQuestionFormSchema = z.object({
   choices: z.array(surveyQuestionChoiceFormSchema),
 });
 
+export const surveyVisibilityChoiceFormSchema = z.object({
+  order: z.number().int().positive(),
+  visible: z.boolean(),
+});
+
+export const surveyVisibilityQuestionFormSchema = z.object({
+  no: z.number().int().positive(),
+  visible: z.boolean(),
+  choices: z.array(surveyVisibilityChoiceFormSchema),
+});
+
+export const surveyVisibilityFormSchema = z.object({
+  questions: z.array(surveyVisibilityQuestionFormSchema),
+});
+
 export const surveyFormSchema = z
   .object({
     name: z.string().trim().min(1, 'アンケート名を入力してください'),
@@ -52,6 +67,9 @@ export const surveyFormSchema = z
 export type SurveyFormValues = z.infer<typeof surveyFormSchema>;
 export type SurveyQuestionFormValues = z.infer<typeof surveyQuestionFormSchema>;
 export type SurveyQuestionChoiceFormValues = z.infer<typeof surveyQuestionChoiceFormSchema>;
+export type SurveyVisibilityChoiceFormValues = z.infer<typeof surveyVisibilityChoiceFormSchema>;
+export type SurveyVisibilityQuestionFormValues = z.infer<typeof surveyVisibilityQuestionFormSchema>;
+export type SurveyVisibilityFormValues = z.infer<typeof surveyVisibilityFormSchema>;
 export type SurveyBrand = StoreListBrand;
 
 export type SurveyFormSubmitValues = SurveyFormValues;
@@ -93,6 +111,40 @@ export function createEmptySurveyFormValues(): SurveyFormValues {
     status: 'active',
     replaceExistingSurveyId: null,
     questions: [createEmptySurveyQuestion('q-1')],
+  };
+}
+
+export function createSurveyVisibilityFormValues(
+  survey: SurveyDetailLike,
+): SurveyVisibilityFormValues {
+  return {
+    questions: survey.questions.map((question) => ({
+      no: question.no,
+      visible: true,
+      choices: question.choices.map((choice) => ({
+        order: choice.order,
+        visible: true,
+      })),
+    })),
+  };
+}
+
+export function mapSurveyVisibilityToFormValues(visibility: {
+  questions: Array<{
+    no: number;
+    visible: boolean;
+    choices: Array<{ order: number; visible: boolean }>;
+  }>;
+}): SurveyVisibilityFormValues {
+  return {
+    questions: visibility.questions.map((question) => ({
+      no: question.no,
+      visible: question.visible,
+      choices: question.choices.map((choice) => ({
+        order: choice.order,
+        visible: choice.visible,
+      })),
+    })),
   };
 }
 

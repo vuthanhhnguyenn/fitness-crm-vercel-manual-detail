@@ -1,7 +1,7 @@
 import type {
+  InstallationStatus,
   ToolType,
-  TrainingEquipmentExerciseLink,
-  TrainingEquipmentStatusHistory,
+  TrainingEquipmentLinkedExercise,
 } from '@/app/api/_schemas/training-equipment.schema';
 
 import type { DbType } from '../_db.types';
@@ -12,7 +12,10 @@ import {
   SEED_TRAINING_EQUIPMENT_LINKS,
   TRAINING_EQUIPMENT_EXERCISE_CATALOG,
   type ToolTypeMockRow,
+  type TrainingEquipmentExerciseCatalogItem,
+  type TrainingEquipmentExerciseLinkRow,
   type TrainingEquipmentMockItem,
+  type TrainingEquipmentStatusHistoryRow,
 } from '../seeds/training-equipment.seed';
 
 export function createTrainingEquipmentTables(getDb: () => DbType) {
@@ -32,7 +35,7 @@ export function createTrainingEquipmentTables(getDb: () => DbType) {
 
         return this._rows
           .filter((row) => {
-            if (!includeInactive && (!row.is_active || row.deleted_at !== null)) {
+            if (!includeInactive && (!row.isActive || row.deletedAt !== null)) {
               return false;
             }
             if (!includeNone && row.code === 'none') {
@@ -40,13 +43,17 @@ export function createTrainingEquipmentTables(getDb: () => DbType) {
             }
             return true;
           })
-          .sort((a, b) => a.sort_order - b.sort_order)
+          .sort((left, right) => left.sortOrder - right.sortOrder)
           .map((row) => ({
             id: row.id,
             code: row.code,
             name: row.name,
-            sortOrder: row.sort_order,
+            sortOrder: row.sortOrder,
           }));
+      },
+      getById(id: string): ToolTypeMockRow | undefined {
+        this._seed();
+        return this._rows.find((row) => row.id === id);
       },
       getByCode(code: string): ToolTypeMockRow | undefined {
         this._seed();
@@ -56,8 +63,8 @@ export function createTrainingEquipmentTables(getDb: () => DbType) {
 
     trainingEquipment: {
       _rows: [] as TrainingEquipmentMockItem[],
-      _historyRows: [] as TrainingEquipmentStatusHistory[],
-      _linkRows: [] as TrainingEquipmentExerciseLink[],
+      _historyRows: [] as TrainingEquipmentStatusHistoryRow[],
+      _linkRows: [] as TrainingEquipmentExerciseLinkRow[],
       _seeded: false,
       _seed(): void {
         if (this._seeded) return;
@@ -68,28 +75,45 @@ export function createTrainingEquipmentTables(getDb: () => DbType) {
       },
       getAll(): TrainingEquipmentMockItem[] {
         this._seed();
-        return [...this._rows];
+        return this._rows.filter((item) => !item.isDeleted);
       },
       getById(id: string): TrainingEquipmentMockItem | undefined {
         this._seed();
-        return this._rows.find((item) => item.id === id && !item.is_deleted);
+        return this._rows.find((item) => item.id === id && !item.isDeleted);
       },
       create(
         item: Omit<
           TrainingEquipmentMockItem,
-          'id' | 'linked_exercise_count' | 'last_updated_at' | 'is_deleted'
+          'id' | 'createdAt' | 'updatedAt' | 'statusChangedAt' | 'isDeleted'
         >,
       ): TrainingEquipmentMockItem {
         this._seed();
-        const nextNumber = this._rows.length + 1;
+        const now = new Date().toISOString();
+        const nextNumber =
+          this._rows.reduce((max, row) => {
+            const parsed = Number(row.id.replace('TE-', ''));
+            return Number.isNaN(parsed) ? max : Math.max(max, parsed);
+          }, 0) + 1;
         const next: TrainingEquipmentMockItem = {
           ...item,
           id: `TE-${String(nextNumber).padStart(3, '0')}`,
-          linked_exercise_count: 0,
-          last_updated_at: new Date().toISOString(),
-          is_deleted: false,
+          statusChangedAt: now,
+          createdAt: now,
+          updatedAt: now,
+          isDeleted: false,
         };
         this._rows.push(next);
+        // Status history has a NOT NULL `changedReason`, so the system fills the initial
+        // registration row with 「新規登録」 — the first history row is never blank.
+        this.appendHistory({
+          id: `TH-${next.id}-000`,
+          equipmentId: next.id,
+          previousStatus: null,
+          newStatus: next.installationStatus,
+          changedReason: '新規登録',
+          changedByName: next.statusChangedByName,
+          changedAt: now,
+        });
         return next;
       },
       update(
@@ -97,44 +121,98 @@ export function createTrainingEquipmentTables(getDb: () => DbType) {
         patch: Partial<TrainingEquipmentMockItem>,
       ): TrainingEquipmentMockItem | undefined {
         this._seed();
-        const index = this._rows.findIndex((item) => item.id === id && !item.is_deleted);
+        const index = this._rows.findIndex((item) => item.id === id && !item.isDeleted);
         if (index === -1) return undefined;
-        const next = {
-          ...this._rows[index],
-          ...patch,
-          last_updated_at: new Date().toISOString(),
-        };
+        const next = { ...this._rows[index], ...patch, updatedAt: new Date().toISOString() };
         this._rows[index] = next;
         return next;
       },
       softDelete(id: string): boolean {
         this._seed();
-        const index = this._rows.findIndex((item) => item.id === id && !item.is_deleted);
+        const index = this._rows.findIndex((item) => item.id === id && !item.isDeleted);
         if (index === -1) return false;
-        this._rows[index].is_deleted = true;
-        this._rows[index].last_updated_at = new Date().toISOString();
+        this._rows[index].isDeleted = true;
+        this._rows[index].updatedAt = new Date().toISOString();
         return true;
       },
-      getHistory(equipmentId: string): TrainingEquipmentStatusHistory[] {
+      /**
+       * FR-007: records the transition and refreshes the FR-004 status card.
+       * Changing to the same installation status is not a transition, so neither the history nor
+       * the status card is updated (the same treatment as `skipped` in the bulk update).
+       */
+      changeStatus(
+        id: string,
+        newStatus: InstallationStatus,
+        changedByName: string,
+        changedReason: string,
+      ): TrainingEquipmentMockItem | undefined {
         this._seed();
-        return this._historyRows.filter((row) => row.equipment_id === equipmentId);
+        const current = this.getById(id);
+        if (!current) return undefined;
+        if (current.installationStatus === newStatus) return current;
+        const now = new Date().toISOString();
+        const next = this.update(id, {
+          installationStatus: newStatus,
+          statusChangedAt: now,
+          statusChangedByName: changedByName,
+        });
+        if (!next) return undefined;
+        this.appendHistory({
+          id: `TH-${Date.now()}-${id}`,
+          equipmentId: id,
+          previousStatus: current.installationStatus,
+          newStatus,
+          changedReason,
+          changedByName,
+          changedAt: now,
+        });
+        return next;
       },
-      appendHistory(row: TrainingEquipmentStatusHistory): void {
+      getHistory(equipmentId: string): TrainingEquipmentStatusHistoryRow[] {
+        this._seed();
+        return this._historyRows.filter((row) => row.equipmentId === equipmentId);
+      },
+      appendHistory(row: TrainingEquipmentStatusHistoryRow): void {
         this._seed();
         this._historyRows.unshift(row);
       },
-      getLinks(equipmentId: string): TrainingEquipmentExerciseLink[] {
+      /** Resolves join rows into the FR-008 linked-exercise payload. */
+      getLinks(equipmentId: string): TrainingEquipmentLinkedExercise[] {
         this._seed();
-        return this._linkRows.filter((row) => row.equipment_id === equipmentId);
+        return this._linkRows
+          .filter((row) => row.equipmentId === equipmentId)
+          .map((row) => {
+            const candidate = this.getExerciseCandidate(row.exerciseId);
+            const mstToolId = candidate?.mstToolId ?? '';
+            return {
+              exerciseId: row.exerciseId,
+              exerciseCode: candidate?.exerciseCode ?? row.exerciseId,
+              name: candidate?.name ?? row.exerciseId,
+              mstToolId,
+              toolName: getDb().toolTypes.getById(mstToolId)?.name ?? '',
+              difficulty: candidate?.difficulty ?? null,
+              bodyPart: candidate?.bodyPart ?? null,
+            };
+          });
       },
-      addLinks(rows: TrainingEquipmentExerciseLink[]): void {
+      addLinks(equipmentId: string, exerciseIds: string[]): void {
         this._seed();
-        this._linkRows.push(...rows);
+        const now = new Date().toISOString();
+        const existing = new Set(
+          this._linkRows
+            .filter((row) => row.equipmentId === equipmentId)
+            .map((row) => row.exerciseId),
+        );
+        exerciseIds
+          .filter((exerciseId) => !existing.has(exerciseId))
+          .forEach((exerciseId) => {
+            this._linkRows.push({ equipmentId, exerciseId, createdAt: now });
+          });
       },
       deleteLink(equipmentId: string, exerciseId: string): boolean {
         this._seed();
         const index = this._linkRows.findIndex(
-          (row) => row.equipment_id === equipmentId && row.exercise_id === exerciseId,
+          (row) => row.equipmentId === equipmentId && row.exerciseId === exerciseId,
         );
         if (index === -1) return false;
         this._linkRows.splice(index, 1);
@@ -143,70 +221,48 @@ export function createTrainingEquipmentTables(getDb: () => DbType) {
       deleteAllLinks(equipmentId: string): number {
         this._seed();
         const before = this._linkRows.length;
-        this._linkRows = this._linkRows.filter((row) => row.equipment_id !== equipmentId);
+        this._linkRows = this._linkRows.filter((row) => row.equipmentId !== equipmentId);
         return before - this._linkRows.length;
       },
       hasLinks(equipmentId: string): boolean {
         this._seed();
-        return this._linkRows.some((row) => row.equipment_id === equipmentId);
+        return this._linkRows.some((row) => row.equipmentId === equipmentId);
       },
-      refreshLinkCount(equipmentId: string): void {
+      countLinks(equipmentId: string): number {
         this._seed();
-        const row = this._rows.find((item) => item.id === equipmentId && !item.is_deleted);
-        if (!row) return;
-        row.linked_exercise_count = this._linkRows.filter(
-          (item) => item.equipment_id === equipmentId,
-        ).length;
+        return this._linkRows.filter((row) => row.equipmentId === equipmentId).length;
       },
-      getExerciseCatalogItem(exerciseId: string) {
-        return TRAINING_EQUIPMENT_EXERCISE_CATALOG.find((item) => item.id === exerciseId);
+      getExerciseCandidate(exerciseId: string): TrainingEquipmentExerciseCatalogItem | undefined {
+        return TRAINING_EQUIPMENT_EXERCISE_CATALOG.find((item) => item.exerciseId === exerciseId);
       },
-      listExerciseCatalog() {
+      listExerciseCandidates() {
         return TRAINING_EQUIPMENT_EXERCISE_CATALOG.map((item) => ({
           ...item,
-          tool_name: getDb().toolTypes.getByCode(item.tool_type)?.name ?? item.tool_type,
+          toolName: getDb().toolTypes.getById(item.mstToolId)?.name ?? '',
         }));
       },
-      bulkUpdateStatus(
-        ids: string[],
-        nextStatus: TrainingEquipmentMockItem['status'],
-        changedBy: string,
-        reason: string,
-      ) {
+      /** FR-009: returns the doc-shaped `{ updated, skipped }` counters. */
+      bulkChangeStatus(
+        equipmentIds: string[],
+        newStatus: InstallationStatus,
+        changedByName: string,
+        changedReason: string,
+      ): { updated: number; skipped: number } {
         this._seed();
-        const uniqueIds = [...new Set(ids)];
-        const now = new Date().toISOString();
+        let updated = 0;
+        let skipped = 0;
 
-        return uniqueIds.map((id) => {
-          const current = this._rows.find((item) => item.id === id && !item.is_deleted);
-          if (!current) {
-            return { id, success: false, error: 'Training equipment not found' };
+        [...new Set(equipmentIds)].forEach((id) => {
+          const current = this.getById(id);
+          if (!current || current.installationStatus === newStatus) {
+            skipped += 1;
+            return;
           }
-
-          if (current.status === nextStatus) {
-            return { id, success: true, status: nextStatus };
-          }
-
-          const index = this._rows.findIndex((item) => item.id === id && !item.is_deleted);
-          this._rows[index] = {
-            ...this._rows[index],
-            status: nextStatus,
-            last_updated_at: now,
-            last_updated_by: changedBy,
-          };
-
-          this.appendHistory({
-            id: `TH-${Date.now()}-${id}`,
-            equipment_id: id,
-            changed_at: now,
-            changed_by: changedBy,
-            from_status: current.status,
-            to_status: nextStatus,
-            reason,
-          });
-
-          return { id, success: true, status: nextStatus };
+          this.changeStatus(id, newStatus, changedByName, changedReason);
+          updated += 1;
         });
+
+        return { updated, skipped };
       },
     },
   };

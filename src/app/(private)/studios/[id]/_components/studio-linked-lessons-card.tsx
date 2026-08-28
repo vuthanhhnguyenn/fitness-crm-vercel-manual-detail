@@ -2,11 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 
-import type { LinkedLessonSummary } from '@/app/api/_schemas/studio-detail.schema';
-
+import { Empty } from '@/components/common/data-state-boundary/empty';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 
+import { LinkedLessonSummary } from '@/lib/api';
 import { navigate } from '@/lib/routes/routes.util';
 
 interface StudioLinkedLessonsCardProps {
@@ -22,10 +22,15 @@ export function StudioLinkedLessonsCard({ lessons }: StudioLinkedLessonsCardProp
         <CardContent className="px-4">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-bold">紐付きレッスン</h3>
+            <Badge variant="secondary" className="text-[10px]">
+              0件
+            </Badge>
           </div>
-          <p className="text-muted-foreground text-center text-xs">
-            リンクされたレッスンはありません
-          </p>
+          <Empty
+            variant="empty"
+            title="紐付きレッスンはありません"
+            description="未利用のスタジオは削除できます"
+          />
         </CardContent>
       </Card>
     );

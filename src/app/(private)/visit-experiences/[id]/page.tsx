@@ -2,6 +2,8 @@
 
 import { use } from 'react';
 
+import { useSearchParams } from 'next/navigation';
+
 import { useQuery } from '@tanstack/react-query';
 
 import { BackLink } from '@/components/common/back-link';
@@ -30,11 +32,16 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
   visiting: 'bg-info/15 text-info border-info/20',
   visit_completed: 'bg-muted text-muted-foreground border-border',
   membership_applied: 'bg-success/15 text-success border-success/20',
-  cancelled: 'bg-muted text-muted-foreground border-border',
+  cancelled: 'bg-destructive/15 text-destructive border-destructive/20',
 };
 
 export default function VisitExperienceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
+  const backHref = returnTo
+    ? `${navigate('/visit-experiences')}?${returnTo}`
+    : navigate('/visit-experiences');
 
   const {
     data: record,
@@ -48,9 +55,9 @@ export default function VisitExperienceDetailPage({ params }: { params: Promise<
   return (
     <>
       <PageHeader
-        breadcrumb={<BackLink label="見学・体験管理に戻る" href={navigate('/visit-experiences')} />}
+        breadcrumb={<BackLink label="見学・体験管理に戻る" href={backHref} />}
         title={record?.customer_name ?? '見学・体験 詳細'}
-        subtitle={record ? `ID: ${record.id}` : undefined}
+        // subtitle={record ? `ID: ${record.id}` : undefined}
         badge={
           record ? (
             <Badge

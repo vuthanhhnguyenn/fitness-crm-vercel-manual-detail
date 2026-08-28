@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 import { db } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
+  WithdrawCancelRequestSchema,
   WithdrawCancelResponseSchema,
 } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
@@ -24,6 +25,10 @@ registerRoute({
       schema: { type: 'string' },
     },
   ],
+  requestBody: {
+    schema: WithdrawCancelRequestSchema,
+    description: 'Optional cancellation reason recorded for audit',
+  },
   responses: [
     {
       status: 200,
@@ -48,7 +53,7 @@ registerRoute({
   ],
 });
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
 
@@ -57,21 +62,20 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    if (member.profile.status !== MemberStatus.PENDING_WITHDRAWAL) {
-      return NextResponse.json(
-        { error: 'Member is not in pending_withdrawal state' },
-        { status: 409 },
-      );
+    if (member.memberStatus !== MemberStatus.PENDING_WITHDRAWAL) {
+      return NextResponse.json({ error: '退会予定の会員ではありません' }, { status: 409 });
     }
 
-    const members = (
-      db.members as unknown as {
-        _members: Array<{ basic_info: { id: string }; profile: { status: string } }>;
-      }
-    )._members;
-    const idx = members.findIndex((m) => m.basic_info.id === id);
-    if (idx !== -1) {
-      members[idx].profile.status = MemberStatus.ACTIVE;
+    const body = await request.json().catch(() => ({}));
+    const validationResult = WithdrawCancelRequestSchema.safeParse(body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.issues.map((issue) => issue.message).join(', ');
+      return NextResponse.json({ error: errors }, { status: 400 });
+    }
+
+    const updated = db.members.handleWithdrawCancel(id);
+    if (!updated) {
+      return NextResponse.json({ error: 'Failed to cancel the withdrawal' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, member_id: id }, { status: 200 });

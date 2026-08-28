@@ -7,7 +7,6 @@ import {
   GetManualNotificationsQuerySchema,
   type GetManualNotificationsResponse,
   GetManualNotificationsResponseSchema,
-  type ManualNotificationErrorResponse,
   ManualNotificationErrorResponseSchema,
   ManualNotificationListItemSchema,
   ManualNotificationUpsertBodySchema,
@@ -20,6 +19,7 @@ import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
 
 import { canReadManualNotification } from './_lib/manual-notification-access.util';
+import { manualNotificationErrorResponse } from './_lib/manual-notification-error.util';
 import {
   buildManualNotificationRow,
   validateManualNotificationTarget,
@@ -63,23 +63,6 @@ registerRoute({
 
 type SortableField = 'id' | 'title' | 'status' | 'updatedAt';
 
-function errorResponse(
-  status: 400 | 401 | 403,
-  code: 'E-VAL-001' | 'E-AUTH-001' | 'E-AUTH-006',
-  message: string,
-  userMessage: string,
-  details?: Record<string, unknown>,
-) {
-  const body: ManualNotificationErrorResponse = {
-    code,
-    message,
-    userMessage,
-    traceId: crypto.randomUUID(),
-    ...(details ? { details } : {}),
-  };
-  return NextResponse.json(body, { status });
-}
-
 function targetSearchText(item: ManualNotificationRow): string {
   switch (item.target.type) {
     case 'all_members':
@@ -116,16 +99,14 @@ function compareRows(
 export async function GET(request: NextRequest) {
   const auth = getAuthUserFromRequest(request);
   if (!auth.ok) {
-    const code = auth.status === 401 ? 'E-AUTH-001' : 'E-AUTH-006';
-    return errorResponse(auth.status, code, auth.error, 'Authentication or authorization failed');
+    return manualNotificationErrorResponse(auth.status, 'この操作を実行する権限がありません');
   }
 
   if (!hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsView])) {
-    return errorResponse(
+    return manualNotificationErrorResponse(
       403,
+      'この操作を実行する権限がありません',
       'E-AUTH-006',
-      'Manual notification capability is required',
-      'You do not have permission to view manual notifications',
     );
   }
 
@@ -142,18 +123,10 @@ export async function GET(request: NextRequest) {
 
   const parsedQuery = GetManualNotificationsQuerySchema.safeParse(queryInput);
   if (!parsedQuery.success) {
-    return errorResponse(
+    return manualNotificationErrorResponse(
       400,
+      '検索条件に誤りがあります',
       'E-VAL-001',
-      'Request query validation failed',
-      'One or more query parameters are invalid',
-      {
-        issues: parsedQuery.error.issues.map((issue) => ({
-          path: issue.path.join('.'),
-          code: issue.code,
-          message: issue.message,
-        })),
-      },
     );
   }
 
@@ -216,15 +189,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = getAuthUserFromRequest(request);
   if (!auth.ok) {
-    const code = auth.status === 401 ? 'E-AUTH-001' : 'E-AUTH-006';
-    return errorResponse(auth.status, code, auth.error, 'Authentication or authorization failed');
+    return manualNotificationErrorResponse(auth.status, 'この操作を実行する権限がありません');
   }
   if (!hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsCreate])) {
-    return errorResponse(
+    return manualNotificationErrorResponse(
       403,
-      'E-AUTH-006',
-      'Insufficient permissions',
       'この操作を実行する権限がありません',
+      'E-AUTH-006',
     );
   }
 
@@ -232,43 +203,28 @@ export async function POST(request: NextRequest) {
     await request.json().catch(() => null),
   );
   if (!parsed.success) {
-    return errorResponse(400, 'E-VAL-001', 'Invalid notification payload', '通知内容が不正です');
+    return manualNotificationErrorResponse(400, '通知内容が不正です');
   }
 
   const body = parsed.data;
   const allowedStoreIds = getAllowedStoreIds(auth.user);
   const targetValidationError = validateManualNotificationTarget(body.target, allowedStoreIds);
   if (targetValidationError === 'not_found') {
-    return errorResponse(
-      400,
-      'E-VAL-001',
-      'One or more notification targets do not exist',
-      '配信対象が存在しません',
-    );
+    return manualNotificationErrorResponse(400, '配信対象が存在しません');
   }
   if (targetValidationError === 'out_of_scope') {
-    return errorResponse(
-      403,
-      'E-AUTH-006',
-      'Target is outside the caller store scope',
-      '所属店舗以外の会員には配信できません',
-    );
+    return manualNotificationErrorResponse(403, '所属店舗以外の会員には配信できません');
   }
 
   const timingError =
     body.intent === 'submit' ? validateManualNotificationTiming(body.timing) : undefined;
   if (timingError) {
-    return errorResponse(400, 'E-VAL-001', timingError, timingError);
+    return manualNotificationErrorResponse(400, timingError, 'E-VAL-001');
   }
 
   const targetCount = db.manualNotifications.estimateTargetCount(body.target);
   if (body.intent === 'submit' && targetCount === 0) {
-    return errorResponse(
-      400,
-      'E-VAL-001',
-      'No eligible recipients',
-      '配信対象の会員が存在しません',
-    );
+    return manualNotificationErrorResponse(400, '配信対象の会員が存在しません');
   }
 
   const row = db.manualNotifications.create(

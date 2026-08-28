@@ -1,97 +1,87 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+// Client-only: column cells carry click handlers and render inside a client table.
+import Link from 'next/link';
 
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { BrandBadge } from '@/components/common/brand-badge';
-import { DataTableColumnHeader } from '@/components/common/data-table/data-table-column-header';
 import { Badge } from '@/components/ui/badge';
 
-import type { Brand, GetCrmLeavesResponse } from '@/lib/api/types.gen';
+import type { GetCrmLeavesResponse } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
-import {
-  LEAVE_STATUS_CLASSES,
-  LEAVE_STATUS_LABELS,
-  LEAVE_TYPE_CLASSES,
-  LEAVE_TYPE_LABELS,
-} from '../_constants/constants';
+import { LEAVE_STATUS_CLASSES, LEAVE_STATUS_LABELS } from '../_constants/constants';
+import { LeavesRowActions } from './leaves-row-actions';
 
 type LeaveRow = NonNullable<GetCrmLeavesResponse['leaves']>[number];
 
-export function LeavesTableColumns(): ColumnDef<LeaveRow>[] {
-  const router = useRouter();
+interface LeavesTableColumnsOptions {
+  /** FR-008 — 店舗名 only earns a column when the caller can see more than one store. */
+  showStoreColumn: boolean;
+  onCancelClick: (row: LeaveRow) => void;
+}
 
-  return [
+export function LeavesTableColumns({
+  showStoreColumn,
+  onCancelClick,
+}: LeavesTableColumnsOptions): ColumnDef<LeaveRow>[] {
+  const columns: ColumnDef<LeaveRow>[] = [
     {
-      accessorKey: 'id',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="申請ID" />,
-      cell: ({ row }) => (
-        <span className="text-muted-foreground font-mono text-xs">{row.original.id}</span>
-      ),
-      meta: { label: '申請ID' },
-    },
-    {
-      accessorKey: 'member_id',
+      accessorKey: 'member_number',
       header: '会員ID',
+      // FR-009 — the operator-facing member number, never the internal UUID.
       cell: ({ row }) => (
-        <span className="text-muted-foreground font-mono text-xs">{row.original.member_id}</span>
+        <span className="text-muted-foreground font-mono text-xs">
+          {row.original.member_number}
+        </span>
       ),
+      enableSorting: false,
+      meta: { className: 'w-25' },
     },
     {
       accessorKey: 'member_name',
       header: '会員名',
+      // FR-011 — opens the member, not the application, so the row click is stopped here.
       cell: ({ row }) => (
-        <span
-          className="cursor-pointer text-sm font-medium hover:underline"
-          onClick={(e) => {
-            e.stopPropagation();
-            router.push(navigate('/members/[id]', row.original.member_id));
-          }}
+        <Link
+          href={navigate('/members/[id]', row.original.member_id)}
+          className="text-sm font-medium hover:underline"
+          onClick={(e) => e.stopPropagation()}
         >
           {row.original.member_name}
-        </span>
+        </Link>
       ),
+      enableSorting: false,
       meta: { label: '会員名' },
     },
     {
       accessorKey: 'brand',
       header: 'ブランド',
-      cell: ({ row }) => {
-        return <BrandBadge brand={row.original.brand as Brand} />;
-      },
+      cell: ({ row }) => <BrandBadge brand={row.original.brand} />,
+      enableSorting: false,
+      meta: { className: 'w-25' },
     },
-    {
+  ];
+
+  if (showStoreColumn) {
+    columns.push({
       accessorKey: 'store_name',
       header: '店舗名',
       cell: ({ row }) => <span className="text-xs">{row.original.store_name}</span>,
-    },
-    {
-      accessorKey: 'type',
-      header: '種別',
-      cell: ({ row }) => {
-        const type = row.original.type;
-        return (
-          <Badge variant="outline" className={`text-[10px] ${LEAVE_TYPE_CLASSES[type]}`}>
-            {LEAVE_TYPE_LABELS[type]}
-          </Badge>
-        );
-      },
-    },
+      enableSorting: false,
+    });
+  }
+
+  columns.push(
     {
       accessorKey: 'status',
       header: 'ステータス',
+      // FR-010 — the list only ever carries the four in-progress states; the plain
+      // 処理完了 variant lives on the detail screen alone (research.md §3).
       cell: ({ row }) => {
         const status = row.original.status;
         const cfg = LEAVE_STATUS_CLASSES[status];
-        if (!cfg.isOutline) {
-          return (
-            <Badge variant="secondary" className="text-[10px]">
-              {LEAVE_STATUS_LABELS[status]}
-            </Badge>
-          );
-        }
         return (
           <Badge variant="outline" className={`text-[10px] ${cfg.badge}`}>
             <span className={`mr-1 inline-block size-1.5 rounded-full ${cfg.dot}`} />
@@ -99,21 +89,24 @@ export function LeavesTableColumns(): ColumnDef<LeaveRow>[] {
           </Badge>
         );
       },
-      meta: { label: 'ステータス' },
+      enableSorting: false,
+      meta: { label: 'ステータス', className: 'w-30' },
     },
     {
       accessorKey: 'applied_at',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="申請日" />,
+      header: '申請日',
       cell: ({ row }) => (
         <span className="text-muted-foreground text-xs">{row.original.applied_at}</span>
       ),
-      meta: { label: '申請日' },
+      enableSorting: false,
+      meta: { label: '申請日', className: 'w-25' },
     },
     {
       accessorKey: 'scheduled_date',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="予定日" />,
+      header: '予定日',
       cell: ({ row }) => <span className="text-xs">{row.original.scheduled_date}</span>,
-      meta: { label: '予定日' },
+      enableSorting: false,
+      meta: { label: '予定日', className: 'w-25' },
     },
     {
       accessorKey: 'end_date',
@@ -121,6 +114,8 @@ export function LeavesTableColumns(): ColumnDef<LeaveRow>[] {
       cell: ({ row }) => (
         <span className="text-muted-foreground text-xs">{row.original.end_date ?? '—'}</span>
       ),
+      enableSorting: false,
+      meta: { className: 'w-25' },
     },
     {
       accessorKey: 'unpaid_amount',
@@ -135,6 +130,22 @@ export function LeavesTableColumns(): ColumnDef<LeaveRow>[] {
           </span>
         );
       },
+      enableSorting: false,
+      meta: { className: 'w-25 text-right' },
     },
-  ];
+    {
+      id: 'actions',
+      header: () => null,
+      // FR-041 — the menu must not double as a row click; it opens the dialog only.
+      cell: ({ row }) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <LeavesRowActions row={row.original} onCancelClick={onCancelClick} />
+        </div>
+      ),
+      enableSorting: false,
+      meta: { className: 'w-14' },
+    },
+  );
+
+  return columns;
 }

@@ -1,26 +1,32 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { useRouter } from 'next/navigation';
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { SortingState } from '@tanstack/react-table';
 
+import { Empty } from '@/components/common/data-state-boundary/empty';
 import { DataTable } from '@/components/common/data-table';
-import { TablePagination } from '@/components/common/table-pagination';
+import { FilterResultBanner } from '@/components/common/filter-result-banner';
+import { TablePaginationWithSize } from '@/components/common/table-pagination-with-size';
 import { Card } from '@/components/ui/card';
 
 import { getCrmLockersContractsOptions } from '@/lib/api/@tanstack/react-query.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
+import {
+  LOCKER_CONTRACT_STATUS_LABELS,
+  LOCKER_OPTION_TYPE_LABELS,
+} from '../../_constants/constants';
+import { useQueryErrorToast } from '../../_hooks/use-query-error-toast.hook';
 import { useLockerContractsFilters } from '../_hooks/use-locker-contracts-filters';
 import { LockerContractsFilters } from './locker-contracts-filters';
 import { getLockerContractsTableColumns } from './locker-contracts-table-columns';
 
 export function LockerContractsPageContent() {
   const router = useRouter();
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const {
     filters,
     queryParams,
@@ -31,20 +37,21 @@ export function LockerContractsPageContent() {
     currentPage,
     setCurrentPage,
     pageSize,
+    setPageSize,
     hasActiveFilters,
-    activeFilterCount,
   } = useLockerContractsFilters();
 
-  const { data, isLoading } = useQuery({
-    ...getCrmLockersContractsOptions({
-      query: queryParams,
-    }),
+  const { data, isLoading, isFetching, isError } = useQuery({
+    ...getCrmLockersContractsOptions({ query: queryParams }),
+    placeholderData: keepPreviousData,
   });
 
-  const contracts = data?.contracts ?? [];
+  useQueryErrorToast(isError, '契約一覧の取得に失敗しました');
+
+  const contracts = useMemo(() => data?.contracts ?? [], [data?.contracts]);
   const pagination = data?.pagination;
-  const total = pagination?.total ?? 0;
-  const totalPages = pagination?.total_pages ?? 0;
+  const totalContracts = pagination?.all_total ?? 0;
+  const filteredTotal = pagination?.total ?? 0;
   const page = pagination?.page ?? currentPage;
   const limit = pagination?.limit ?? pageSize;
 
@@ -73,31 +80,48 @@ export function LockerContractsPageContent() {
   };
 
   return (
-    <Card className="gap-3 overflow-hidden rounded-xl border p-0">
-      <div className="p-3 pb-0">
+    <Card className="flex gap-0 overflow-hidden rounded-xl border p-0">
+      <div className="px-4 py-3">
         <LockerContractsFilters
-          activeFilterCount={activeFilterCount}
-          clearFilters={clearFilters}
           filters={filters}
-          hasActiveFilters={hasActiveFilters}
-          isFilterOpen={isFilterOpen}
           searchInput={searchInput}
           setFilters={setFilters}
-          setIsFilterOpen={setIsFilterOpen}
           setSearchInput={setSearchInput}
         />
       </div>
+
+      <FilterResultBanner
+        show={hasActiveFilters}
+        totalCount={totalContracts}
+        filteredCount={filteredTotal}
+        filterSummary={[
+          filters.locker_contracts_search ? `"${filters.locker_contracts_search}"` : '',
+          filters.locker_contracts_status
+            ? LOCKER_CONTRACT_STATUS_LABELS[filters.locker_contracts_status]
+            : '',
+          filters.locker_contracts_type
+            ? LOCKER_OPTION_TYPE_LABELS[filters.locker_contracts_type]
+            : '',
+        ]}
+        onClear={clearFilters}
+      />
 
       <DataTable
         columns={columns}
         data={contracts}
         isLoading={isLoading}
+        isFetching={isFetching}
         variant="simple"
         className="rounded-none border-x-0 border-b-0"
-        containerClassName={
-          isFilterOpen ? 'max-h-[calc(100vh-320px)]' : 'max-h-[calc(100vh-270px)]'
-        }
+        containerClassName="max-h-[calc(100vh-300px)]"
         onRowClick={(row) => router.push(navigate('/lockers/contracts/[id]', row.id))}
+        emptyContent={
+          <Empty
+            variant={hasActiveFilters ? 'filtered' : 'empty'}
+            entityLabel="契約"
+            onAction={hasActiveFilters ? clearFilters : undefined}
+          />
+        }
         tableOptions={{
           manualSorting: true,
           onSortingChange: handleSortingChange,
@@ -105,13 +129,12 @@ export function LockerContractsPageContent() {
         }}
       />
 
-      <TablePagination
+      <TablePaginationWithSize
         currentPage={page}
-        totalPages={totalPages}
-        total={total}
-        limit={limit}
+        total={filteredTotal}
+        pageSize={limit}
         onPageChange={setCurrentPage}
-        isLoading={isLoading}
+        onPageSizeChange={setPageSize}
       />
     </Card>
   );

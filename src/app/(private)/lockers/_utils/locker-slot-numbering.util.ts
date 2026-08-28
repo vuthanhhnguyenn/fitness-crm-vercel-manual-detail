@@ -1,16 +1,18 @@
 import type { LockerNumberingPattern, LockerShape } from '@/lib/api/types.gen';
 
+/** E-01 shape definitions: only 4 shapes — 3 rows × 9 / 7 / 5 / 2 columns */
 export const LOCKER_SHAPE_DIMENSIONS: Record<LockerShape, { rows: number; cols: number }> = {
   '3x9': { rows: 3, cols: 9 },
-  '3x6': { rows: 3, cols: 6 },
-  '2x10': { rows: 2, cols: 10 },
-  '2x4': { rows: 2, cols: 4 },
+  '3x7': { rows: 3, cols: 7 },
+  '3x5': { rows: 3, cols: 5 },
+  '3x2': { rows: 3, cols: 2 },
 };
 
-export function getLockerSlotCount(shape: LockerShape): number {
-  const { rows, cols } = LOCKER_SHAPE_DIMENSIONS[shape];
-  return rows * cols;
-}
+/**
+ * E-01 FR-003: slot numbers are auto-assigned from the shape and numbering pattern.
+ * Manual numbering is not allowed, so numbering always starts at 1.
+ */
+export const LOCKER_SLOT_START_NUMBER = 1;
 
 /** row/col are 1-based; row 1 = bottom row in the visual grid */
 export function getSlotNumber(
@@ -68,16 +70,4 @@ export function buildLockerSlotPositions(
   }
 
   return slots;
-}
-
-export function buildNumberingPatternLabel(
-  prefix: string,
-  shape: LockerShape,
-  pattern: LockerNumberingPattern,
-  startNum: number,
-): string {
-  const total = getLockerSlotCount(shape);
-  const first = formatSlotId(prefix, startNum);
-  const last = formatSlotId(prefix, startNum + total - 1);
-  return `${first}〜${last}`;
 }

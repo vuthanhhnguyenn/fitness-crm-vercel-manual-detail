@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
+import {
+  isTransferVisible,
+  roleHasPermission,
+  withCanAct,
+} from '@/app/api/_lib/transfer-permission';
 import { db } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
@@ -10,12 +16,15 @@ import {
 } from '@/app/api/_schemas/transfer.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
 
+import { Permission } from '@/types/permission.type';
+
 // Register OpenAPI documentation for this route
 registerRoute({
   method: 'get',
   path: '/crm/transfers',
   summary: 'Get transfer requests list',
-  description: 'Get paginated list of transfer requests with filtering and sorting',
+  description:
+    'Get a paginated, filterable list of transfer requests, scoped to the stores the caller can access (matching either the origin or the destination store)',
   tags: ['Transfers'],
   query: GetTransfersQuerySchema,
   responses: [
@@ -29,6 +38,8 @@ registerRoute({
       schema: ErrorResponseSchema,
       description: 'Bad request - invalid query parameters',
     },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthenticated' },
+    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden - no accessible stores' },
     {
       status: 500,
       schema: ErrorResponseSchema,
@@ -37,8 +48,36 @@ registerRoute({
   ],
 });
 
+/** Intersects the requested `store_id` scope with the caller's role-based store scope. */
+function resolveStoreScope(
+  allowedStoreIds: string[] | null,
+  requestedStoreId: string | undefined,
+): string[] | null {
+  const requested = requestedStoreId && requestedStoreId !== 'all' ? [requestedStoreId] : null;
+  if (allowedStoreIds === null) return requested;
+  if (requested === null) return allowedStoreIds;
+  return requested.filter((id) => allowedStoreIds.includes(id));
+}
+
 export async function GET(request: NextRequest) {
   try {
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    const user = authResult.user;
+
+    // Trainer holds no MembersTransfersView, so the page guard redirects them to /403 — but the
+    // endpoint has to say no as well, or a direct call still hands them other stores' data.
+    if (!roleHasPermission(user, Permission.MembersTransfersView)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const allowedStoreIds = getAllowedStoreIds(user);
+    if (allowedStoreIds !== null && allowedStoreIds.length === 0) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
 
     // Build query object from searchParams
@@ -62,14 +101,24 @@ export async function GET(request: NextRequest) {
       status,
       from_store_id,
       to_store_id,
+      store_id,
       brand,
       applied_period,
+      auto_transfer,
       sort_by = 'applied_at',
       sort_order = 'desc',
     } = query;
 
-    // Get data from shared mock DB
-    let filtered = db.transfers.getAll();
+    const scope = resolveStoreScope(allowedStoreIds, store_id);
+    if (scope !== null && scope.length === 0) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Store scope first, so `total` reflects the scoped-and-filtered count and the filter
+    // banner cannot disagree with the pagination summary (PAR015, PAR034).
+    const scoped = db.transfers.getAll().filter((t) => isTransferVisible(t, scope));
+    const scopedTotal = scoped.length;
+    let filtered = scoped;
 
     // Apply free-text search on id and member_name
     if (search) {
@@ -99,6 +148,13 @@ export async function GET(request: NextRequest) {
     // Apply brand filter
     if (brand) {
       filtered = filtered.filter((t) => t.brand === brand);
+    }
+
+    // FR-006: eligibility is a JOYFIT concept, so both options exclude FIT365 entirely.
+    if (auto_transfer === 'eligible') {
+      filtered = filtered.filter((t) => t.brand === 'joyfit' && t.auto_transfer_eligible === true);
+    } else if (auto_transfer === 'excluded') {
+      filtered = filtered.filter((t) => t.brand === 'joyfit' && t.auto_transfer_eligible === false);
     }
 
     // Apply applied_period filter
@@ -141,11 +197,13 @@ export async function GET(request: NextRequest) {
     const total = filtered.length;
     const total_pages = Math.ceil(total / limit);
     const startIndex = (page - 1) * limit;
-    const transfers = filtered.slice(startIndex, startIndex + limit);
+    const transfers = filtered
+      .slice(startIndex, startIndex + limit)
+      .map((t) => withCanAct(t, user));
 
     const response: GetTransfersResponse = {
       transfers,
-      pagination: { page, limit, total, total_pages },
+      pagination: { page, limit, total, total_pages, scoped_total: scopedTotal },
     };
 
     return NextResponse.json(response);

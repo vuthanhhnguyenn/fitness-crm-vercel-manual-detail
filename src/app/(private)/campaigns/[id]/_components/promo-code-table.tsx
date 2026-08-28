@@ -1,6 +1,7 @@
 'use client';
 
-import { Ban, Check, Copy, MoreHorizontal, Pencil } from 'lucide-react';
+import { formatDateYYYYMMDD } from '@/utils/date.util';
+import { Ban, Check, Copy, MoreHorizontal } from 'lucide-react';
 
 import { RoleGatedMenuItem } from '@/components/common/role-gated-menu-item';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -20,169 +20,134 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+import { cn } from '@/lib/utils';
+
 import { Permission } from '@/types/permission.type';
 
-import { PROMO_CODE_STATUS_LABELS } from '../_constants/promo-code.constants';
+import {
+  PROMO_CODE_INACTIVE_STATUSES,
+  PROMO_CODE_SCOPE_LABELS,
+  PROMO_CODE_STATUS_BADGE_CLASSES,
+  PROMO_CODE_STATUS_LABELS,
+} from '../../_constants/constants';
+import type { PromoCodesTabHook } from '../_hooks/use-promo-codes-tab';
 
-export type PromoCodeListRowStatus = 'active' | 'expired' | 'limit_reached' | 'inactive';
+const DASH = '—';
 
-export interface PromoCodeListRow {
-  code: string;
-  description: string | null;
-  campaignName: string;
-  validFrom: string;
-  validTo: string;
-  usageCount: number | null;
-  usageCap: number | null;
-  usageCapLabel: string;
-  storeScopeLabel: string;
-  issuedByLabel: string;
-  discountTotalLabel: string;
-  status: PromoCodeListRowStatus;
-}
-
-interface PromoCodeTableProps {
-  rows: PromoCodeListRow[];
-  copiedCode: string | null;
-  onCopyCode: (code: string) => void;
-  onRequestDisable: (row: PromoCodeListRow) => void;
-}
-
-const STATUS_CLASS_NAMES: Record<PromoCodeListRowStatus, string> = {
-  active: 'border-success/20 bg-success/15 text-success',
-  expired: 'border-warning/20 bg-warning/15 text-warning',
-  limit_reached: 'border-destructive/20 bg-destructive/15 text-destructive',
-  inactive: 'border-border bg-muted text-muted-foreground',
-};
-
-function formatCount(value: number | null): string {
-  return value === null ? '—' : value.toLocaleString();
-}
-
-export function PromoCodeTable({
-  rows,
-  copiedCode,
-  onCopyCode,
-  onRequestDisable,
-}: PromoCodeTableProps) {
+export function PromoCodeTable({ tab }: Readonly<{ tab: PromoCodesTabHook }>) {
   return (
     <Table>
       <TableHeader>
         <TableRow className="bg-muted/50">
           <TableHead className="min-w-[160px] text-xs font-semibold">コード</TableHead>
           <TableHead className="min-w-[180px] text-xs font-semibold">説明</TableHead>
-          <TableHead className="min-w-[180px] text-xs font-semibold">
-            有効期間（G-06 FR-004）
-          </TableHead>
-          <TableHead className="w-[120px] text-xs font-semibold">
-            使用 / 有効数（G-06 FR-005）
-          </TableHead>
+          <TableHead className="min-w-[180px] text-xs font-semibold">有効期間</TableHead>
+          <TableHead className="w-[130px] text-xs font-semibold">使用済み / 使用上限</TableHead>
           <TableHead className="w-[80px] text-xs font-semibold">残数</TableHead>
-          <TableHead className="w-[120px] text-xs font-semibold">適用店舗（G-06）</TableHead>
-          <TableHead className="w-[100px] text-xs font-semibold">ステータス</TableHead>
-          <TableHead className="w-[120px] text-right text-xs font-semibold">
-            <span className="inline-flex items-center gap-1">
-              割引合計
-              <span className="text-muted-foreground text-[9px] font-normal">(Phase 2)</span>
-            </span>
-          </TableHead>
+          <TableHead className="w-[80px] text-xs font-semibold">使用率</TableHead>
+          <TableHead className="w-[120px] text-xs font-semibold">適用店舗</TableHead>
+          <TableHead className="w-[110px] text-xs font-semibold">ステータス</TableHead>
           <TableHead className="w-10 text-xs font-semibold" />
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={9} className="text-muted-foreground py-10 text-center text-sm">
-              条件に一致するプロモーションコードはありません。
+        {tab.promoCodes.map((promoCode) => (
+          <TableRow
+            key={promoCode.id}
+            className={cn(
+              PROMO_CODE_INACTIVE_STATUSES.includes(promoCode.effectiveStatus) && 'opacity-60',
+            )}
+          >
+            <TableCell>
+              <div className="flex items-center gap-2">
+                <code className="bg-muted rounded px-2 py-1 font-mono text-xs">
+                  {promoCode.code}
+                </code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="size-6 p-0"
+                  onClick={() => tab.copyCode(promoCode.code)}
+                  aria-label="コードをコピー"
+                >
+                  {tab.copiedCode === promoCode.code ? (
+                    <Check className="text-success size-3" />
+                  ) : (
+                    <Copy className="text-muted-foreground size-3" />
+                  )}
+                </Button>
+              </div>
+            </TableCell>
+            <TableCell
+              className="max-w-[280px] truncate text-xs"
+              title={promoCode.description ?? undefined}
+            >
+              {promoCode.description ?? DASH}
+            </TableCell>
+            <TableCell className="text-xs">
+              {formatDateYYYYMMDD(promoCode.validFrom)} 〜 {formatDateYYYYMMDD(promoCode.validTo)}
+            </TableCell>
+            <TableCell className="text-xs">
+              <span className="font-medium">{promoCode.usedCount}</span>
+              <span className="text-muted-foreground">
+                {' / '}
+                {promoCode.maxUses === null ? '無制限' : `${promoCode.maxUses}回`}
+              </span>
+            </TableCell>
+            <TableCell className="text-xs font-medium">
+              {promoCode.remaining === null ? (
+                <span className="text-muted-foreground">{DASH}</span>
+              ) : (
+                promoCode.remaining
+              )}
+            </TableCell>
+            <TableCell className="text-xs font-medium">
+              {promoCode.usageRate === null ? (
+                <span className="text-muted-foreground">{DASH}</span>
+              ) : (
+                `${promoCode.usageRate}%`
+              )}
+            </TableCell>
+            <TableCell>
+              <Badge variant="outline" className="text-[10px]">
+                {PROMO_CODE_SCOPE_LABELS[promoCode.scopeType]}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <Badge
+                variant="outline"
+                className={cn(
+                  'text-[10px]',
+                  PROMO_CODE_STATUS_BADGE_CLASSES[promoCode.effectiveStatus],
+                )}
+              >
+                {PROMO_CODE_STATUS_LABELS[promoCode.effectiveStatus]}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="hover:bg-muted flex size-8 items-center justify-center rounded-md"
+                  aria-label="promo code actions"
+                >
+                  <MoreHorizontal className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {/* G-06 FR-007 途中無効化: 理由必須の確認ダイアログを開く */}
+                  <RoleGatedMenuItem
+                    requiredPermission={Permission.CampaignsPromoCodeDelete}
+                    className="text-destructive"
+                    disabled={promoCode.status === 'disabled'}
+                    onClick={() => tab.setDisableTarget(promoCode)}
+                  >
+                    <Ban className="size-4" />
+                    無効化
+                  </RoleGatedMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </TableCell>
           </TableRow>
-        ) : (
-          rows.map((row) => {
-            const statusClass = STATUS_CLASS_NAMES[row.status];
-            const remaining =
-              row.usageCap === null ? '—' : Math.max(0, row.usageCap - (row.usageCount ?? 0));
-            const shouldDim =
-              row.status === 'inactive' ||
-              row.status === 'expired' ||
-              row.status === 'limit_reached';
-
-            return (
-              <TableRow key={row.code} className={shouldDim ? 'opacity-60' : undefined}>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <code className="bg-muted rounded px-2 py-1 font-mono text-xs">{row.code}</code>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="size-6 p-0"
-                      onClick={() => onCopyCode(row.code)}
-                    >
-                      {copiedCode === row.code ? (
-                        <Check className="text-success size-3" />
-                      ) : (
-                        <Copy className="text-muted-foreground size-3" />
-                      )}
-                    </Button>
-                  </div>
-                </TableCell>
-                <TableCell className="text-xs">
-                  {row.description ? (
-                    row.description
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {row.validFrom} 〜 {row.validTo}
-                </TableCell>
-                <TableCell className="text-xs">
-                  <span className="font-medium">{formatCount(row.usageCount)}</span>
-                  <span className="text-muted-foreground"> / {row.usageCapLabel}</span>
-                </TableCell>
-                <TableCell className="text-xs font-medium">{remaining}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="text-[10px]">
-                    {row.storeScopeLabel}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={`text-[10px] ${statusClass}`}>
-                    {PROMO_CODE_STATUS_LABELS[row.status]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right text-xs font-medium">
-                  {row.discountTotalLabel}
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className="hover:bg-muted flex size-8 items-center justify-center rounded-md">
-                      <MoreHorizontal className="size-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <RoleGatedMenuItem
-                        requiredPermission={Permission.CampaignsPromoCodeEdit}
-                        disabled
-                      >
-                        <Pencil className="size-4" />
-                        編集
-                      </RoleGatedMenuItem>
-                      <DropdownMenuSeparator />
-                      <RoleGatedMenuItem
-                        requiredPermission={Permission.CampaignsPromoCodeDelete}
-                        className="text-destructive"
-                        disabled={row.status === 'inactive'}
-                        onClick={() => onRequestDisable(row)}
-                      >
-                        <Ban className="size-4" />
-                        無効化
-                      </RoleGatedMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            );
-          })
-        )}
+        ))}
       </TableBody>
     </Table>
   );

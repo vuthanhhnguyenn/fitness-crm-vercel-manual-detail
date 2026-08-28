@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { type FieldError, useFormContext } from 'react-hook-form';
 
 import { RotateCcw } from 'lucide-react';
@@ -134,17 +134,24 @@ function SpaceLayoutEditorContent({ value, onChange, error }: SpaceLayoutEditorC
   const columns = value?.columns ?? DEFAULT_COLUMNS;
   const cells = value?.cells ?? createEmptyCells(DEFAULT_ROWS, DEFAULT_COLUMNS);
   const [selectedMode, setSelectedMode] = useState<LayoutCell['kind']>('normal_seat');
+  const initialLayoutRef = useRef<SpaceLayout>({ rows, columns, cells });
 
   const gridCells = useMemo(() => {
     const cellMap = new Map<string, LayoutCell>();
     for (const cell of cells) {
       cellMap.set(`${cell.x},${cell.y}`, cell);
     }
-    const result: LayoutCell[] = [];
+    // Number seats continuously 1..N in reading order (left-to-right, top-to-bottom);
+    // only normal seats (通常席) get a number — equipment/pillar cells stay label-only.
+    let seatNumber = 0;
+    const result: Array<LayoutCell & { seatNumber?: number }> = [];
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < columns; x++) {
-        const key = `${x},${y}`;
-        result.push(cellMap.get(key) ?? { x, y, kind: 'empty' });
+        const cell = cellMap.get(`${x},${y}`) ?? { x, y, kind: 'empty' };
+        result.push({
+          ...cell,
+          seatNumber: cell.kind === 'normal_seat' ? ++seatNumber : undefined,
+        });
       }
     }
     return result;
@@ -163,8 +170,12 @@ function SpaceLayoutEditorContent({ value, onChange, error }: SpaceLayoutEditorC
 
   const handleCellClick = useCallback(
     (x: number, y: number) => {
-      const newCells = gridCells.map((cell) =>
-        cell.x === x && cell.y === y ? { ...cell, kind: selectedMode } : cell,
+      const newCells = gridCells.map(
+        (cell): LayoutCell => ({
+          x: cell.x,
+          y: cell.y,
+          kind: cell.x === x && cell.y === y ? selectedMode : cell.kind,
+        }),
       );
       onChange({ rows, columns, cells: newCells });
     },
@@ -192,7 +203,8 @@ function SpaceLayoutEditorContent({ value, onChange, error }: SpaceLayoutEditorC
   );
 
   const handleReset = useCallback(() => {
-    onChange({ rows: DEFAULT_ROWS, columns: DEFAULT_COLUMNS, cells: [] });
+    const initial = initialLayoutRef.current;
+    onChange({ rows: initial.rows, columns: initial.columns, cells: initial.cells });
   }, [onChange]);
 
   return (
@@ -269,14 +281,14 @@ function SpaceLayoutEditorContent({ value, onChange, error }: SpaceLayoutEditorC
             gridTemplateColumns: `repeat(${columns}, minmax(0, 2.5rem))`,
           }}
         >
-          {gridCells.map((cell, idx) => (
+          {gridCells.map((cell) => (
             <div
               key={`${cell.x}-${cell.y}`}
               onClick={() => handleCellClick(cell.x, cell.y)}
               className={CELL_STYLES[cell.kind]}
             >
               {cell.kind === 'normal_seat'
-                ? idx + 1
+                ? cell.seatNumber
                 : cell.kind === 'equipment_seat'
                   ? '器材'
                   : cell.kind === 'fixed_object'

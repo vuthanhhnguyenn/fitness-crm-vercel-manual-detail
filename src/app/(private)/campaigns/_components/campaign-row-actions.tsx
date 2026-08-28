@@ -2,12 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 
-import { MoreHorizontal, Pencil } from 'lucide-react';
+import { Copy, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 
 import { RoleGatedMenuItem } from '@/components/common/role-gated-menu-item';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -17,15 +18,16 @@ import { Permission } from '@/types/permission.type';
 
 type CampaignRowActionsProps = {
   campaignId: string;
+  onDeleteClick: () => void;
   className?: string;
 };
 
-export function CampaignRowActions({ campaignId, className }: Readonly<CampaignRowActionsProps>) {
+export function CampaignRowActions({
+  campaignId,
+  onDeleteClick,
+  className,
+}: Readonly<CampaignRowActionsProps>) {
   const router = useRouter();
-
-  const handleEdit = () => {
-    router.push(navigate('/campaigns/[id]/edit', campaignId));
-  };
 
   return (
     <DropdownMenu>
@@ -41,11 +43,34 @@ export function CampaignRowActions({ campaignId, className }: Readonly<CampaignR
           requiredPermission={Permission.CampaignsEdit}
           onClick={(event) => {
             event.stopPropagation();
-            handleEdit();
+            router.push(navigate('/campaigns/[id]/edit', campaignId));
           }}
         >
           <Pencil className="size-4" />
           編集
+        </RoleGatedMenuItem>
+        {/* G-03 FR-S003: 全設定をコピーした状態で新規登録画面を開く */}
+        <RoleGatedMenuItem
+          requiredPermission={Permission.CampaignsCreate}
+          onClick={(event) => {
+            event.stopPropagation();
+            router.push(`${navigate('/campaigns/create')}?copyFrom=${campaignId}`);
+          }}
+        >
+          <Copy className="size-4" />
+          複製
+        </RoleGatedMenuItem>
+        <DropdownMenuSeparator />
+        <RoleGatedMenuItem
+          requiredPermission={Permission.CampaignsEdit}
+          className="text-destructive"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDeleteClick();
+          }}
+        >
+          <Trash2 className="size-4" />
+          削除
         </RoleGatedMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

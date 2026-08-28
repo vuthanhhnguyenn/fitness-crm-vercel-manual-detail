@@ -2,10 +2,12 @@
 
 import type { Dispatch, SetStateAction } from 'react';
 
+import { formatDateYYYYMMDD, parseDate } from '@/utils/date.util';
 import { ChevronDown, ChevronUp, Search, SlidersHorizontal } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -18,15 +20,11 @@ import {
 import type { LockerPendingLocation as LockerPendingLocationValue } from '@/lib/api/types.gen';
 
 import { LOCKER_PENDING_LOCATION_LABELS } from '../../_constants/constants';
+import { LockerPendingStoreSelect } from './locker-pending-store-select';
 
 function filterActiveClass(isActive: boolean) {
   return isActive ? 'border-primary bg-primary/10 text-foreground' : '';
 }
-
-type StoreOption = {
-  id: string;
-  name: string;
-};
 
 type LockerPendingSlotsFiltersProps = {
   activeFilterCount: number;
@@ -49,9 +47,12 @@ type LockerPendingSlotsFiltersProps = {
   }) => void;
   setIsFilterOpen: Dispatch<SetStateAction<boolean>>;
   setSearchInput: (value: string) => void;
-  stores: StoreOption[];
 };
 
+/**
+ * Search and filters for the pending-release list tab (FR-008).
+ * There are 4 filters (store / location / cancellation date From-To), so they are collapsed under advanced filters.
+ */
 export function LockerPendingSlotsFilters({
   activeFilterCount,
   clearFilters,
@@ -62,8 +63,22 @@ export function LockerPendingSlotsFilters({
   setFilters,
   setIsFilterOpen,
   setSearchInput,
-  stores,
 }: LockerPendingSlotsFiltersProps) {
+  // The cancellation date is passed to the API as a `YYYY/MM/DD` string. The DatePicker works with Date, so convert both ways.
+  // Use the date-fns based util instead of `toISOString()` to avoid timezone shifts.
+  const cancelFromDate = parseDate(filters.locker_pending_cancel_from) ?? undefined;
+  const cancelToDate = parseDate(filters.locker_pending_cancel_to) ?? undefined;
+
+  const handleCancelDateChange = (
+    key: 'locker_pending_cancel_from' | 'locker_pending_cancel_to',
+    date: Date | undefined,
+  ) => {
+    setFilters({
+      [key]: date ? formatDateYYYYMMDD(date) : null,
+      locker_pending_page: 1,
+    });
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -95,35 +110,13 @@ export function LockerPendingSlotsFilters({
 
       {isFilterOpen && (
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={filters.locker_pending_store_id ?? 'all'}
-            onValueChange={(value) => {
-              setFilters({
-                locker_pending_store_id: value === 'all' ? null : value,
-                locker_pending_page: 1,
-              });
-            }}
-          >
-            <SelectTrigger
-              size="sm"
-              className={`h-8 min-w-40 text-xs ${filterActiveClass(filters.locker_pending_store_id !== null)}`}
-            >
-              <SelectValue>
-                {filters.locker_pending_store_id
-                  ? (stores.find((store) => store.id === filters.locker_pending_store_id)?.name ??
-                    filters.locker_pending_store_id)
-                  : '全店舗'}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全店舗</SelectItem>
-              {stores.map((store) => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <LockerPendingStoreSelect
+            value={filters.locker_pending_store_id}
+            isActive={filters.locker_pending_store_id !== null}
+            onChange={(storeId) =>
+              setFilters({ locker_pending_store_id: storeId, locker_pending_page: 1 })
+            }
+          />
 
           <Select
             value={filters.locker_pending_location ?? 'all'}
@@ -155,30 +148,19 @@ export function LockerPendingSlotsFilters({
             </SelectContent>
           </Select>
 
-          <Input
-            type="text"
-            placeholder="解約日From"
-            value={filters.locker_pending_cancel_from}
-            onChange={(e) =>
-              setFilters({
-                locker_pending_cancel_from: e.target.value || null,
-                locker_pending_page: 1,
-              })
-            }
-            className={`h-8 w-32 text-xs ${filterActiveClass(filters.locker_pending_cancel_from.length > 0)}`}
-          />
-          <Input
-            type="text"
-            placeholder="解約日To"
-            value={filters.locker_pending_cancel_to}
-            onChange={(e) =>
-              setFilters({
-                locker_pending_cancel_to: e.target.value || null,
-                locker_pending_page: 1,
-              })
-            }
-            className={`h-8 w-32 text-xs ${filterActiveClass(filters.locker_pending_cancel_to.length > 0)}`}
-          />
+          <div className="flex items-center gap-1">
+            <DatePicker
+              date={cancelFromDate}
+              placeholder="解約日From"
+              onDateChange={(date) => handleCancelDateChange('locker_pending_cancel_from', date)}
+            />
+            <span className="text-muted-foreground text-xs">〜</span>
+            <DatePicker
+              date={cancelToDate}
+              placeholder="解約日To"
+              onDateChange={(date) => handleCancelDateChange('locker_pending_cancel_to', date)}
+            />
+          </div>
 
           {hasActiveFilters && (
             <Button

@@ -22,6 +22,8 @@ export const StoreLinkedOptionSchema = z
     name: z.string().openapi({ example: '水素水' }),
     related_option_name: z.string().nullable().openapi({ example: null }),
     price_including_tax: z.number().nonnegative().openapi({ example: 1100 }),
+    // A-01 FR-007: 月途中加入の日割り要否はオプションマスタ毎に設定（FIT365初期は日割りなし）
+    prorated_enabled: z.boolean().openapi({ example: false, description: '日割り要否' }),
   })
   .openapi({ title: 'StoreLinkedOption', description: '店舗に紐づくオプション' });
 

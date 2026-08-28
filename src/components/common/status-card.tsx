@@ -68,7 +68,7 @@ export function StatusCard({ tone, icon: Icon, label, meta, action }: StatusCard
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">ステータス</CardTitle>
+        <CardTitle className="text-base font-semibold">ステータス</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col items-center px-4">
         {/* 円形大アイコン */}

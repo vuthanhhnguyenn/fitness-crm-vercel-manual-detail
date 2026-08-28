@@ -97,6 +97,8 @@ export function DateTimePicker({
           <Button
             variant="outline"
             disabled={disabled}
+            // aria-invalid lets useScrollToFirstError locate the field while it has an error
+            aria-invalid={hasError || undefined}
             className={cn(
               'w-full justify-between gap-2 text-left font-normal',
               !pickedDate && 'text-muted-foreground',

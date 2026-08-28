@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { db } from '@/app/api/_mock-db';
+import { db, joinJapaneseName } from '@/app/api/_mock-db';
 import {
   CreateFamilyRegistrationRequestSchema,
   CreateFamilyRegistrationResponseSchema,
@@ -90,12 +90,14 @@ export async function GET(request: NextRequest) {
       created_at: r.created_at,
       status: r.status,
       primary_member_id: r.primary_member_id,
-      primary_member_name: primary?.basic_info.name_kanji ?? '—',
+      primary_member_name: primary
+        ? joinJapaneseName(primary.personalInfo.lastName, primary.personalInfo.firstName)
+        : '—',
       applicant_name: r.applicant_name,
       relationship: r.relationship,
       invite_expires_at: r.invite_expires_at,
-      store_id: primary?.profile.store_id ?? '—',
-      store_name: primary?.profile.store_name ?? '—',
+      store_id: primary?.primaryStore.storeId ?? '—',
+      store_name: primary?.primaryStore.name ?? '—',
       monthly_fee: settings.family_member_fee,
       risk_score: r.risk_score,
       risk_reason: r.risk_reason,
@@ -133,12 +135,15 @@ export async function POST(request: NextRequest) {
       created_at: created.created_at,
       status: created.status,
       primary_member_id: created.primary_member_id,
-      primary_member_name: primary.basic_info.name_kanji,
+      primary_member_name: joinJapaneseName(
+        primary.personalInfo.lastName,
+        primary.personalInfo.firstName,
+      ),
       applicant_name: created.applicant_name,
       relationship: created.relationship,
       invite_expires_at: created.invite_expires_at,
-      store_id: primary.profile.store_id,
-      store_name: primary.profile.store_name,
+      store_id: primary.primaryStore.storeId,
+      store_name: primary.primaryStore.name,
       monthly_fee: settings.family_member_fee,
       risk_score: created.risk_score,
       risk_reason: created.risk_reason,

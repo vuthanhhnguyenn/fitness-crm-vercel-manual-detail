@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useCallback, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard.hook';
 
 import { BackLink } from '@/components/common/back-link';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
@@ -28,6 +29,7 @@ import { navigate } from '@/lib/routes/routes.util';
 
 import { Permission } from '@/types/permission.type';
 
+import { FranchiseCompanyDiscardDialog } from '../../_components/franchise-company-discard-dialog';
 import { FranchiseCompanyForm } from '../../_components/franchise-company-form';
 import {
   type FranchiseCompanyFormSubmitValues,
@@ -42,6 +44,7 @@ const emptyDefaults: FranchiseCompanyFormValues = {
   formal_name: '',
   display_name: '',
   type: undefined as unknown as FranchiseCompanyFormValues['type'],
+  auth_method: undefined as unknown as FranchiseCompanyFormValues['auth_method'],
   direct_owned_flag: false,
   corporate_number: '',
   representative_name: '',
@@ -61,6 +64,7 @@ function toFormDefaults(company: FranchiseCompanyDetail): FranchiseCompanyFormVa
     formal_name: company.formal_name,
     display_name: company.display_name,
     type: company.type,
+    auth_method: company.auth_method,
     direct_owned_flag: company.direct_owned_flag,
     corporate_number: company.corporate_number ?? '',
     representative_name: company.representative_name ?? '',
@@ -81,6 +85,7 @@ function FranchiseCompanyEditPageContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const scrollToFirstError = useScrollToFirstError();
+  const isSubmittingRef = useRef(false);
 
   const companyId = params.id as string;
 
@@ -102,32 +107,56 @@ function FranchiseCompanyEditPageContent() {
     }
   }, [company, form]);
 
+  const formIsDirty = form.formState.isDirty;
+  const {
+    confirmDiscard,
+    discardDialogOpen,
+    handleDiscardConfirm,
+    handleDiscardCancel,
+    navigateAfterSave,
+  } = useUnsavedChangesGuard(formIsDirty);
+
+  const navigateToDetail = useCallback(() => {
+    router.push(navigate('/franchise-companies/[id]', companyId));
+  }, [router, companyId]);
+
+  const handleCancel = useCallback(() => {
+    confirmDiscard(navigateToDetail);
+  }, [confirmDiscard, navigateToDetail]);
+
   const updateMutation = useMutation({
     ...patchCrmFranchiseCompaniesByIdMutation(),
     onSuccess: (res) => {
-      toast.success(res.message || 'FC企業を更新しました');
+      toast.success(res.message || 'FC企業の変更を保存しました');
       void queryClient.invalidateQueries({
         queryKey: getCrmFranchiseCompaniesQueryKey(),
-        refetchType: 'all',
       });
       void queryClient.invalidateQueries({
         queryKey: getCrmFranchiseCompaniesByIdQueryKey({ path: { id: companyId } }),
-        refetchType: 'all',
       });
-      router.push(navigate('/franchise-companies/[id]', companyId));
+      navigateAfterSave(() => router.push(navigate('/franchise-companies')));
     },
     onError: () => {
       toast.error('FC企業の更新に失敗しました');
     },
+    onSettled: () => {
+      isSubmittingRef.current = false;
+    },
   });
 
   const onSubmit = (values: FranchiseCompanyFormSubmitValues) => {
+    // Ref guard (not just `updateMutation.isPending`): two clicks dispatched in the
+    // same tick both read the pre-mutate render state, so a state-only guard can
+    // still let a second PATCH through.
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     updateMutation.mutate({
       path: { id: companyId },
       body: {
         formal_name: values.formal_name.trim(),
         display_name: values.display_name.trim() || values.formal_name.trim(),
         type: values.type,
+        auth_method: values.auth_method,
         direct_owned_flag: values.direct_owned_flag,
         corporate_number: values.corporate_number.trim() || null,
         representative_name: values.representative_name.trim() || null,
@@ -163,20 +192,20 @@ function FranchiseCompanyEditPageContent() {
   return (
     <>
       <PageHeader
-        breadcrumb={
-          <BackLink
-            label="FC企業詳細に戻る"
-            href={navigate('/franchise-companies/[id]', companyId)}
-          />
-        }
+        breadcrumb={<BackLink label="FC企業詳細に戻る" onClick={handleCancel} />}
         title="FC企業編集"
       />
-      <div className="mx-auto max-w-240 p-4">
+      <div className="mx-auto w-full max-w-240 p-4">
         <Form {...form}>
+          {/* react-hook-form's handleSubmit never invokes onSubmit synchronously
+              during render — it only returns a closure invoked later on the submit
+              event — so isSubmittingRef is never actually read during render. */}
+          {/* eslint-disable-next-line react-hooks/refs */}
           <form onSubmit={form.handleSubmit(onSubmit, scrollToFirstError)}>
             <FranchiseCompanyForm
+              mode="edit"
               isSubmitting={updateMutation.isPending}
-              onCancel={() => router.push(navigate('/franchise-companies/[id]', companyId))}
+              onCancel={handleCancel}
               onSubmit={onSubmit}
               onError={scrollToFirstError}
               submitPermission={Permission.FCCompaniesEdit}
@@ -184,6 +213,12 @@ function FranchiseCompanyEditPageContent() {
           </form>
         </Form>
       </div>
+      <FranchiseCompanyDiscardDialog
+        open={discardDialogOpen}
+        onOpenChange={handleDiscardCancel}
+        onCancel={handleDiscardCancel}
+        onConfirm={handleDiscardConfirm}
+      />
     </>
   );
 }

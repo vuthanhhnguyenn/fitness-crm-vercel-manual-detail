@@ -1,36 +1,25 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import type { MouseEvent, ReactElement } from 'react';
+import { cloneElement, useRef, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { RoleGatedButton } from '@/components/common/role-gated-button';
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Textarea } from '@/components/ui/textarea';
 
 import {
   deleteCrmStaffsByIdMutation,
@@ -38,39 +27,48 @@ import {
 } from '@/lib/api/@tanstack/react-query.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
-import {
-  DeleteStaffSchema,
-  type DeleteStaffSchema as DeleteStaffValues,
-} from '../_schemas/delete-staff.schema';
+import { UserRole } from '@/types/permission.type';
+
+type TriggerElement = ReactElement<{ onClick?: (event: MouseEvent) => void }>;
 
 interface StaffDeleteActionProps {
   staffId: string;
   /**
-   * Optional custom trigger element (e.g. DropdownMenuItem).
+   * Optional custom trigger element (e.g. a row-menu item). Its `onClick` is
+   * augmented (not replaced) to open this dialog — no `AlertDialogTrigger`
+   * wrapper needed, since `open` here is already fully controlled.
    * If not provided, renders the default destructive button.
    */
-  trigger?: ReactNode;
+  trigger?: TriggerElement;
+  /**
+   * Fully external open state (e.g. a row-menu item that must live outside the
+   * dropdown's own React tree — see staffs-table-columns.tsx ActionsCell). When
+   * provided, no trigger is rendered by this component; the caller drives `open`.
+   */
+  open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
-export function StaffDeleteAction({ staffId, trigger, onOpenChange }: StaffDeleteActionProps) {
+/**
+ * Delete confirmation — title "スタッフを削除しますか？", description recommending
+ * deactivation instead, キャンセル / 削除する. No reason field (matches the reviewed
+ * list/detail delete dialogs) — src: staff-list.tsx L627-648, staff-detail.tsx L373-386
+ */
+export function StaffDeleteAction({
+  staffId,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
+}: StaffDeleteActionProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const form = useForm<DeleteStaffValues>({
-    resolver: zodResolver(DeleteStaffSchema),
-    mode: 'onChange',
-    defaultValues: { delete_reason: '' },
-  });
-
-  useEffect(() => {
-    if (open) {
-      form.reset({ delete_reason: '' });
-    }
-  }, [form, open]);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const isSubmittingRef = useRef(false);
 
   const handleOpenChange = (nextOpen: boolean) => {
-    setOpen(nextOpen);
+    if (!isControlled) setInternalOpen(nextOpen);
     onOpenChange?.(nextOpen);
   };
 
@@ -79,80 +77,66 @@ export function StaffDeleteAction({ staffId, trigger, onOpenChange }: StaffDelet
     onSuccess: (data) => {
       toast.success(data.message || 'スタッフを削除しました');
       queryClient.invalidateQueries({ queryKey: getCrmStaffsQueryKey() });
-      setOpen(false);
+      handleOpenChange(false);
       router.push(navigate('/staffs'));
     },
     onError: () => {
       toast.error('スタッフの削除に失敗しました');
     },
+    onSettled: () => {
+      isSubmittingRef.current = false;
+    },
   });
 
-  const onSubmit = (data: DeleteStaffValues) => {
-    deleteMutation.mutate({
-      path: { id: staffId },
-      body: {
-        delete_reason: data.delete_reason,
-      },
-    });
+  const handleConfirm = () => {
+    if (isSubmittingRef.current || deleteMutation.isPending) return;
+    isSubmittingRef.current = true;
+    deleteMutation.mutate({ path: { id: staffId }, body: {} });
   };
+
+  const effectiveTrigger: TriggerElement | null =
+    trigger ??
+    (isControlled ? null : (
+      <RoleGatedButton
+        allowedRoles={[UserRole.Headquarter, UserRole.System]}
+        denyTooltip="本部権限が必要です"
+        variant="outline"
+        size="sm"
+        className="text-destructive hover:text-destructive gap-1"
+        disabled={deleteMutation.isPending}
+      >
+        <Trash2 className="size-4" />
+        削除
+      </RoleGatedButton>
+    ));
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      {trigger ?? (
-        <AlertDialogTrigger
-          render={
-            <Button variant="destructive" size="sm" disabled={deleteMutation.isPending}>
-              <Trash2 className="mr-2 size-4" />
-              削除
-            </Button>
-          }
-        ></AlertDialogTrigger>
-      )}
+      {effectiveTrigger &&
+        cloneElement(effectiveTrigger, {
+          onClick: (event: MouseEvent) => {
+            effectiveTrigger.props.onClick?.(event);
+            setInternalOpen(true);
+          },
+        })}
 
-      <AlertDialogContent>
+      <AlertDialogContent onClick={(event) => event.stopPropagation()}>
         <AlertDialogHeader>
           <AlertDialogTitle>スタッフを削除しますか？</AlertDialogTitle>
           <AlertDialogDescription>
-            このスタッフアカウントを削除すると、ログインできなくなります。この操作は取り消せません。
+            このスタッフアカウントを論理削除します。操作ログは保持されますが、CRMからログインできなくなります。通常は無効化を推奨します。
           </AlertDialogDescription>
         </AlertDialogHeader>
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="delete_reason"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    削除理由 <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      rows={3}
-                      placeholder="削除理由を入力してください"
-                      disabled={deleteMutation.isPending}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={deleteMutation.isPending}>キャンセル</AlertDialogCancel>
-              <Button
-                type="submit"
-                variant="destructive"
-                size="sm"
-                disabled={deleteMutation.isPending}
-              >
-                削除する
-              </Button>
-            </AlertDialogFooter>
-          </form>
-        </Form>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleteMutation.isPending}>キャンセル</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            disabled={deleteMutation.isPending}
+            onClick={handleConfirm}
+          >
+            削除する
+          </AlertDialogAction>
+        </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   );

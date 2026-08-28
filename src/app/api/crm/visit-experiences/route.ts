@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
+import { ErrorResponseSchema } from '@/app/api/_schemas/auth.schema';
 import {
   type GetVisitExperiencesQuery,
   GetVisitExperiencesQuerySchema,
@@ -27,11 +29,23 @@ registerRoute({
       schema: GetVisitExperiencesResponseSchema,
       description: 'Bad request - invalid query parameters',
     },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthorized' },
+    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
   ],
 });
 
 export async function GET(request: NextRequest) {
   try {
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+
+    const allowedStoreIds = getAllowedStoreIds(authResult.user);
+    if (allowedStoreIds !== null && allowedStoreIds.length === 0) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
 
     const queryObj: Record<string, string | undefined> = {};
@@ -46,9 +60,15 @@ export async function GET(request: NextRequest) {
     }
 
     const query: GetVisitExperiencesQuery = validationResult.data;
-    const { page, limit, search, status, brand_name, store_name, date_range } = query;
+    const { page, limit, search, status, brand_name, store_name, date_range, bl_match } = query;
 
     let filtered = db.visitExperiences.getAll();
+
+    if (allowedStoreIds !== null) {
+      filtered = filtered.filter((ve) => allowedStoreIds.includes(ve.store_id));
+    }
+
+    const totalAllItems = filtered.length;
 
     if (search) {
       const s = search.toLowerCase();
@@ -67,6 +87,10 @@ export async function GET(request: NextRequest) {
 
     if (store_name) {
       filtered = filtered.filter((ve) => ve.store_name === store_name);
+    }
+
+    if (bl_match) {
+      filtered = filtered.filter((ve) => ve.bl_match);
     }
 
     if (date_range) {
@@ -96,6 +120,7 @@ export async function GET(request: NextRequest) {
     const response: GetVisitExperiencesResponse = {
       items: paginated,
       total,
+      total_all_items: totalAllItems,
       page,
       limit,
       total_pages,

@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 
 import useClientRequest from '@/hooks/useClientRequest';
 
+import { getApiErrorMessage } from '@/lib/api-error.util';
+
 export interface ReactQueryProviderProps {
   readonly children: React.ReactNode;
 }
@@ -21,17 +23,13 @@ export default function ReactQueryProvider({ children }: ReactQueryProviderProps
           },
         },
         mutationCache: new MutationCache({
-          onError: (error: any) => {
-            const errorMsg =
-              error?.detail?.message || 'エラーが発生しました。後で再試行してください。';
-            toast.error(errorMsg);
+          onError: (error: unknown) => {
+            toast.error(getApiErrorMessage(error));
           },
         }),
         queryCache: new QueryCache({
-          onError: (error: any) => {
-            const errorMsg =
-              error?.detail?.message || 'エラーが発生しました。後で再試行してください。';
-            toast.error(errorMsg);
+          onError: (error: unknown) => {
+            toast.error(getApiErrorMessage(error));
           },
         }),
       }),

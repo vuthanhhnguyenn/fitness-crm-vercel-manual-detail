@@ -26,7 +26,6 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 
 import { navigate } from '@/lib/routes/routes.util';
-
 import { Permission } from '@/types/permission.type';
 
 import {
@@ -180,6 +179,7 @@ export function ManualNotificationRowActions({ row }: ManualNotificationRowActio
               placeholder="例：配信対象の範囲を見直してください"
               rows={3}
               className="min-h-16 resize-none"
+              maxLength={500}
               aria-invalid={returnError ? true : undefined}
               aria-describedby={returnError ? `return-reason-error-${row.id}` : undefined}
             />

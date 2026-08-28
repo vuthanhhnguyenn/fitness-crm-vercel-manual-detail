@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 
 import { getCrmNotificationsByIdOptions } from '@/lib/api/@tanstack/react-query.gen';
@@ -48,17 +49,16 @@ import {
 } from './_components/manual-notification-detail-content';
 
 function isNotificationNotFoundError(error: unknown): boolean {
-  const candidate = error as { code?: unknown } | null;
-  return (
-    candidate !== null && typeof candidate === 'object' && candidate.code === 'E-NOTIFICATION-404'
-  );
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { code?: unknown; status?: unknown };
+  return candidate.code === 'E-NOTIFICATION-404' || candidate.status === 404;
 }
 
 export default function ManualNotificationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [dialog, setDialog] = useState<
-    'approve' | 'return' | 'delete' | 'send' | 'request_approval' | null
+    'approve' | 'return' | 'delete' | 'send' | 'request_approval' | 'resubmit' | null
   >(null);
   const [returnReason, setReturnReason] = useState('');
   const [returnError, setReturnError] = useState<string | null>(null);
@@ -66,7 +66,23 @@ export default function ManualNotificationDetailPage() {
   const actionMutation = useManualNotificationAction();
   const query = useQuery({ ...getCrmNotificationsByIdOptions({ path: { id } }) });
 
-  if (query.isLoading) return <DataStateBoundary isLoading isEmpty={false} />;
+  if (query.isLoading) {
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <PageHeader
+          className="py-3"
+          breadcrumb={
+            <BackLink label="手動配信通知に戻る" href={navigate('/manual-notifications')} />
+          }
+          title="手動配信通知 詳細"
+          badge={<Skeleton className="h-5 w-20" />}
+        />
+        <div className="flex-1 p-6">
+          <DataStateBoundary isLoading isEmpty={false} />
+        </div>
+      </div>
+    );
+  }
   const isNotFound = isNotificationNotFoundError(query.error);
   if (query.isError && !isNotFound) {
     return (
@@ -196,7 +212,7 @@ export default function ManualNotificationDetailPage() {
                 size="sm"
                 className="gap-1"
                 disabled={actionMutation.isPending}
-                onClick={() => runAction('resubmit')}
+                onClick={() => setDialog('resubmit')}
               >
                 <RotateCcw className="size-4" />
                 再申請
@@ -308,6 +324,28 @@ export default function ManualNotificationDetailPage() {
               disabled={actionMutation.isPending}
             >
               配信する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={dialog === 'resubmit'}
+        onOpenChange={(open) => !open && setDialog(null)}
+      >
+        <AlertDialogContent className="gap-4 sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>再申請しますか？</AlertDialogTitle>
+            <AlertDialogDescription className="leading-5">
+              通知内容を再確定し、承認者に確認を依頼します。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => runAction('resubmit')}
+              disabled={actionMutation.isPending}
+            >
+              再申請する
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

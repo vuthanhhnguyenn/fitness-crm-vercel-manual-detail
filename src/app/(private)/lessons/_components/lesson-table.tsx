@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import type { SortingState } from '@tanstack/react-table';
 
-import { DataStateBoundary } from '@/components/common/data-state-boundary';
+import { Empty } from '@/components/common/data-state-boundary/empty';
 import { DataTable } from '@/components/common/data-table';
 import { TablePagination } from '@/components/common/table-pagination';
 
@@ -25,12 +25,19 @@ interface LessonTableProps {
 
 export function LessonTable({ kind, filtersHook }: LessonTableProps) {
   const router = useRouter();
-  const { filters, currentPage, setCurrentPage, pageSize, setSort, lessonContentsQuery } =
-    filtersHook;
+  const {
+    filters,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setSort,
+    lessonContentsQuery,
+    clearFilters,
+  } = filtersHook;
 
   const query = lessonContentsQuery(kind);
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     ...getCrmLessonContentsOptions({ query }),
   });
 
@@ -56,39 +63,27 @@ export function LessonTable({ kind, filtersHook }: LessonTableProps) {
         filtersHook={filtersHook}
         searchPlaceholder="レッスン名・IDで検索..."
       />
-
-      <DataStateBoundary
+      <DataTable
+        columns={lessonTableColumns}
+        data={rows}
         isLoading={isLoading}
-        isError={isError}
-        isEmpty={!isLoading && rows.length === 0}
-        onRetry={() => refetch()}
-        emptyTitle="レッスンが見つかりません"
-        emptyDescription="検索条件を変更してお試しください"
-        skeleton={
-          <DataTable
-            columns={lessonTableColumns}
-            data={[]}
-            isLoading
-            variant="simple"
-            className="rounded-none border-x-0 border-b-0"
+        variant="simple"
+        onRowClick={(row) => router.push(navigate('/lessons/[id]', row.id))}
+        className="rounded-none border-x-0 border-b-0"
+        tableOptions={{
+          manualSorting: true,
+          onSortingChange: handleSortingChange,
+          state: { sorting },
+          getRowId: (originalRow) => originalRow.id,
+        }}
+        emptyContent={
+          <Empty
+            onAction={clearFilters}
+            title="レッスンが見つかりません"
+            description="検索条件を変更してお試しください"
           />
         }
-      >
-        <DataTable
-          columns={lessonTableColumns}
-          data={rows}
-          variant="simple"
-          onRowClick={(row) => router.push(navigate('/lessons/[id]', row.id))}
-          className="rounded-none border-x-0 border-b-0"
-          tableOptions={{
-            manualSorting: true,
-            onSortingChange: handleSortingChange,
-            state: { sorting },
-            getRowId: (originalRow) => originalRow.id,
-          }}
-        />
-      </DataStateBoundary>
-
+      />
       {total > 0 && (
         <TablePagination
           currentPage={page}

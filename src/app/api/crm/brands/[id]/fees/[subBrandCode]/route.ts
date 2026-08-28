@@ -109,6 +109,21 @@ export async function PATCH(
       );
     }
 
+    const hasInvalidScheduledChanges = payload.fee_items.some((item) => {
+      const scheduledChanges = item.scheduled_changes ?? [];
+      const dates = scheduledChanges.map((change) => change.effective_start_date);
+      const hasDuplicateDates = new Set(dates).size !== dates.length;
+      const duplicatesCurrentDate = dates.includes(item.effective_start_date);
+      return hasDuplicateDates || duplicatesCurrentDate;
+    });
+
+    if (hasInvalidScheduledChanges) {
+      return NextResponse.json(
+        { error: 'Scheduled changes contain a duplicate effective start date' },
+        { status: 400 },
+      );
+    }
+
     const updatedGroup = db.brands.updateFeeGroup(id, subBrandCode, payload);
     if (!updatedGroup) {
       return NextResponse.json({ error: 'Fee group not found' }, { status: 404 });

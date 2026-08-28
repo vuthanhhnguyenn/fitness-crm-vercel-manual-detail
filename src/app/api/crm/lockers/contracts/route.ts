@@ -3,9 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
-  CreateLockerContractRequestSchema,
-  type CreateLockerContractResponse,
-  CreateLockerContractResponseSchema,
   ErrorResponseSchema,
   type GetLockerContractsQuery,
   GetLockerContractsQuerySchema,
@@ -15,29 +12,6 @@ import {
 import { registerRoute } from '@/app/api/_scripts/register-route';
 
 import { filterLockerContracts } from '../_utils/locker-query.util';
-
-registerRoute({
-  method: 'post',
-  path: '/crm/lockers/contracts',
-  summary: 'Create locker contract',
-  description: 'Create a new locker contract for a member',
-  tags: ['Lockers'],
-  requestBody: {
-    schema: CreateLockerContractRequestSchema,
-    description: 'Locker contract create payload',
-  },
-  responses: [
-    {
-      status: 200,
-      schema: CreateLockerContractResponseSchema,
-      description: 'Locker contract created successfully',
-    },
-    { status: 400, schema: ErrorResponseSchema, description: 'Bad request' },
-    { status: 404, schema: ErrorResponseSchema, description: 'Not found' },
-    { status: 409, schema: ErrorResponseSchema, description: 'Conflict' },
-    { status: 500, schema: ErrorResponseSchema, description: 'Internal server error' },
-  ],
-});
 
 registerRoute({
   method: 'get',
@@ -86,7 +60,8 @@ export async function GET(request: NextRequest) {
       sort_order = 'asc',
     } = query;
 
-    const filtered = filterLockerContracts(db.lockerContracts.getList(), {
+    const allContracts = db.lockerContracts.getList();
+    const filtered = filterLockerContracts(allContracts, {
       search,
       contract_type,
       status,
@@ -105,6 +80,7 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         total_pages,
+        all_total: allContracts.length,
       },
     };
 
@@ -112,36 +88,5 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching locker contracts:', error);
     return NextResponse.json({ error: 'Failed to fetch locker contracts' }, { status: 500 });
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const authResult = getAuthUserFromRequest(request);
-    if (!authResult.ok) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
-    }
-
-    const body = await request.json();
-    const validationResult = CreateLockerContractRequestSchema.safeParse(body);
-    if (!validationResult.success) {
-      const errors = validationResult.error.issues.map((issue) => issue.message).join(', ');
-      return NextResponse.json({ error: errors }, { status: 400 });
-    }
-
-    const result = db.lockerContracts.create(validationResult.data);
-    if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
-    }
-
-    const response: CreateLockerContractResponse = {
-      message: 'ロッカー契約を登録しました',
-      contract: result.contract,
-    };
-
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('POST /crm/lockers/contracts error:', error);
-    return NextResponse.json({ error: 'Failed to create locker contract' }, { status: 500 });
   }
 }

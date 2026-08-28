@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 
+import { useAuthUser } from '@/contexts/auth-user.context';
+import { formatDateMDWeekdayTime } from '@/utils/date.util';
+import { formatYen } from '@/utils/format.util';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { AlertTriangle, CreditCard, Mail, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -29,7 +30,7 @@ import {
 } from '@/lib/api/@tanstack/react-query.gen';
 import type { LessonScheduleListItem } from '@/lib/api/types.gen';
 
-const REASON_OPTIONS: Record<string, string> = {
+export const CANCEL_REASON_OPTIONS: Record<string, string> = {
   instructor_absent_illness: '講師欠席（体調不良）',
   instructor_absent_other: '講師欠席（その他）',
   facility_trouble: '設備トラブル',
@@ -37,6 +38,18 @@ const REASON_OPTIONS: Record<string, string> = {
   insufficient_participants: '参加者不足',
   other: 'その他',
 };
+
+const REASON_DEFAULT_DETAILS: Record<string, string> = {
+  instructor_absent_illness: '担当講師が体調不良のため、レッスンを実施できません。',
+  instructor_absent_other: '担当講師の都合により、レッスンを実施できません。',
+  facility_trouble: 'スタジオ設備の不具合により、レッスンを実施できません。',
+  weather_disaster: '悪天候・災害の影響により、レッスンを実施できません。',
+  insufficient_participants: '参加者数が最少催行人数に満たないため、レッスンを中止します。',
+  other: '',
+};
+
+/** Mock per-reservation refund estimate (billing/plan pricing is not modeled at the reservation level). */
+const ESTIMATED_REFUND_PER_RESERVATION = 3300;
 
 const STEP_LABELS = [
   { num: 1, label: '影響確認' },
@@ -62,11 +75,15 @@ export function CancelLessonWizard({
   const [step, setStep] = useState(1);
   const [scope, setScope] = useState<'this_only' | 'all_after'>('this_only');
   const [reason, setReason] = useState('instructor_absent_illness');
-  const [reasonDetail, setReasonDetail] = useState('');
+  const [reasonDetail, setReasonDetail] = useState(
+    REASON_DEFAULT_DETAILS.instructor_absent_illness,
+  );
+  const [reasonDetailTouched, setReasonDetailTouched] = useState(false);
   const [notifyMembers, setNotifyMembers] = useState(true);
   const [processRefund, setProcessRefund] = useState(true);
   const [notifyInstructor, setNotifyInstructor] = useState(false);
   const queryClient = useQueryClient();
+  const { user } = useAuthUser();
 
   const cancelMutation = useMutation({
     ...postCrmLessonSchedulesByScheduleIdCancelMutation(),
@@ -88,12 +105,18 @@ export function CancelLessonWizard({
       setStep(1);
       setScope('this_only');
       setReason('instructor_absent_illness');
-      setReasonDetail('');
+      setReasonDetail(REASON_DEFAULT_DETAILS.instructor_absent_illness);
+      setReasonDetailTouched(false);
       setNotifyMembers(true);
       setProcessRefund(true);
       setNotifyInstructor(false);
     }
     onOpenChange(nextOpen ?? false);
+  };
+
+  const handleReasonChange = (value: string) => {
+    setReason(value);
+    if (!reasonDetailTouched) setReasonDetail(REASON_DEFAULT_DETAILS[value] ?? '');
   };
 
   const handleConfirm = () => {
@@ -106,17 +129,13 @@ export function CancelLessonWizard({
         send_notification: notifyMembers,
         process_refund: processRefund,
         notify_instructor: notifyInstructor,
+        cancelled_by: user?.name,
       },
     });
   };
 
-  const formatScheduleDate = () => {
-    try {
-      return format(new Date(schedule.start_time), 'M/d（E）HH:mm', { locale: ja });
-    } catch {
-      return schedule.start_time;
-    }
-  };
+  const formatScheduleDate = () =>
+    formatDateMDWeekdayTime(schedule.start_time, schedule.start_time);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -248,8 +267,10 @@ export function CancelLessonWizard({
                       <CreditCard className="text-destructive size-4" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold">要確認</p>
-                      <p className="text-muted-foreground text-[10px]">返金処理</p>
+                      <p className="text-sm font-bold">
+                        {formatYen(schedule.booked_count * ESTIMATED_REFUND_PER_RESERVATION)}
+                      </p>
+                      <p className="text-muted-foreground text-[10px]">返金処理（概算）</p>
                     </div>
                   </div>
                 </div>
@@ -262,12 +283,12 @@ export function CancelLessonWizard({
             <>
               <div>
                 <Label className="mb-2 block text-xs font-medium">中止理由</Label>
-                <Select value={reason} onValueChange={(v) => v && setReason(v)}>
+                <Select value={reason} onValueChange={(v) => v && handleReasonChange(v)}>
                   <SelectTrigger className="h-9 text-sm">
-                    <SelectValue>{REASON_OPTIONS[reason]}</SelectValue>
+                    <SelectValue>{CANCEL_REASON_OPTIONS[reason]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(REASON_OPTIONS).map(([value, label]) => (
+                    {Object.entries(CANCEL_REASON_OPTIONS).map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
                       </SelectItem>
@@ -278,7 +299,10 @@ export function CancelLessonWizard({
                   className="mt-2 min-h-[60px] text-sm"
                   placeholder="詳細を入力"
                   value={reasonDetail}
-                  onChange={(e) => setReasonDetail(e.target.value)}
+                  onChange={(e) => {
+                    setReasonDetailTouched(true);
+                    setReasonDetail(e.target.value);
+                  }}
                 />
               </div>
 
@@ -340,7 +364,9 @@ export function CancelLessonWizard({
                   <Separator />
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground text-xs">中止理由</span>
-                    <span className="text-xs font-medium">{REASON_OPTIONS[reason] ?? reason}</span>
+                    <span className="text-xs font-medium">
+                      {CANCEL_REASON_OPTIONS[reason] ?? reason}
+                    </span>
                   </div>
                   {reasonDetail && (
                     <>

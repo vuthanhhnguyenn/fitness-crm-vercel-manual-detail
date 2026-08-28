@@ -1,4 +1,5 @@
 import { parseDate } from '@/utils/date.util';
+import { format } from 'date-fns';
 
 import type { GetCrmLockersContractsByIdResponse } from '@/lib/api/types.gen';
 import { LockerLockType } from '@/lib/api/types.gen';
@@ -18,7 +19,6 @@ export function parseApiDate(value: string | null | undefined): Date | undefined
 }
 
 export const emptyLockerContractFormDefaults: LockerContractFormValues = {
-  member_id: '',
   locker_id: '',
   slot_number: '',
   contract_type_code: '',
@@ -26,11 +26,19 @@ export const emptyLockerContractFormDefaults: LockerContractFormValues = {
   password: '',
 };
 
+/**
+ * Serialises a picked date as the UTC midnight ISO string the API expects.
+ * Formats the local Y/M/D first (via date-fns) so the day never shifts — using
+ * `toISOString()` on the raw Date would move a JST evening back to the previous day.
+ */
+function toApiDate(date: Date): string {
+  return `${format(date, 'yyyy-MM-dd')}T00:00:00Z`;
+}
+
 export function lockerContractDetailToFormValues(
   contract: LockerContractDetail,
 ): LockerContractFormValues {
   return {
-    member_id: contract.member_id,
     locker_id: contract.locker_id,
     slot_number: contract.locker_number,
     contract_type_code: contract.contract_type_code ?? '',
@@ -39,39 +47,12 @@ export function lockerContractDetailToFormValues(
   };
 }
 
-export function lockerContractFormValuesToCreateBody(values: LockerContractFormSubmitValues) {
-  const startDateTime = new Date(
-    Date.UTC(
-      values.start_date.getFullYear(),
-      values.start_date.getMonth(),
-      values.start_date.getDate(),
-    ),
-  ).toISOString();
-
-  return {
-    member_id: values.member_id,
-    locker_id: values.locker_id,
-    slot_number: values.slot_number,
-    contract_type_code: values.contract_type_code,
-    start_date: startDateTime,
-    password: values.password ? values.password : null,
-  };
-}
-
 export function lockerContractFormValuesToUpdateBody(values: LockerContractFormSubmitValues) {
-  const startDateTime = new Date(
-    Date.UTC(
-      values.start_date.getFullYear(),
-      values.start_date.getMonth(),
-      values.start_date.getDate(),
-    ),
-  ).toISOString();
-
   return {
     locker_id: values.locker_id,
     slot_number: values.slot_number,
     contract_type_code: values.contract_type_code,
-    start_date: startDateTime,
+    start_date: toApiDate(values.start_date),
     password: values.password ? values.password : null,
   };
 }
@@ -99,10 +80,10 @@ export function getSlotSelectLabel(
     return `${slotNumber}（現在の割当）`;
   }
   if (status === 'in_use') {
-    return `${slotNumber}（契約中${memberName ? `：${memberName}` : ''}）`;
+    return `${slotNumber}（使用中${memberName ? `：${memberName}` : ''}）`;
   }
   if (status === 'pending_release') {
     return `${slotNumber}（開放待ち）`;
   }
-  return `${slotNumber}（利用可能）`;
+  return `${slotNumber}（利用可）`;
 }

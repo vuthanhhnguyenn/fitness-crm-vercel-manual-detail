@@ -66,6 +66,11 @@ export function TablePaginationWithSize({
   className,
 }: TablePaginationWithSizeProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  // Everything fits on a single page — per the shared GUI checklist ("Check when the number
+  // of records is less than 1 page"), pagination is hidden entirely, not shown disabled.
+  if (totalPages <= 1) return null;
+
   const safePage = Math.min(Math.max(currentPage, 1), totalPages);
   const startIndex = total === 0 ? 0 : (safePage - 1) * pageSize;
   const endIndex = Math.min(safePage * pageSize, total);
@@ -136,7 +141,7 @@ export function TablePaginationWithSize({
           }}
         >
           <SelectTrigger className="h-7 w-[72px] text-xs">
-            <SelectValue />
+            <SelectValue>{(value) => `${String(value)}件`}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {pageSizeOptions.map((size) => (

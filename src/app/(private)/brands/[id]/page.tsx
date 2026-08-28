@@ -1,10 +1,10 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useState } from 'react';
 
 import { useParams } from 'next/navigation';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Pencil } from 'lucide-react';
 
 import { BackLink } from '@/components/common/back-link';
@@ -15,58 +15,61 @@ import { RoleGatedButton } from '@/components/common/role-gated-button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import {
-  getCrmBrandsByIdOptions,
-  getCrmBrandsByIdQueryKey,
-  getCrmBrandsQueryKey,
-  patchCrmBrandsByIdMutation,
-} from '@/lib/api/@tanstack/react-query.gen';
-import type { GetCrmBrandsByIdResponse } from '@/lib/api/types.gen';
+import { getCrmBrandsByIdOptions } from '@/lib/api/@tanstack/react-query.gen';
+
+// getCrmBrandsByIdQueryKey / getCrmBrandsQueryKey / patchCrmBrandsByIdMutation — used only by
+// this page's own rename wiring, commented out below (research.md G5).
 
 import { Permission } from '@/types/permission.type';
 
-import { BrandFormSheet } from '../_components/brand-form-sheet';
-import type { BrandFormValues } from '../_schemas/brand-form.schema';
+// BrandFormSheet / BrandFormValues — used only by this page's own rename wiring, commented
+// out below (research.md G5). The brand-list row's 編集 action remains the one live rename
+// entry point (see brands/page.tsx).
 import { BasicInfoTab } from './_components/basic-info-tab';
 import { BrandStatusBadge } from './_components/brand-status-badge';
 import { FeesTab } from './_components/fees-tab';
 import { HistoryTab } from './_components/history-tab';
 
-function buildInitialValues(
-  brand: NonNullable<GetCrmBrandsByIdResponse>['brand'],
-): BrandFormValues {
-  return {
-    brandId: brand.brand_id,
-    displayName: brand.display_name,
-  };
-}
+// Out of scope for this phase — this button is V0's placeholder for a future, broader
+// basic-info editor; it must render disabled with a tooltip (parity PAR028), not wired to
+// today's name-only rename (that duplicate entry point is research.md G5). Commented out,
+// not deleted, pending a future phase.
+// function buildInitialValues(
+//   brand: NonNullable<GetCrmBrandsByIdResponse>['brand'],
+// ): BrandFormValues {
+//   return {
+//     brandId: brand.brand_id,
+//     displayName: brand.display_name,
+//   };
+// }
 
 function BrandDetailPageContent() {
   const params = useParams();
-  const queryClient = useQueryClient();
 
   const brandId = params.id as string;
   const [activeTab, setActiveTab] = useState('basic');
-  const [sheetOpen, setSheetOpen] = useState(false);
 
   const detailQuery = useQuery({
     ...getCrmBrandsByIdOptions({ path: { id: brandId } }),
   });
 
-  const updateMutation = useMutation({
-    ...patchCrmBrandsByIdMutation(),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: getCrmBrandsByIdQueryKey({ path: { id: brandId } }),
-        refetchType: 'all',
-      });
-      void queryClient.invalidateQueries({
-        queryKey: getCrmBrandsQueryKey(),
-        refetchType: 'all',
-      });
-      setSheetOpen(false);
-    },
-  });
+  // Out of scope for this phase — research.md G5. Commented out, not deleted, pending a
+  // future phase. The list row's 編集 action (brands/page.tsx) is the one live rename
+  // entry point; this page's button renders disabled with a tooltip instead (PAR028).
+  // const [sheetOpen, setSheetOpen] = useState(false);
+  // const queryClient = useQueryClient();
+  // const updateMutation = useMutation({
+  //   ...patchCrmBrandsByIdMutation(),
+  //   onSuccess: () => {
+  //     void queryClient.invalidateQueries({
+  //       queryKey: getCrmBrandsByIdQueryKey({ path: { id: brandId } }),
+  //     });
+  //     void queryClient.invalidateQueries({
+  //       queryKey: getCrmBrandsQueryKey(),
+  //     });
+  //     setSheetOpen(false);
+  //   },
+  // });
 
   const detailData = detailQuery.data;
   const brand = detailData?.brand;
@@ -74,37 +77,39 @@ function BrandDetailPageContent() {
   const feeCount = brand?.fee_group_count ?? 0;
   const historyCount = brand?.change_history_count ?? 0;
 
-  const initialValues = useMemo(
-    () => (brand ? buildInitialValues(brand) : { brandId: '', displayName: '' }),
-    [brand],
-  );
+  // Out of scope for this phase — research.md G5. Commented out, not deleted, pending a
+  // future phase.
+  // const initialValues = useMemo(
+  //   () => (brand ? buildInitialValues(brand) : { brandId: '', displayName: '' }),
+  //   [brand],
+  // );
 
-  const handleSaveBrand = (values: BrandFormValues, onError: (message: string) => void) => {
-    updateMutation.mutate(
-      {
-        path: { id: brandId },
-        body: {
-          display_name: values.displayName.trim(),
-          brand_id: values.brandId.trim().toLowerCase(),
-        },
-      },
-      {
-        onError: (error) => {
-          if (
-            error &&
-            typeof error === 'object' &&
-            'error' in error &&
-            typeof error.error === 'string'
-          ) {
-            onError(error.error);
-            return;
-          }
-
-          onError('ブランド設定の更新に失敗しました。後で再試行してください。');
-        },
-      },
-    );
-  };
+  // const handleSaveBrand = (values: BrandFormValues, onError: (message: string) => void) => {
+  //   updateMutation.mutate(
+  //     {
+  //       path: { id: brandId },
+  //       body: {
+  //         display_name: values.displayName.trim(),
+  //         brand_id: values.brandId.trim().toLowerCase(),
+  //       },
+  //     },
+  //     {
+  //       onError: (error) => {
+  //         if (
+  //           error &&
+  //           typeof error === 'object' &&
+  //           'error' in error &&
+  //           typeof error.error === 'string'
+  //         ) {
+  //           onError(error.error);
+  //           return;
+  //         }
+  //
+  //         onError('ブランド設定の更新に失敗しました。後で再試行してください。');
+  //       },
+  //     },
+  //   );
+  // };
 
   return (
     <DataStateBoundary
@@ -168,7 +173,8 @@ function BrandDetailPageContent() {
                   variant="outline"
                   className="h-8 gap-1 rounded-md px-3 text-xs font-medium"
                   requiredPermission={Permission.BrandsEdit}
-                  onClick={() => setSheetOpen(true)}
+                  disabled
+                  tooltip="ブランド基本情報の編集は次フェーズで実装予定です"
                 >
                   <Pencil className="size-3.5" />
                   基本情報を編集
@@ -189,6 +195,10 @@ function BrandDetailPageContent() {
             </TabsContent>
           </Tabs>
 
+          {/*
+            Out of scope for this phase — research.md G5. Commented out, not deleted,
+            pending a future phase. The list row's 編集 action remains the one live
+            rename entry point.
           <BrandFormSheet
             open={sheetOpen}
             mode="edit"
@@ -197,6 +207,7 @@ function BrandDetailPageContent() {
             onOpenChange={setSheetOpen}
             onSave={handleSaveBrand}
           />
+          */}
         </div>
       )}
     </DataStateBoundary>

@@ -1,81 +1,150 @@
 'use client';
 
+import { formatDateYYYYMMDD, formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import type { ColumnDef } from '@tanstack/react-table';
-import { AlertTriangle, ArrowDown, ArrowUp } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { MembershipApplication } from '@/lib/api/types.gen';
 
-import { STATUS_BADGE_CLASSES, STATUS_OPTIONS } from '../_constants/constants';
+import {
+  ENROLLMENT_ROUTE_BADGE_CLASSES,
+  ENROLLMENT_ROUTE_LABELS,
+  OVERDUE_TOOLTIP,
+  PENDING_OVERDUE_THRESHOLD_HOURS,
+  STATUS_BADGE_CLASSES,
+  STATUS_LABELS,
+} from '../_constants/constants';
+import type { MembershipApplicationsSortBy } from '../_hooks/use-membership-applications-filters';
 
-interface ApplicationDateHeaderProps {
+interface SortableHeaderProps {
+  label: string;
+  sortKey: MembershipApplicationsSortBy;
+  activeSortBy: MembershipApplicationsSortBy;
   sortOrder: 'asc' | 'desc';
-  onToggle: () => void;
+  onToggle: (key: MembershipApplicationsSortBy) => void;
 }
 
-function getStatusLabel(status: string): string {
-  const option = STATUS_OPTIONS.find((opt) => opt.value === status);
-  return option?.label || status;
-}
+/** The three V0 sort tooltips, keyed by whether/how this column is currently sorted. */
+function SortableHeader({
+  label,
+  sortKey,
+  activeSortBy,
+  sortOrder,
+  onToggle,
+}: Readonly<SortableHeaderProps>) {
+  const isActive = activeSortBy === sortKey;
+  const tooltip = !isActive
+    ? 'クリックでソート'
+    : sortOrder === 'desc'
+      ? 'クリックで昇順ソート'
+      : 'クリックで降順ソート';
 
-function ApplicationDateHeader({ sortOrder, onToggle }: Readonly<ApplicationDateHeaderProps>) {
   return (
-    <Button
-      variant="ghost"
-      className="h-auto gap-1 p-0 text-xs font-semibold hover:bg-transparent"
-      onClick={onToggle}
-    >
-      申請日時
-      {sortOrder === 'desc' ? (
-        <ArrowDown className="text-foreground size-3" />
-      ) : (
-        <ArrowUp className="text-foreground size-3" />
-      )}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger render={<span className="inline-flex" />}>
+        <Button
+          variant="ghost"
+          className="h-auto gap-1 p-0 text-xs font-semibold hover:bg-transparent"
+          onClick={() => onToggle(sortKey)}
+        >
+          {label}
+          {isActive ? (
+            sortOrder === 'desc' ? (
+              <ArrowDown className="size-3" />
+            ) : (
+              <ArrowUp className="size-3" />
+            )
+          ) : (
+            <ArrowUpDown className="text-muted-foreground size-3" />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <p className="text-xs">{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
+/** Derived client-side from `application_date` — never stored, since it changes with the clock (research R4). */
+function isPendingOverdue(app: MembershipApplication): boolean {
+  if (app.status !== 'pending') return false;
+  const appliedAt = new Date(app.application_date).getTime();
+  return Date.now() - appliedAt >= PENDING_OVERDUE_THRESHOLD_HOURS * 60 * 60 * 1000;
+}
+
 export function getMembershipApplicationsColumns(
+  sortBy: MembershipApplicationsSortBy,
   sortOrder: 'asc' | 'desc',
-  onToggleSortOrder: () => void,
+  onToggleSort: (key: MembershipApplicationsSortBy) => void,
 ): ColumnDef<MembershipApplication>[] {
+  const sortableHeader = (label: string, key: MembershipApplicationsSortBy) => (
+    <SortableHeader
+      label={label}
+      sortKey={key}
+      activeSortBy={sortBy}
+      sortOrder={sortOrder}
+      onToggle={onToggleSort}
+    />
+  );
+
   return [
     {
       accessorKey: 'id',
-      header: '申請ID',
+      header: () => sortableHeader('申請ID', 'id'),
       cell: ({ row }) => <span className="text-muted-foreground text-xs">{row.original.id}</span>,
       meta: { className: 'w-[140px] text-xs font-semibold' },
     },
     {
       accessorKey: 'applicant_name',
-      header: '氏名',
+      header: () => sortableHeader('氏名', 'applicant_name'),
       cell: ({ row }) => <span className="text-sm font-medium">{row.original.applicant_name}</span>,
       meta: { className: 'min-w-[120px] text-xs font-semibold' },
     },
     {
       accessorKey: 'status',
-      header: 'ステータス',
+      header: () => sortableHeader('ステータス', 'status'),
       cell: ({ row }) => {
         const status = row.original.status;
-        const label = getStatusLabel(status);
+        const overdue = isPendingOverdue(row.original);
         return (
-          <Badge variant="outline" className={`text-[10px] ${STATUS_BADGE_CLASSES[status] ?? ''}`}>
-            {label}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge variant="outline" className={`text-[10px] ${STATUS_BADGE_CLASSES[status]}`}>
+              {STATUS_LABELS[status]}
+            </Badge>
+            {overdue && (
+              <Tooltip>
+                <TooltipTrigger render={<span className="inline-flex" />}>
+                  <Badge
+                    variant="outline"
+                    className="bg-warning/15 text-warning border-warning/20 gap-1 text-[10px]"
+                  >
+                    <AlertTriangle className="size-3" />
+                    対応超過
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">{OVERDUE_TOOLTIP}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         );
       },
-      meta: { className: 'w-[100px] text-xs font-semibold' },
+      meta: { className: 'w-[140px] text-xs font-semibold' },
     },
     {
-      accessorKey: 'blacklist_match',
+      accessorKey: 'blacklist_state',
       header: 'BL照合',
       cell: ({ row }) =>
-        row.original.blacklist_match ? (
+        row.original.blacklist_state === 'matched' ? (
           <Badge
             variant="outline"
-            className="bg-destructive/15 text-destructive border-destructive/20 gap-1 text-[10px]"
+            className="bg-warning/15 text-warning border-warning/20 gap-1 text-[10px]"
           >
             <AlertTriangle className="size-3" />
             BL一致
@@ -97,7 +166,7 @@ export function getMembershipApplicationsColumns(
     },
     {
       accessorKey: 'store_name',
-      header: '店舗',
+      header: '申請店舗',
       cell: ({ row }) => <span className="text-xs">{row.original.store_name}</span>,
       meta: { className: 'w-[160px] text-xs font-semibold' },
     },
@@ -108,33 +177,43 @@ export function getMembershipApplicationsColumns(
       meta: { className: 'w-[160px] text-xs font-semibold' },
     },
     {
-      accessorKey: 'campaign',
+      accessorKey: 'campaign_name',
       header: 'キャンペーン',
       cell: ({ row }) => (
-        <span className="text-muted-foreground text-xs">
-          {row.original.campaign === 'なし' ? '—' : row.original.campaign}
-        </span>
+        <span className="text-muted-foreground text-xs">{row.original.campaign_name ?? '—'}</span>
       ),
       meta: { className: 'w-[160px] text-xs font-semibold' },
     },
     {
       accessorKey: 'application_date',
-      header: () => <ApplicationDateHeader sortOrder={sortOrder} onToggle={onToggleSortOrder} />,
-      cell: ({ row }) => {
-        const iso = row.original.application_date;
-        // Format: "2026/03/30 09:15"
-        const d = new Date(iso);
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const formatted = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        return <span className="text-xs">{formatted}</span>;
-      },
+      header: () => sortableHeader('申請日時', 'application_date'),
+      cell: ({ row }) => (
+        <span className="text-xs">{formatDateYYYYMMDD_HHMM(row.original.application_date)}</span>
+      ),
       meta: { className: 'w-[140px] text-xs font-semibold' },
-      enableSorting: false,
     },
     {
-      accessorKey: 'start_date',
-      header: '利用開始日',
-      cell: ({ row }) => <span className="text-xs">{row.original.start_date}</span>,
+      accessorKey: 'enrollment_route',
+      header: '入会経路',
+      cell: ({ row }) => {
+        const route = row.original.enrollment_route;
+        return (
+          <Badge
+            variant="outline"
+            className={`text-[10px] ${ENROLLMENT_ROUTE_BADGE_CLASSES[route]}`}
+          >
+            {ENROLLMENT_ROUTE_LABELS[route]}
+          </Badge>
+        );
+      },
+      meta: { className: 'w-[80px] text-xs font-semibold' },
+    },
+    {
+      accessorKey: 'usage_start_date',
+      header: () => sortableHeader('利用開始日', 'usage_start_date'),
+      cell: ({ row }) => (
+        <span className="text-xs">{formatDateYYYYMMDD(row.original.usage_start_date)}</span>
+      ),
       meta: { className: 'w-[110px] text-xs font-semibold' },
     },
   ];

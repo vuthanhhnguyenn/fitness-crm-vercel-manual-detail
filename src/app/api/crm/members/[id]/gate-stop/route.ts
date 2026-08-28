@@ -96,7 +96,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    if (!GATE_STOP_ALLOWED_STATUSES.includes(member.profile.status)) {
+    if (!GATE_STOP_ALLOWED_STATUSES.includes(member.memberStatus)) {
       return NextResponse.json(
         { error: 'Member is not in a state that allows gate stop' },
         { status: 409 },
@@ -110,20 +110,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: errors }, { status: 400 });
     }
 
-    const { scope, reason, terminal_message, lock_after_message } = validationResult.data;
+    const { pattern, reasonCategory, message, messageType } = validationResult.data;
 
     const result = db.members.setGateStop({
       id,
-      scope,
-      reason,
-      terminal_message,
-      lock_after_message,
+      pattern,
+      reasonCategory,
+      message,
+      messageType,
     });
     if (!result) {
       return NextResponse.json({ error: 'Failed to apply gate stop' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, member_id: id, scope, reason }, { status: 200 });
+    return NextResponse.json(
+      { success: true, member_id: id, pattern, reasonCategory },
+      { status: 200 },
+    );
   } catch (error) {
     console.error('[POST /crm/members/[id]/gate-stop]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -142,7 +145,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    if (member.profile.status !== MemberStatus.GATE_STOP) {
+    // Whether a stop is in place is read off the gate-stop record itself, not off
+    // `memberStatus` — the two axes are independent.
+    if (!member.gateStop) {
       return NextResponse.json({ error: 'Member is not currently gate-stopped' }, { status: 409 });
     }
 
@@ -153,12 +158,24 @@ export async function DELETE(
       return NextResponse.json({ error: errors }, { status: 400 });
     }
 
+    const { reasonCategory, note } = validationResult.data;
     const result = db.members.releaseGateStop(id);
     if (!result) {
       return NextResponse.json({ error: 'Failed to release gate stop' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, member_id: id }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        member_id: id,
+        gateStop: null,
+        clearedAt: new Date().toISOString(),
+        clearedBy: { staffId: 'staff-mock', displayName: '本部 太郎' },
+        clearedReasonCategory: reasonCategory,
+        clearedNote: note ?? null,
+      },
+      { status: 200 },
+    );
   } catch (error) {
     console.error('[DELETE /crm/members/[id]/gate-stop]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

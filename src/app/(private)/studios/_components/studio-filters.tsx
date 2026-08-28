@@ -2,8 +2,12 @@
 
 import { useState } from 'react';
 
+import { ALL_STORES, useCurrentStore } from '@/contexts/current-store.context';
+import { toSelectItems } from '@/utils/app.util';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 
+import { SearchableSelect } from '@/components/common/searchable-select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,8 +18,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-const filterActiveClass = (value: string, defaultValue: string) =>
-  value !== defaultValue ? 'border-primary bg-primary/10 text-foreground' : '';
+import { getCrmStoresOptions } from '@/lib/api/@tanstack/react-query.gen';
+import type { Store } from '@/lib/api/types.gen';
+
+import { StudioSearch } from './studio-search';
+
+const filterActiveClass = (value: string) =>
+  value ? 'border-primary bg-primary/10 text-foreground' : '';
 
 const TYPE_OPTIONS = [
   { value: '', label: '全区分' },
@@ -39,38 +48,83 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: '無効' },
 ];
 
+const TYPE_ITEMS = toSelectItems(TYPE_OPTIONS);
+const BRAND_ITEMS = toSelectItems(BRAND_OPTIONS);
+const STATUS_ITEMS = toSelectItems(STATUS_OPTIONS);
+
+// toSelectItems keys the "empty" option by its label, so the first key of each
+// map is the sentinel used for the unselected/"all" state.
+const TYPE_ALL_KEY = Object.keys(TYPE_ITEMS)[0];
+const BRAND_ALL_KEY = Object.keys(BRAND_ITEMS)[0];
+const STATUS_ALL_KEY = Object.keys(STATUS_ITEMS)[0];
+
 interface StudioFiltersProps {
-  storeOptions: string[];
-  filterStore: string;
-  filterType: string;
-  filterBrand: string;
-  filterStatus: string;
-  onStoreChange: (value: string) => void;
-  onTypeChange: (value: string) => void;
+  search: string;
+  onSearchChange: (value: string) => void;
+  storeId: string;
+  onStoreIdChange: (value: string) => void;
+  studioType: string;
+  onStudioTypeChange: (value: string) => void;
+  brand: string;
   onBrandChange: (value: string) => void;
+  status: string;
   onStatusChange: (value: string) => void;
-  onClearFilters: () => void;
   activeFilterCount: number;
+  onClearFilters: () => void;
 }
 
 export function StudioFilters({
-  storeOptions,
-  filterStore,
-  filterType,
-  filterBrand,
-  filterStatus,
-  onStoreChange,
-  onTypeChange,
+  search,
+  onSearchChange,
+  storeId,
+  onStoreIdChange,
+  studioType,
+  onStudioTypeChange,
+  brand,
   onBrandChange,
+  status,
   onStatusChange,
-  onClearFilters,
   activeFilterCount,
+  onClearFilters,
 }: StudioFiltersProps) {
   const [filterExpanded, setFilterExpanded] = useState(false);
 
+  // FR-001-05: the store filter is shown only for users who can access 2+ stores
+  // and are currently viewing the header's "全店舗" scope — mirrors
+  // entry-exit-history-filters.tsx's showStoreFilter logic.
+  const { currentStoreId } = useCurrentStore();
+  const isAllStoresScope = currentStoreId === ALL_STORES;
+  const { data: probeData } = useQuery({
+    ...getCrmStoresOptions({ query: { page: 1, limit: 2, sort_by: 'name', sort_order: 'asc' } }),
+    enabled: isAllStoresScope,
+  });
+  const showStoreFilter = isAllStoresScope && (probeData?.pagination.total ?? 0) >= 2;
+
+  const [storeSelectOpen, setStoreSelectOpen] = useState(false);
+  const [storeSearch, setStoreSearch] = useState('');
+  const [selectedStore, setSelectedStore] = useState<Store | null>(null);
+
+  const { data: storeData, isFetching: isStoreFetching } = useQuery({
+    ...getCrmStoresOptions({
+      query: {
+        page: 1,
+        limit: 20,
+        search: (storeSelectOpen ? storeSearch : storeId) || undefined,
+        sort_by: 'name',
+        sort_order: 'asc',
+      },
+    }),
+    enabled: showStoreFilter && (storeSelectOpen || !!storeId),
+  });
+  const stores = storeData?.stores ?? [];
+  const selectedStoreForDisplay =
+    stores.find((store) => store.id === storeId) ??
+    (selectedStore?.id === storeId ? selectedStore : undefined);
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
+    <div className="space-y-3 px-4 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <StudioSearch value={search} onChange={onSearchChange} />
         <Button
           variant={activeFilterCount > 0 ? 'default' : 'outline'}
           size="sm"
@@ -90,86 +144,85 @@ export function StudioFilters({
 
       {filterExpanded && (
         <div className="flex flex-wrap items-center gap-2">
-          {storeOptions.length > 0 && (
-            <Select
-              value={filterStore || '全店舗'}
-              onValueChange={(v) => {
-                if (v == null) return;
-                onStoreChange(v === '全店舗' ? '' : v);
+          {showStoreFilter && (
+            <SearchableSelect<Store>
+              value={storeId || null}
+              valueLabel={selectedStoreForDisplay?.name ?? '全店舗'}
+              options={stores}
+              placeholder="全店舗"
+              searchPlaceholder="店舗を検索..."
+              emptyMessage="該当する店舗がありません"
+              loadingMessage="店舗を読み込み中..."
+              clearLabel="全店舗"
+              open={storeSelectOpen}
+              onOpenChange={setStoreSelectOpen}
+              onSearchChange={setStoreSearch}
+              onSelect={(store) => {
+                setSelectedStore(store);
+                onStoreIdChange(store?.id ?? '');
               }}
-            >
-              <SelectTrigger
-                className={`h-8 w-[160px] text-xs ${filterActiveClass(filterStore, '')}`}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="全店舗">全店舗</SelectItem>
-                {storeOptions.map((store) => (
-                  <SelectItem key={store} value={store}>
-                    {store}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              getOptionKey={(store) => store.id}
+              getOptionLabel={(store) => store.name}
+              isLoading={isStoreFetching}
+              triggerClassName={`h-8 w-40 text-xs ${filterActiveClass(storeId)}`}
+            />
           )}
 
           <Select
-            value={filterType || '全区分'}
+            value={studioType || TYPE_ALL_KEY}
             onValueChange={(v) => {
               if (v == null) return;
-              onTypeChange(v === '全区分' ? '' : v);
+              onStudioTypeChange(v === TYPE_ALL_KEY ? '' : v);
             }}
+            items={TYPE_ITEMS}
           >
-            <SelectTrigger className={`h-8 w-[160px] text-xs ${filterActiveClass(filterType, '')}`}>
+            <SelectTrigger className={`h-8 w-40 text-xs ${filterActiveClass(studioType)}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {TYPE_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value || '全区分'}>
-                  {opt.label}
+              {Object.entries(TYPE_ITEMS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
           <Select
-            value={filterBrand || '全ブランド'}
+            value={brand || BRAND_ALL_KEY}
             onValueChange={(v) => {
               if (v == null) return;
-              onBrandChange(v === '全ブランド' ? '' : v);
+              onBrandChange(v === BRAND_ALL_KEY ? '' : v);
             }}
+            items={BRAND_ITEMS}
           >
-            <SelectTrigger
-              className={`h-8 w-[140px] text-xs ${filterActiveClass(filterBrand, '')}`}
-            >
+            <SelectTrigger className={`h-8 w-35 text-xs ${filterActiveClass(brand)}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {BRAND_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value || '全ブランド'}>
-                  {opt.label}
+              {Object.entries(BRAND_ITEMS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
           <Select
-            value={filterStatus || '全ステータス'}
+            value={status || STATUS_ALL_KEY}
             onValueChange={(v) => {
               if (v == null) return;
-              onStatusChange(v === '全ステータス' ? '' : v);
+              onStatusChange(v === STATUS_ALL_KEY ? '' : v);
             }}
+            items={STATUS_ITEMS}
           >
-            <SelectTrigger
-              className={`h-8 w-[140px] text-xs ${filterActiveClass(filterStatus, '')}`}
-            >
+            <SelectTrigger className={`h-8 w-35 text-xs ${filterActiveClass(status)}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {STATUS_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value || '全ステータス'}>
-                  {opt.label}
+              {Object.entries(STATUS_ITEMS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
                 </SelectItem>
               ))}
             </SelectContent>

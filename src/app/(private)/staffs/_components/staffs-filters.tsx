@@ -1,8 +1,10 @@
 'use client';
 
+import { toSelectItems } from '@/utils/app.util';
 import { useQuery } from '@tanstack/react-query';
-import { Search, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, SlidersHorizontal } from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -13,12 +15,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { getCrmBrandsOptions, getCrmPositionsOptions } from '@/lib/api/@tanstack/react-query.gen';
+import { getCrmPositionsOptions, getCrmStoresOptions } from '@/lib/api/@tanstack/react-query.gen';
 
 import {
-  STAFF_BRAND_LABELS,
+  STAFF_ROLE_LABELS,
   STAFF_STATUS_LABELS,
-  StaffBrand,
+  StaffRole,
   StaffStatus,
 } from '../_constants/constants';
 import { useStaffsFiltersContext } from '../_contexts/staffs-filters-context';
@@ -26,39 +28,45 @@ import { useStaffsFiltersContext } from '../_contexts/staffs-filters-context';
 interface StaffsFiltersProps {
   isFilterOpen: boolean;
   onFilterOpenChange: (open: boolean) => void;
+  /** Hidden entirely when the header context is scoped to a single store (matches staff-list.tsx L439) */
+  isSingleStoreContext?: boolean;
 }
 
-const ALL_POSITIONS_VALUE = '__all__';
+const ALL_ROLES_VALUE = '__all_roles__';
+const ALL_POSITIONS_VALUE = '__all_positions__';
+const ALL_STORES_VALUE = '__all_stores__';
+const ALL_STATUS_VALUE = '__all_status__';
 
-export function StaffsFilters({ isFilterOpen, onFilterOpenChange }: StaffsFiltersProps) {
+export function StaffsFilters({
+  isFilterOpen,
+  onFilterOpenChange,
+  isSingleStoreContext = false,
+}: StaffsFiltersProps) {
   const { filters, searchInput, setSearchInput, updateFilter, hasActiveFilters, clearFilters } =
     useStaffsFiltersContext();
 
   const { data: positionsRes, isLoading: positionsLoading } = useQuery({
-    ...getCrmPositionsOptions(),
+    ...getCrmPositionsOptions({ query: { limit: 200 } }),
     enabled: isFilterOpen,
   });
-  const positions = positionsRes?.positions ?? [];
+  const positions = positionsRes?.items ?? [];
 
-  const { data: brandsRes, isLoading: brandsLoading } = useQuery({
-    ...getCrmBrandsOptions(),
-    enabled: isFilterOpen,
+  const { data: storesRes, isLoading: storesLoading } = useQuery({
+    ...getCrmStoresOptions({ query: { page: 1, limit: 100, sort_by: 'name', sort_order: 'asc' } }),
+    enabled: isFilterOpen && !isSingleStoreContext,
   });
-  const apiBrands = brandsRes?.brands ?? [];
+  const stores = storesRes?.stores ?? [];
 
-  const brandOptionLabel = (code: StaffBrand): string => {
-    const fromApi = apiBrands.find((b) => b.code === code);
-    if (fromApi) return fromApi.display_name;
-    return STAFF_BRAND_LABELS[code];
-  };
+  const roleOptions = (Object.values(StaffRole) as StaffRole[]).filter(
+    (role) => role !== StaffRole.SYSTEM,
+  );
 
-  const positionInList =
-    filters.position_id != null ? positions.some((p) => p.id === filters.position_id) : false;
-
-  const selectedPositionLabel =
-    filters.position_id != null
-      ? positions.find((p) => p.id === filters.position_id)?.position_name
-      : null;
+  const activeFilterCount = [
+    filters.role,
+    filters.position_id,
+    filters.store_id,
+    filters.status,
+  ].filter((v) => v !== null).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -74,13 +82,19 @@ export function StaffsFilters({ isFilterOpen, onFilterOpenChange }: StaffsFilter
           />
         </div>
         <Button
-          variant="outline"
+          variant={activeFilterCount > 0 ? 'default' : 'outline'}
           size="sm"
           className="h-9 gap-1.5"
           onClick={() => onFilterOpenChange(!isFilterOpen)}
         >
           <SlidersHorizontal className="size-4" />
           {isFilterOpen ? '閉じる' : '詳細フィルター'}
+          {activeFilterCount > 0 && (
+            <Badge variant="secondary" className="ml-0.5 h-5 px-1 text-[10px]">
+              {activeFilterCount}
+            </Badge>
+          )}
+          {isFilterOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
         </Button>
       </div>
 
@@ -88,6 +102,31 @@ export function StaffsFilters({ isFilterOpen, onFilterOpenChange }: StaffsFilter
       {isFilterOpen && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
+            {/* ロール */}
+            <Select
+              value={filters.role ?? ALL_ROLES_VALUE}
+              onValueChange={(value) => {
+                const newValue = value ?? ALL_ROLES_VALUE;
+                updateFilter('role', newValue === ALL_ROLES_VALUE ? null : (newValue as StaffRole));
+              }}
+              items={toSelectItems([
+                { value: ALL_ROLES_VALUE, label: '全ロール' },
+                ...roleOptions.map((role) => ({ value: role, label: STAFF_ROLE_LABELS[role] })),
+              ])}
+            >
+              <SelectTrigger className="h-9 w-[160px] rounded-lg">
+                <SelectValue placeholder="全ロール" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_ROLES_VALUE}>全ロール</SelectItem>
+                {roleOptions.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {STAFF_ROLE_LABELS[role]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             {/* 職位 */}
             <Select
               value={
@@ -102,27 +141,16 @@ export function StaffsFilters({ isFilterOpen, onFilterOpenChange }: StaffsFilter
                 const n = Number.parseInt(newValue, 10);
                 updateFilter('position_id', Number.isNaN(n) ? null : n);
               }}
+              items={toSelectItems([
+                { value: ALL_POSITIONS_VALUE, label: '全職位' },
+                ...positions.map((p) => ({ value: String(p.id), label: p.position_name })),
+              ])}
             >
               <SelectTrigger className="h-9 min-w-[200px] rounded-lg">
-                <div className="flex items-center gap-1.5">
-                  <SelectValue placeholder="全職位">
-                    {selectedPositionLabel ??
-                      (filters.position_id != null && !positionInList
-                        ? positionsLoading
-                          ? '読み込み中…'
-                          : `職位 #${filters.position_id}`
-                        : null) ??
-                      '全職位'}
-                  </SelectValue>
-                </div>
+                <SelectValue placeholder={positionsLoading ? '読み込み中…' : '全職位'} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL_POSITIONS_VALUE}>全職位</SelectItem>
-                {filters.position_id != null && !positionInList ? (
-                  <SelectItem value={String(filters.position_id)}>
-                    {positionsLoading ? '読み込み中…' : `職位 #${filters.position_id}`}
-                  </SelectItem>
-                ) : null}
                 {positions.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>
                     {p.position_name}
@@ -131,50 +159,53 @@ export function StaffsFilters({ isFilterOpen, onFilterOpenChange }: StaffsFilter
               </SelectContent>
             </Select>
 
-            {/* ブランド — labels from Y-07 API when available, else constants */}
-            <Select
-              value={filters.brand ?? ''}
-              onValueChange={(value) => {
-                const newValue = value ?? '';
-                updateFilter('brand', (newValue as StaffBrand) || null);
-              }}
-            >
-              <SelectTrigger className="h-9 w-fit min-w-[140px] rounded-lg">
-                <div className="flex items-center gap-1.5">
-                  <SelectValue placeholder="全ブランド">
-                    {filters.brand
-                      ? brandsLoading && apiBrands.length === 0
-                        ? '読み込み中…'
-                        : brandOptionLabel(filters.brand)
-                      : '全ブランド'}
-                  </SelectValue>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(STAFF_BRAND_LABELS) as StaffBrand[]).map((code) => (
-                  <SelectItem key={code} value={code}>
-                    {brandOptionLabel(code)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* 所属店舗 — header context が単一店舗スコープの場合は非表示 */}
+            {!isSingleStoreContext && (
+              <Select
+                value={filters.store_id ?? ALL_STORES_VALUE}
+                onValueChange={(value) => {
+                  const newValue = value ?? ALL_STORES_VALUE;
+                  updateFilter('store_id', newValue === ALL_STORES_VALUE ? null : newValue);
+                }}
+                items={toSelectItems([
+                  { value: ALL_STORES_VALUE, label: '全店舗' },
+                  ...stores.map((store) => ({ value: store.id, label: store.name })),
+                ])}
+              >
+                <SelectTrigger className="h-9 min-w-[160px] rounded-lg">
+                  <SelectValue placeholder={storesLoading ? '読み込み中…' : '全店舗'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_STORES_VALUE}>全店舗</SelectItem>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
 
             {/* ステータス */}
             <Select
-              value={filters.status ?? ''}
+              value={filters.status ?? ALL_STATUS_VALUE}
               onValueChange={(value) => {
-                const newValue = value ?? '';
-                updateFilter('status', (newValue as StaffStatus) || null);
+                const newValue = value ?? ALL_STATUS_VALUE;
+                updateFilter(
+                  'status',
+                  newValue === ALL_STATUS_VALUE ? null : (newValue as StaffStatus),
+                );
               }}
+              items={toSelectItems([
+                { value: ALL_STATUS_VALUE, label: '全ステータス' },
+                ...Object.entries(STAFF_STATUS_LABELS).map(([value, label]) => ({ value, label })),
+              ])}
             >
               <SelectTrigger className="h-9 w-fit rounded-lg">
-                <div className="flex items-center gap-1.5">
-                  <SelectValue placeholder="全ステータス">
-                    {filters.status ? STAFF_STATUS_LABELS[filters.status] : '全ステータス'}
-                  </SelectValue>
-                </div>
+                <SelectValue placeholder="全ステータス" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={ALL_STATUS_VALUE}>全ステータス</SelectItem>
                 {Object.entries(STAFF_STATUS_LABELS).map(([value, label]) => (
                   <SelectItem key={value} value={value}>
                     {label}

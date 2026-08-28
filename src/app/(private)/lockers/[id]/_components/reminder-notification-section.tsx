@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 
-import { formatDateYYYYMMDD } from '@/utils/date.util';
+import { formatDateYYYYMMDD, formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import { AlertTriangle, Bell, Send } from 'lucide-react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -33,6 +33,13 @@ import {
   LOCKER_REMINDER_STATUS_BADGE_CLASSES,
   LOCKER_REMINDER_STATUS_LABELS,
 } from '../../_constants/constants';
+
+/** FR-011 通知タイミング（解約日の N 日前） */
+const REMINDER_DAYS_LABELS: Record<string, string> = {
+  '7': '解約日の7日前',
+  '14': '解約日の14日前',
+  '30': '解約日の30日前',
+};
 
 type ReminderNotification =
   GetCrmLockersByIdResponse['locker']['slot_items'][number]['reminder_notifications'][number];
@@ -99,12 +106,14 @@ export function ReminderNotificationSection({
             <Label className="text-xs">通知タイミング</Label>
             <Select value={reminderDays} onValueChange={(value) => value && setReminderDays(value)}>
               <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
+                <SelectValue>{REMINDER_DAYS_LABELS[reminderDays]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7">解約日の7日前</SelectItem>
-                <SelectItem value="14">解約日の14日前</SelectItem>
-                <SelectItem value="30">解約日の30日前</SelectItem>
+                {Object.entries(REMINDER_DAYS_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -154,7 +163,7 @@ export function ReminderNotificationSection({
                     {notifications.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="text-muted-foreground px-2 py-2 text-[10px]">
-                          {formatDateYYYYMMDD(item.sent_at)}
+                          {formatDateYYYYMMDD_HHMM(item.sent_at)}
                         </TableCell>
                         <TableCell className="px-2 py-2">
                           <Badge variant="secondary" className="text-[10px] font-normal">

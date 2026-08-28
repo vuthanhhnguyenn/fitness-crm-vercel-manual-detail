@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { OPTION_CONTRACT_OPERATOR_ROLES, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
   CancelOptionContractRequest,
@@ -40,6 +41,16 @@ registerRoute({
       description: 'Bad request',
     },
     {
+      status: 401,
+      schema: ErrorResponseSchema,
+      description: 'Unauthorized',
+    },
+    {
+      status: 403,
+      schema: ErrorResponseSchema,
+      description: 'Role is not allowed to operate option contracts',
+    },
+    {
       status: 404,
       schema: ErrorResponseSchema,
       description: 'Member or contracts not found',
@@ -54,6 +65,15 @@ registerRoute({
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    // A-01 権限マトリクス「オプション操作」: Observer / Trainer は操作不可
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    if (!OPTION_CONTRACT_OPERATOR_ROLES.includes(authResult.user.role)) {
+      return NextResponse.json({ error: 'オプション操作の権限がありません' }, { status: 403 });
+    }
+
     const { id } = await params;
     const member = db.members.get(id);
     if (!member) {
@@ -88,7 +108,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const reasonLabel = validatedBody.reason?.trim();
 
     db.contracts.create({
-      contract_id: member.profile.contract_id || `CONTRACT-${id}`,
+      contract_id: member.currentMainContract?.contractId || `CONTRACT-${id}`,
       member_id: id,
       data: {
         ...currentContracts,
@@ -106,7 +126,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     });
 
     return NextResponse.json({
-      cancelled_option_id: validatedBody.option_id,
+      cancelledOptionId: validatedBody.option_id,
     });
   } catch {
     return NextResponse.json({ error: 'Failed to cancel option contract' }, { status: 500 });

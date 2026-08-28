@@ -7,6 +7,8 @@ import { Bell, Mail, MessageSquare, Smartphone } from 'lucide-react';
 
 import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
 
+import { TEXT_MAX_LENGTH } from '@/constants/app.constants';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -176,6 +178,7 @@ export function ManualNotificationForm({
                     placeholder="例: 夏キャンペーン告知"
                     className="max-w-[480px]"
                     autoFocus
+                    maxLength={TEXT_MAX_LENGTH}
                   />
                 </FormControl>
                 <FormMessage />

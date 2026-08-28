@@ -1,77 +1,73 @@
 import { z } from 'zod';
 
-export const PromoCodeEntryModeSchema = z.enum(['manual', 'auto']);
+export const PROMO_CODE_SCOPE_UNSELECTED = '';
 
-export const PromoCodeUsageCapModeSchema = z.enum(['unlimited', 'limited']);
-
-export const PromoCodeStoreScopeSchema = z.enum(['all', 'branch']);
-
-export const PromoCodeIssuanceDraftSchema = z.object({
-  campaignId: z.string().trim().min(1, 'キャンペーンを選択してください'),
-  codeMode: PromoCodeEntryModeSchema,
-  code: z.string().trim(),
-  description: z.string().trim().max(255).optional().default(''),
-  validFrom: z.string().trim().min(1, '開始日を入力してください'),
-  validTo: z.string().trim().min(1, '終了日を入力してください'),
-  usageCapMode: PromoCodeUsageCapModeSchema,
-  usageCap: z.string().trim().optional().default(''),
-  storeScope: PromoCodeStoreScopeSchema,
-});
-
-export type PromoCodeIssuanceDraft = z.infer<typeof PromoCodeIssuanceDraftSchema>;
-
-export function normalizePromoCodeValue(value: string): string {
-  return value.trim().replace(/\s+/g, '').toUpperCase();
-}
-
-export function buildPromoCodeIssuanceSchema(existingCodes: readonly string[]) {
-  const normalizedExistingCodes = new Set(existingCodes.map(normalizePromoCodeValue));
-
-  return PromoCodeIssuanceDraftSchema.superRefine((value, ctx) => {
-    const normalizedCode = normalizePromoCodeValue(value.code);
-
-    if (value.codeMode === 'manual' && !normalizedCode) {
+/** G-06 FR-001〜FR-005: コード発行ダイアログの入力。 */
+export const promoCodeIssuanceSchema = z
+  .object({
+    campaignId: z.string().trim().min(1, 'キャンペーンを選択してください'),
+    generationMethod: z.enum(['auto', 'manual']).default('manual'),
+    code: z.string().trim().max(50, 'コードは50文字以内で入力してください').default(''),
+    description: z.string().trim().max(255, '説明は255文字以内で入力してください').default(''),
+    scopeType: z
+      .union([
+        z.enum(['brand_all', 'issuer_store_only', 'ogf_only']),
+        z.literal(PROMO_CODE_SCOPE_UNSELECTED),
+      ])
+      .default(PROMO_CODE_SCOPE_UNSELECTED),
+    issuedStoreId: z.string().trim().default(''),
+    validFrom: z.string().min(1, '有効期間の開始日を選択してください'),
+    validTo: z.string().min(1, '有効期間の終了日を選択してください'),
+    maxUses: z
+      .string()
+      .trim()
+      .refine(
+        (value) => value === '' || (Number.isInteger(Number(value)) && Number(value) > 0),
+        '使用上限は1以上の整数で入力してください',
+      )
+      .default(''),
+  })
+  .superRefine((value, ctx) => {
+    if (value.scopeType === PROMO_CODE_SCOPE_UNSELECTED) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['scopeType'],
+        message: '適用店舗タイプを選択してください',
+      });
+    }
+    if (value.generationMethod === 'manual' && value.code === '') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['code'],
-        message: 'コードを入力してください',
+        message: 'コードを入力するか自動生成してください',
       });
     }
-
-    if (value.codeMode === 'auto' && !normalizedCode) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['code'],
-        message: '自動生成を実行してください',
-      });
-    }
-
     if (value.validFrom && value.validTo && value.validFrom > value.validTo) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['validTo'],
-        message: '終了日は開始日以降にしてください',
+        message: '有効期間の終了日は開始日以降にしてください',
       });
     }
-
-    if (value.usageCapMode === 'limited') {
-      const usageCap = Number(value.usageCap);
-
-      if (!Number.isFinite(usageCap) || !Number.isInteger(usageCap) || usageCap <= 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['usageCap'],
-          message: '有効数は 1 以上の整数で入力してください',
-        });
-      }
-    }
-
-    if (normalizedCode && normalizedExistingCodes.has(normalizedCode)) {
+    if (value.scopeType === 'issuer_store_only' && value.issuedStoreId === '') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['code'],
-        message: 'このコードは既に存在します',
+        path: ['issuedStoreId'],
+        message: '発行店舗を選択してください',
       });
     }
   });
-}
+
+export type PromoCodeIssuanceValues = z.infer<typeof promoCodeIssuanceSchema>;
+
+export const PROMO_CODE_ISSUANCE_DEFAULTS: PromoCodeIssuanceValues = {
+  campaignId: '',
+  generationMethod: 'manual',
+  code: '',
+  description: '',
+  scopeType: PROMO_CODE_SCOPE_UNSELECTED,
+  issuedStoreId: '',
+  validFrom: '',
+  validTo: '',
+  maxUses: '',
+};

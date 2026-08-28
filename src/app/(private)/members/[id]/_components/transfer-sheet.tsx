@@ -1,12 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { TEXTAREA_MAX_LENGTH } from '@/constants/app.constants';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowRightLeft, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
+
+import { SearchableSelect } from '@/components/common/searchable-select';
+import { TextWithTooltip } from '@/components/common/text-with-tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -19,14 +26,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import {
   Sheet,
@@ -38,12 +46,17 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 
 import {
-  getCrmStoresOptions,
+  getCrmMembersByIdQueryKey,
+  getCrmMembersQueryKey,
+  getCrmStoresInfiniteOptions,
   getCrmTransfersQueryKey,
   postCrmMembersByIdTransferMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import { type GetCrmStoresResponse, MainBrand } from '@/lib/api/types.gen';
-import { cn } from '@/lib/utils';
+import {
+  type GetCrmStoresResponse,
+  MainBrand,
+  type ProxyAgreementMethod,
+} from '@/lib/api/types.gen';
 
 import { ProxyApplicationSection } from './proxy-application-section';
 
@@ -65,6 +78,15 @@ const transferFormSchema = z
   });
 
 type TransferFormValues = z.infer<typeof transferFormSchema>;
+
+const DEFAULT_VALUES: TransferFormValues = {
+  to_store_id: '',
+  to_store_name: '',
+  reason: '',
+  is_proxy: false,
+  proxy_agreed_at: undefined,
+  proxy_method: '',
+};
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface TransferSheetProps {
@@ -88,29 +110,56 @@ export function TransferSheet({
   inCancellationPeriod,
 }: Readonly<TransferSheetProps>) {
   const queryClient = useQueryClient();
+  const scrollToFirstError = useScrollToFirstError();
 
-  // Field state
-  const [toStore, setToStore] = useState<StoreRow | null>(null);
-  const [reason, setReason] = useState('');
-  const [isProxy, setIsProxy] = useState(false);
-  const [proxyAgreedAt, setProxyAgreedAt] = useState<Date | undefined>(undefined);
-  const [proxyMethod, setProxyMethod] = useState('');
+  const form = useForm<TransferFormValues>({
+    resolver: zodResolver(transferFormSchema),
+    mode: 'onSubmit',
+    defaultValues: DEFAULT_VALUES,
+  });
 
-  // Validation errors
-  const [errors, setErrors] = useState<Partial<Record<keyof TransferFormValues, string>>>({});
+  // RHF is the single source of truth; useWatch drives the conditional UI
+  const toStoreId = useWatch({ control: form.control, name: 'to_store_id' });
+  const toStoreName = useWatch({ control: form.control, name: 'to_store_name' });
+  const isProxy = useWatch({ control: form.control, name: 'is_proxy' });
+  const proxyAgreedAt = useWatch({ control: form.control, name: 'proxy_agreed_at' });
+  const proxyMethod = useWatch({ control: form.control, name: 'proxy_method' });
 
-  // Confirm dialog state
+  // The selected store's brand drives the workflow hint; kept aside from the submitted values
+  const [selectedStore, setSelectedStore] = useState<StoreRow | null>(null);
+
+  // FR-014: 申請 operations must be confirmed before they are sent
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // Stores list
-  const { data: storesRes } = useQuery({
-    ...getCrmStoresOptions({
-      query: { page: 1, limit: 100, sort_by: 'name', sort_order: 'asc' },
+  // Destination-store list: server-side search + infinite scroll (no fixed limit
+  // that could drop stores), excluding the member's current store.
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [storeSearch, setStoreSearch] = useState('');
+  const {
+    data: storesData,
+    isFetching: isStoresFetching,
+    fetchNextPage: fetchNextStores,
+    hasNextPage: hasMoreStores,
+    isFetchingNextPage: isFetchingMoreStores,
+  } = useInfiniteQuery({
+    ...getCrmStoresInfiniteOptions({
+      query: { limit: 20, search: storeSearch || undefined, sort_by: 'name', sort_order: 'asc' },
     }),
+    enabled: storeOpen,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: GetCrmStoresResponse, allPages) => {
+      const currentPage = allPages.length;
+      const totalPages = lastPage.pagination?.total_pages ?? 0;
+      return currentPage < totalPages ? currentPage + 1 : undefined;
+    },
   });
-  const storeOptions = (storesRes?.stores ?? [])
-    .filter((s) => s.id !== currentStoreId)
-    .map((s) => ({ value: s.id, label: s.name }));
+  const storeOptions = useMemo(
+    () =>
+      (storesData?.pages.flatMap((page) => page.stores ?? []) ?? []).filter(
+        (store) => store.id !== currentStoreId,
+      ),
+    [storesData, currentStoreId],
+  );
 
   const mutation = useMutation({
     ...postCrmMembersByIdTransferMutation(),
@@ -118,7 +167,11 @@ export function TransferSheet({
       toast.success('移籍申請を受け付けました', {
         description: '移籍先店舗に通知を送りました',
       });
-      queryClient.invalidateQueries({ queryKey: getCrmTransfersQueryKey(), refetchType: 'all' });
+      queryClient.invalidateQueries({
+        queryKey: getCrmMembersByIdQueryKey({ path: { id: memberId } }),
+      });
+      queryClient.invalidateQueries({ queryKey: getCrmMembersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getCrmTransfersQueryKey() });
       handleClose();
     },
     onError: () => {
@@ -129,64 +182,44 @@ export function TransferSheet({
   const handleClose = () => {
     onOpenChange(false);
     setTimeout(() => {
-      setToStore(null);
-      setReason('');
-      setIsProxy(false);
-      setProxyAgreedAt(undefined);
-      setProxyMethod('');
-      setErrors({});
+      form.reset(DEFAULT_VALUES);
+      setSelectedStore(null);
     }, 300);
   };
 
-  const handleSubmitClick = () => {
-    const values: TransferFormValues = {
-      to_store_id: toStore?.id || '',
-      to_store_name: toStore?.name || '',
-      reason: reason || undefined,
-      is_proxy: isProxy,
-      proxy_agreed_at: proxyAgreedAt ? proxyAgreedAt.toISOString() : undefined,
-      proxy_method: proxyMethod || undefined,
-    };
-
-    const result = transferFormSchema.safeParse(values);
-    if (!result.success) {
-      const fieldErrors: Partial<Record<keyof TransferFormValues, string>> = {};
-      for (const issue of result.error.issues) {
-        const field = issue.path[0] as keyof TransferFormValues;
-        if (!fieldErrors[field]) fieldErrors[field] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-
-    setErrors({});
-    setTimeout(() => setShowConfirm(true), 150);
-  };
+  // Validate first, then ask for confirmation; the mutation only runs from the dialog.
+  const handleSubmit = form.handleSubmit(() => {
+    setShowConfirm(true);
+  }, scrollToFirstError);
 
   const handleConfirm = () => {
     setShowConfirm(false);
+    const data = form.getValues();
     mutation.mutate({
       path: { id: memberId },
       body: {
-        to_store_id: toStore?.id || '',
-        to_store_name: toStore?.name || '',
-        reason: reason || undefined,
-        is_proxy: isProxy,
-        proxy_agreed_at: proxyAgreedAt ? proxyAgreedAt.toISOString() : undefined,
-        proxy_method: proxyMethod || undefined,
+        to_store_id: data.to_store_id,
+        to_store_name: data.to_store_name,
+        reason: data.reason || undefined,
+        is_proxy: data.is_proxy,
+        proxy_agreed_at: data.is_proxy ? data.proxy_agreed_at : undefined,
+        proxy_method:
+          data.is_proxy && data.proxy_method
+            ? (data.proxy_method as ProxyAgreementMethod)
+            : undefined,
       },
     });
   };
 
   const handleProxyAgreedAtChange = (date: Date | undefined) => {
-    setProxyAgreedAt(date);
-    if (date) setErrors((prev) => ({ ...prev, proxy_agreed_at: undefined }));
+    form.setValue('proxy_agreed_at', date ? date.toISOString() : undefined);
+    if (date) form.clearErrors('proxy_agreed_at');
   };
 
-  const handleStoreChange = (storeId: string | null) => {
-    if (!storeId) return;
-    setToStore(storesRes?.stores.find((s) => s.id === storeId) ?? null);
-    setErrors((prev) => ({ ...prev, to_store_id: undefined }));
+  const handleStoreChange = (store: StoreRow | null) => {
+    setSelectedStore(store);
+    form.setValue('to_store_id', store?.id ?? '', { shouldValidate: form.formState.isSubmitted });
+    form.setValue('to_store_name', store?.name ?? '');
   };
 
   const isDisabled = hasUnpaidFee || inCancellationPeriod;
@@ -207,132 +240,169 @@ export function TransferSheet({
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto px-6">
-            {/* Cancellation period warning */}
-            {inCancellationPeriod && (
-              <div className="pt-4">
-                <Alert className="border-destructive/30 bg-destructive/10">
-                  <AlertDescription className="text-destructive text-xs">
-                    解約手数料期間中のため移籍できません。管理者にお問い合わせください。
-                  </AlertDescription>
-                </Alert>
-              </div>
-            )}
-
-            {/* Unpaid fee warning */}
-            {!inCancellationPeriod && hasUnpaidFee && (
-              <div className="pt-4">
-                <Alert className="border-destructive/30 bg-destructive/10">
-                  <AlertDescription className="text-destructive text-xs">
-                    未納金があるため操作できません。未納金を解消してから移籍申請を行ってください。
-                  </AlertDescription>
-                </Alert>
-              </div>
-            )}
-
-            {/* Proxy section */}
-            <div className="py-4">
-              <ProxyApplicationSection
-                isProxy={isProxy}
-                onIsProxyChange={setIsProxy}
-                agreedAt={proxyAgreedAt}
-                onAgreedAtChange={handleProxyAgreedAtChange}
-                method={proxyMethod}
-                onMethodChange={setProxyMethod}
-                agreedAtError={errors.proxy_agreed_at}
-              />
-            </div>
-
-            <Separator className="-mx-6 w-[calc(100%+48px)]" />
-
-            {/* Store selection */}
-            <div className="flex flex-col gap-4 py-4">
-              {/* Current store */}
-              <div className="flex flex-col gap-2">
-                <Label className="text-sm font-medium">現在の主契約店舗</Label>
-                <div className="bg-muted/50 flex items-center gap-2 rounded-md px-3 py-2">
-                  <Store className="text-muted-foreground size-4" />
-                  <span className="text-sm font-medium">{currentStoreName}</span>
-                </div>
-              </div>
-
-              {/* Target store */}
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="transfer-store" className="text-sm font-medium">
-                  移籍先店舗 <span className="text-destructive ml-1 text-xs">*</span>
-                </Label>
-                <Select
-                  value={toStore?.id}
-                  onValueChange={handleStoreChange}
-                  disabled={isDisabled}
-                  items={storeOptions}
-                >
-                  <SelectTrigger
-                    id="transfer-store"
-                    className={cn('h-9 text-sm', errors.to_store_id && 'border-destructive')}
-                  >
-                    <SelectValue placeholder="選択してください" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {storeOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.to_store_id && (
-                  <p className="text-destructive text-xs">{errors.to_store_id}</p>
+          <Form {...form}>
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 overflow-y-auto px-6">
+                {/* Cancellation period warning */}
+                {inCancellationPeriod && (
+                  <div className="pt-4">
+                    <Alert className="border-destructive/30 bg-destructive/10">
+                      <AlertDescription className="text-destructive text-xs">
+                        解約手数料期間中のため移籍できません。管理者にお問い合わせください。
+                      </AlertDescription>
+                    </Alert>
+                  </div>
                 )}
-              </div>
-              {toStore && (
-                <div className="bg-muted/50 rounded-md p-3">
-                  <p className="text-muted-foreground mb-1 text-xs">移籍ワークフロー</p>
-                  <p className="text-sm font-medium">
-                    {toStore.brand == MainBrand.JOYFIT
-                      ? '① 申請 → ② 移籍元承認 → ③ 自動移籍'
-                      : '① 申請 → ② 移籍元承認 → ③ 移籍先承認 → ④ 移籍実行'}
-                  </p>
+
+                {/* Unpaid fee warning */}
+                {!inCancellationPeriod && hasUnpaidFee && (
+                  <div className="pt-4">
+                    <Alert className="border-destructive/30 bg-destructive/10">
+                      <AlertDescription className="text-destructive text-xs">
+                        未納金があるため操作できません。未納金を解消してから移籍申請を行ってください。
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+
+                {/* Proxy section */}
+                <div className="py-4">
+                  <ProxyApplicationSection
+                    isProxy={isProxy}
+                    onIsProxyChange={(v) => form.setValue('is_proxy', v)}
+                    agreedAt={proxyAgreedAt ? new Date(proxyAgreedAt) : undefined}
+                    onAgreedAtChange={handleProxyAgreedAtChange}
+                    method={(proxyMethod ?? '') as ProxyAgreementMethod | ''}
+                    onMethodChange={(v) => form.setValue('proxy_method', v)}
+                    agreedAtError={form.formState.errors.proxy_agreed_at?.message}
+                  />
                 </div>
-              )}
-            </div>
 
-            <Separator className="-mx-6 w-[calc(100%+48px)]" />
+                <Separator className="-mx-6 w-[calc(100%+48px)]" />
 
-            {/* Reason */}
-            <div className="flex flex-col gap-2 py-4">
-              <Label htmlFor="transfer-reason" className="text-sm font-medium">
-                移籍理由 <span className="text-muted-foreground ml-1 text-xs">任意</span>
-              </Label>
-              <Textarea
-                id="transfer-reason"
-                rows={3}
-                className="resize-none text-sm"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                disabled={isDisabled}
-              />
-            </div>
-          </div>
+                {/* Store selection */}
+                <div className="flex flex-col gap-4 py-4">
+                  {/* Current store */}
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-sm font-medium">現在の主契約店舗</Label>
+                    <div className="bg-muted/50 flex items-center gap-2 rounded-md px-3 py-2">
+                      <Store className="text-muted-foreground size-4" />
+                      <span className="text-sm font-medium">{currentStoreName}</span>
+                    </div>
+                  </div>
 
-          {/* Footer */}
-          <div className="flex shrink-0 gap-2 border-t px-6 py-4">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={handleClose}
-              disabled={mutation.isPending}
-            >
-              キャンセル
-            </Button>
-            <Button
-              className="flex-1"
-              disabled={isDisabled || mutation.isPending}
-              onClick={handleSubmitClick}
-            >
-              移籍申請を送信
-            </Button>
-          </div>
+                  {/* Target store */}
+                  <FormField
+                    control={form.control}
+                    name="to_store_id"
+                    render={({ fieldState }) => (
+                      <FormItem>
+                        <FormLabel htmlFor="transfer-store" className="text-sm font-medium">
+                          移籍先店舗 <span className="text-destructive ml-1 text-xs">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <SearchableSelect<StoreRow>
+                            value={toStoreId || null}
+                            valueLabel={toStoreName || undefined}
+                            options={storeOptions}
+                            placeholder="選択してください"
+                            searchPlaceholder="店舗名・店舗IDで検索..."
+                            emptyMessage="該当する店舗がありません"
+                            loadingMessage="店舗を読み込み中..."
+                            disabled={isDisabled}
+                            open={storeOpen}
+                            onOpenChange={setStoreOpen}
+                            onSearchChange={setStoreSearch}
+                            onSelect={handleStoreChange}
+                            getOptionKey={(store) => store.id}
+                            getOptionLabel={(store) => store.name}
+                            getOptionKeywords={(store) =>
+                              [store.name, store.store_id, store.id, store.club_code]
+                                .filter(Boolean)
+                                .join(' ')
+                            }
+                            renderOption={(store) => (
+                              <TextWithTooltip
+                                text={store.name}
+                                wrapperClassName="w-full"
+                                className="w-full"
+                                side="right"
+                                align="center"
+                              />
+                            )}
+                            isLoading={isStoresFetching}
+                            hasMore={hasMoreStores}
+                            isLoadingMore={isFetchingMoreStores}
+                            onLoadMore={fetchNextStores}
+                            loadingMoreMessage="読み込み中..."
+                            hasError={!!fieldState.error}
+                            triggerClassName="h-9 w-full text-sm font-normal"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {selectedStore && (
+                    <div className="bg-muted/50 rounded-md p-3">
+                      <p className="text-muted-foreground mb-1 text-xs">移籍ワークフロー</p>
+                      <p className="text-sm font-medium">
+                        {selectedStore.brand === MainBrand.JOYFIT
+                          ? '① 申請 → ② 移籍元承認 → ③ 自動移籍'
+                          : '① 申請 → ② 移籍元承認 → ③ 移籍先承認 → ④ 移籍実行'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <Separator className="-mx-6 w-[calc(100%+48px)]" />
+
+                {/* Reason */}
+                <FormField
+                  control={form.control}
+                  name="reason"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col gap-2 py-4">
+                      <FormLabel htmlFor="transfer-reason" className="text-sm font-medium">
+                        移籍理由 <span className="text-muted-foreground ml-1 text-xs">任意</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Textarea
+                          maxLength={TEXTAREA_MAX_LENGTH}
+                          id="transfer-reason"
+                          rows={3}
+                          className="resize-none text-sm"
+                          disabled={isDisabled}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Footer */}
+              <div className="flex shrink-0 gap-2 border-t px-6 py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleClose}
+                  disabled={mutation.isPending}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={isDisabled || mutation.isPending}
+                >
+                  移籍申請を送信
+                </Button>
+              </div>
+            </form>
+          </Form>
         </SheetContent>
       </Sheet>
 
@@ -342,7 +412,7 @@ export function TransferSheet({
           <AlertDialogHeader>
             <AlertDialogTitle>移籍申請を送信しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              {currentStoreName} から {toStore?.name}{' '}
+              {currentStoreName} から {toStoreName}{' '}
               への移籍を申請します。移籍先店舗に通知が送られます。
             </AlertDialogDescription>
           </AlertDialogHeader>

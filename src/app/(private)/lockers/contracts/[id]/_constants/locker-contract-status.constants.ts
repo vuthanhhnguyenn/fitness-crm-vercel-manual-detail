@@ -19,7 +19,7 @@ export const LOCKER_CONTRACT_STATUS_BADGE_MAP: Record<
   [LockerContractStatus.AVAILABLE]: {
     className: 'border-muted bg-muted/50 text-muted-foreground gap-1 text-xs font-medium',
     dotClassName: 'bg-muted-foreground',
-    label: '利用可能',
+    label: '利用可',
   },
 };
 
@@ -40,6 +40,6 @@ export const LOCKER_CONTRACT_STATUS_CARD_MAP: Record<
   [LockerContractStatus.AVAILABLE]: {
     tone: 'muted',
     icon: XCircle,
-    label: '利用可能',
+    label: '利用可',
   },
 };

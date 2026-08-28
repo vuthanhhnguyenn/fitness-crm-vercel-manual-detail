@@ -29,18 +29,18 @@ const LOCKER_TAB_ROUTES: Record<LockerTab, RouteKey> = {
   pending: '/lockers/pending',
 };
 
+/**
+ * E-01: locker contracts are edit-only (new contracts are concluded outside the CRM).
+ * The create button is shown only on the locker (parent) list tab.
+ */
 const LOCKER_CREATE_CONFIG: Partial<
-  Record<LockerTab, { route: RouteKey; permission: Permission; denyTooltip: string }>
+  Record<LockerTab, { route: RouteKey; permission: Permission; denyTooltip: string; label: string }>
 > = {
   lockers: {
     route: '/lockers/create',
     permission: Permission.LockersCreate,
     denyTooltip: 'ロッカー登録の権限がありません',
-  },
-  contracts: {
-    route: '/lockers/contracts/create',
-    permission: Permission.LockersContractsCreate,
-    denyTooltip: 'ロッカー契約登録の権限がありません',
+    label: 'ロッカーを登録',
   },
 };
 
@@ -108,7 +108,7 @@ export default function LockersLayout({ children }: { children: ReactNode }) {
       <PageHeader
         title="ロッカー管理"
         actions={
-          <>
+          <div className="flex items-center gap-2 whitespace-nowrap">
             {csvExportConfig ? (
               <LockerListCsvExportButton
                 activeTab={activeTab}
@@ -118,15 +118,16 @@ export default function LockersLayout({ children }: { children: ReactNode }) {
             ) : null}
             {createConfig ? (
               <RoleGatedButton
+                className="gap-1 whitespace-nowrap"
                 requiredPermission={createConfig.permission}
                 denyTooltip={createConfig.denyTooltip}
                 onClick={() => router.push(navigate(createConfig.route))}
               >
                 <Plus className="size-4" />
-                新規登録
+                {createConfig.label}
               </RoleGatedButton>
             ) : null}
-          </>
+          </div>
         }
       />
 

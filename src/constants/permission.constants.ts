@@ -18,6 +18,7 @@ export const PAGE_PERMISSIONS: Partial<Record<RoutePattern, Permission>> = {
   '/staffs': Permission.StaffsView,
   '/staffs/:id': Permission.StaffsView,
   '/staffs/:id/edit': Permission.StaffsEdit,
+  '/staffs/create': Permission.StaffsCreate,
 
   // Stores
   '/stores': Permission.StoresView,
@@ -27,12 +28,13 @@ export const PAGE_PERMISSIONS: Partial<Record<RoutePattern, Permission>> = {
 
   // Positions
   '/positions': Permission.PositionsView,
+  '/positions/create': Permission.PositionsCreate,
+  '/positions/:id/edit': Permission.PositionsEdit,
 
   // Members
   '/members': Permission.MembersView,
   '/members/:id': Permission.MembersView,
   '/members/:id/edit': Permission.MembersEdit,
-  '/members/create': Permission.MembersCreate,
   '/members/blacklist': Permission.MembersBlacklistView,
   '/members/blacklist/:id': Permission.MembersBlacklistView,
   '/members/leaves': Permission.MembersLeavesView,
@@ -93,6 +95,11 @@ export const PAGE_PERMISSIONS: Partial<Record<RoutePattern, Permission>> = {
   '/manual-notifications/create': Permission.ManualNotificationsCreate,
   '/manual-notifications/:id/edit': Permission.ManualNotificationsEdit,
 
+  // Banners
+  '/banners': Permission.BannersView,
+  '/banners/create': Permission.BannersCreate,
+  '/banners/:id/edit': Permission.BannersEdit,
+
   // Option discounts
   '/option-discount': Permission.OptionDiscountsView,
   '/option-discount/:id': Permission.OptionDiscountsView,
@@ -110,7 +117,6 @@ export const PAGE_PERMISSIONS: Partial<Record<RoutePattern, Permission>> = {
   '/lockers/:id/edit': Permission.LockersEdit,
   '/lockers/contracts': Permission.LockersContractsView,
   '/lockers/contracts/:id': Permission.LockersContractsView,
-  '/lockers/contracts/create': Permission.LockersContractsCreate,
   '/lockers/contracts/:id/edit': Permission.LockersContractsEdit,
   '/lockers/pending': Permission.LockersPendingView,
 
@@ -128,6 +134,13 @@ export const PAGE_PERMISSIONS: Partial<Record<RoutePattern, Permission>> = {
   '/lessons/:id/edit': Permission.LessonContentsEdit,
   '/lessons/:id/duplicate': Permission.LessonContentsCreate,
   '/lessons/create': Permission.LessonContentsCreate,
+
+  // Exercises
+  '/exercises': Permission.ExercisesView,
+  '/exercises/:id': Permission.ExercisesView,
+  '/exercises/create': Permission.ExercisesCreate,
+  '/exercises/:id/edit': Permission.ExercisesEdit,
+  '/exercise-master': Permission.ExercisesCreate,
 
   // Equipment
   '/equipment': Permission.EquipmentView,
@@ -153,11 +166,67 @@ export const PAGE_PERMISSIONS: Partial<Record<RoutePattern, Permission>> = {
   '/training-equipment/create': Permission.TrainingEquipmentCreate,
   '/training-equipment/:id/edit': Permission.TrainingEquipmentEdit,
 
-  // Terms
+  // Instructors (D-04)
+  // View is open to every authenticated role (Trainer/Observer scoped server-side);
+  // creating a profile requires InstructorsCreate (denies Trainer/Observer). Edit is
+  // intentionally NOT page-gated here because a Trainer may edit their own profile —
+  // that exception is enforced server-side and via RoleGatedButton's allowedRoles.
+  '/instructors': Permission.InstructorsView,
+  '/instructors/:id': Permission.InstructorsView,
+  '/instructors/create': Permission.InstructorsCreate,
+
+  // Entry / Exit management
+  '/entry-exit': Permission.EntryExitView,
+  '/entry-exit/history': Permission.EntryExitHistoryView,
+
+  // Article categories
+  '/article-categories': Permission.ArticleCategoriesView,
+  '/article-categories/create': Permission.ArticleCategoriesCreate,
+  '/article-categories/:id/edit': Permission.ArticleCategoriesEdit,
+
+  // App Version Management (Y-05)
+  '/app-versions': Permission.AppVersionsView,
+  '/app-versions/:id': Permission.AppVersionsView,
+  '/app-versions/create': Permission.AppVersionsCreate,
+  '/app-versions/:id/edit': Permission.AppVersionsEdit,
+
+  // App Maintenance
+  '/app-maintenance': Permission.AppMaintenanceView,
+  '/app-maintenance/create': Permission.AppMaintenanceCreate,
+  '/app-maintenance/:id/edit': Permission.AppMaintenanceEdit,
+
+  // Terms Document Master Management (Y-04) — Trainer has no access at all (FR-006);
+  // Manager/Staff/Observer are view-only (brand-scoped server-side); create/edit/
+  // new-version require Headquarter/System (FR-017)
   '/terms': Permission.TermsView,
   '/terms/:id': Permission.TermsView,
   '/terms/create': Permission.TermsCreate,
   '/terms/:id/edit': Permission.TermsEdit,
+  '/terms/:id/new-version': Permission.TermsCreate,
+
+  // Sales Management (F-01)
+  '/sales': Permission.SalesView,
+  '/sales/:id': Permission.SalesView,
+  '/sales/register': Permission.SalesView,
+
+  // Sales — Transaction History, Receivables, Refund Management (F-01-01/02/03)
+  // Refund queue viewing is open to HQ/Manager/Staff (FR-014); only the approve/reject
+  // action itself is gated by SalesRefundApprove + canApproveRefund (research.md §5).
+  '/sales/transactions': Permission.SalesTransactionsView,
+  '/sales/receivables': Permission.SalesReceivablesView,
+  '/sales/refunds': Permission.SalesRefundsView,
+
+  // Routines (Y-09) — Headquarter / System only
+  '/routines': Permission.RoutinesView,
+  '/routines/:id': Permission.RoutinesView,
+  '/routines/create': Permission.RoutinesCreate,
+  '/routines/:id/edit': Permission.RoutinesEdit,
+
+  // CRM Maintenance (Y-10) — list/detail: System + Headquarter; create/edit: System only
+  '/crm-maintenance': Permission.CrmMaintenanceView,
+  '/crm-maintenance/:id': Permission.CrmMaintenanceView,
+  '/crm-maintenance/create': Permission.CrmMaintenanceCreate,
+  '/crm-maintenance/:id/edit': Permission.CrmMaintenanceEdit,
 };
 
 // ---------------------------------------------------------------------------
@@ -184,10 +253,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.PositionsEdit,
     Permission.PositionsDelete,
     Permission.MembersView,
-    Permission.MembersCreate,
     Permission.MembersEdit,
     Permission.MembersDelete,
-    Permission.MembersPersonalDataEdit,
     Permission.MembersPersonalDataDelete,
     Permission.MembersReEnroll,
     Permission.MembersSuspend,
@@ -195,16 +262,19 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MembersTransfer,
     Permission.MembersGateStop,
     Permission.MembersForceWithdraw,
+    Permission.MembersOptionContractOperate,
     Permission.MembersBlacklistView,
     Permission.BlacklistCreate,
     Permission.BlacklistDelete,
     Permission.MembersLeavesView,
-    Permission.LeavesApprove,
     Permission.MembersTransfersView,
-    Permission.TransfersApprove,
+    Permission.MembersTransfersApprove,
+    Permission.MembersTransfersBulkApprove,
+    Permission.MembersTransfersUnlock,
     Permission.MembershipApplicationsView,
     Permission.MembershipApplicationsCreate,
     Permission.MembershipApplicationsApprove,
+    Permission.MembershipApplicationsCancel,
     Permission.VisitExperiencesView,
     Permission.FamilyRegistrationsView,
     Permission.FamilyRegistrationsDashboardView,
@@ -232,6 +302,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.SurveysCreate,
     Permission.SurveysEdit,
     Permission.SurveysDelete,
+    Permission.BannersView,
+    Permission.BannersCreate,
+    Permission.BannersEdit,
+    Permission.BannersDelete,
+    Permission.BannersReorder,
     Permission.OptionDiscountsView,
     Permission.OptionDiscountsCreate,
     Permission.OptionDiscountsEdit,
@@ -247,7 +322,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.LockersPendingView,
     Permission.LockersPendingExport,
     Permission.LockersContractsView,
-    Permission.LockersContractsCreate,
     Permission.LockersContractsEdit,
     Permission.LockersContractsExport,
     Permission.LessonsView,
@@ -261,6 +335,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.LessonContentsEdit,
     Permission.LessonContentsDelete,
     Permission.LessonContentsHistoryView,
+    Permission.ExercisesView,
+    Permission.ExercisesCreate,
+    Permission.ExercisesEdit,
+    Permission.ExercisesDelete,
+    Permission.ExercisesPublish,
     Permission.EquipmentView,
     Permission.EquipmentCreate,
     Permission.EquipmentEdit,
@@ -281,6 +360,22 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.TrainingEquipmentDelete,
     Permission.TrainingEquipmentExport,
     Permission.TrainingEquipmentExerciseLinks,
+    Permission.InstructorsView,
+    Permission.InstructorsCreate,
+    Permission.InstructorsEdit,
+    Permission.InstructorsDelete,
+    Permission.EntryExitView,
+    Permission.EntryExitHistoryView,
+    Permission.EntryExitHistoryExport,
+    Permission.ArticleCategoriesView,
+    Permission.ArticleCategoriesCreate,
+    Permission.ArticleCategoriesEdit,
+    Permission.ArticleCategoriesDelete,
+    Permission.AppVersionsView,
+    Permission.AppVersionsCreate,
+    Permission.AppVersionsEdit,
+    Permission.AppVersionsDelete,
+    Permission.AppMaintenanceView,
     Permission.TermsView,
     Permission.TermsCreate,
     Permission.TermsEdit,
@@ -290,23 +385,56 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.ManualNotificationsEdit,
     Permission.ManualNotificationsDelete,
     Permission.ManualNotificationsApprove,
+    Permission.CrmMaintenanceView,
+    Permission.SalesView,
+    Permission.SalesConfirm,
+    Permission.SalesRefundInitiate,
+    Permission.SalesLineItemAdd,
+    Permission.SalesFeeAdjust,
+    Permission.SalesManualRegister,
+    Permission.SalesExport,
+    Permission.SalesTransactionsView,
+    Permission.SalesReceivablesView,
+    Permission.SalesRefundsView,
+    Permission.SalesBadDebtExclude,
+    Permission.SalesConvenienceIssue,
+    Permission.SalesUpcomingBillingConfirm,
+    Permission.SalesRefundApprove,
+    Permission.SalesRefundExport,
+    Permission.AppMaintenanceCreate,
+    Permission.AppMaintenanceEdit,
+    Permission.AppMaintenanceDelete,
+    Permission.RoutinesView,
+    Permission.RoutinesCreate,
+    Permission.RoutinesEdit,
+    Permission.RoutinesDelete,
+    Permission.RoutinesPublish,
   ],
 
   [UserRole.Manager]: [
     Permission.StaffsView,
+    // Page-level only: grants navigation to /staffs/:id/edit. Manager may edit only
+    // "Staff"-role accounts in their managed store (FR-003) — that per-resource scoping
+    // is enforced server-side (GET/PATCH /crm/staffs/{id}), not by this flag.
+    Permission.StaffsEdit,
     Permission.StoresView,
     Permission.MembersView,
-    Permission.MembersCreate,
-    Permission.MembersEdit,
     Permission.MembersReEnroll,
     Permission.MembersSuspend,
     Permission.MembersWithdraw,
     Permission.MembersTransfer,
     Permission.MembersGateStop,
+    Permission.MembersOptionContractOperate,
     Permission.MembersLeavesView,
     Permission.MembersTransfersView,
+    // A-02: Manager holds the full transfer toolkit, but only within their 所轄店舗 scope.
+    Permission.MembersTransfersApprove,
+    Permission.MembersTransfersBulkApprove,
+    Permission.MembersTransfersUnlock,
     Permission.MembershipApplicationsView,
     Permission.MembershipApplicationsCreate,
+    Permission.MembershipApplicationsApprove,
+    Permission.MembershipApplicationsCancel,
     Permission.VisitExperiencesView,
     Permission.FamilyRegistrationsView,
     Permission.FamilyRegistrationsDashboardView,
@@ -316,7 +444,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.CampaignsPromoCodeCreate,
     Permission.CampaignsPromoCodeDelete,
     Permission.CampaignsPromoCodeExport,
-    Permission.FCCompaniesView,
     Permission.OptionsView,
     Permission.BrandsView,
     Permission.LockersView,
@@ -327,10 +454,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.LockersPendingView,
     Permission.LockersPendingExport,
     Permission.LockersContractsView,
-    Permission.LockersContractsCreate,
     Permission.LockersContractsEdit,
     Permission.LockersContractsExport,
     Permission.SurveysView,
+    Permission.BannersView,
     Permission.LessonsView,
     Permission.LessonsScheduleManage,
     Permission.LessonsReservationManage,
@@ -352,7 +479,32 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.StudiosCreate,
     Permission.StudiosEdit,
     Permission.StudiosDelete,
+    Permission.InstructorsView,
+    Permission.InstructorsCreate,
+    Permission.InstructorsEdit,
+    Permission.InstructorsDelete,
+    Permission.EntryExitView,
+    Permission.EntryExitHistoryView,
+    Permission.EntryExitHistoryExport,
+    Permission.ArticleCategoriesView,
+    Permission.SalesView,
+    Permission.SalesConfirm,
+    Permission.SalesRefundInitiate,
+    Permission.SalesLineItemAdd,
+    Permission.SalesFeeAdjust,
+    Permission.SalesManualRegister,
+    Permission.SalesExport,
+    Permission.SalesTransactionsView,
+    Permission.SalesReceivablesView,
+    Permission.SalesRefundsView,
+    Permission.SalesBadDebtExclude,
+    Permission.SalesConvenienceIssue,
+    Permission.SalesUpcomingBillingConfirm,
+    Permission.SalesRefundApprove,
+    Permission.SalesRefundExport,
+    Permission.AppMaintenanceView,
     Permission.TermsView,
+    Permission.AppVersionsView,
     Permission.ManualNotificationsView,
     Permission.ManualNotificationsCreate,
     Permission.ManualNotificationsEdit,
@@ -360,24 +512,35 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   ],
 
   [UserRole.Staff]: [
+    // Y-01 permission matrix: スタッフ一覧・参照 = ○ 自分のみ (self only). StaffsView
+    // must stay granted so /staffs and /staffs/:id don't 403 — server-side scoping
+    // (GET /crm/staffs, GET /crm/staffs/{id}) narrows the actual rows to the caller's
+    // own record. StaffsEdit stays denied: Staff may only reference their own account,
+    // not edit it via this screen (FR-013).
     Permission.StaffsView,
-    Permission.StaffsEdit,
+    // Permission.StaffsEdit,
     Permission.StoresView,
     Permission.StoresCreate,
     Permission.StoresEdit,
     Permission.StoresConfigBusiness,
     Permission.MembersView,
-    Permission.MembersCreate,
-    Permission.MembersEdit,
     Permission.MembersReEnroll,
     Permission.MembersSuspend,
     Permission.MembersWithdraw,
     Permission.MembersTransfer,
     Permission.MembersGateStop,
+    Permission.MembersOptionContractOperate,
     Permission.MembersLeavesView,
     Permission.MembersTransfersView,
+    // A-02: Staff may approve/reject, but only their own store's side at the current stage —
+    // enforced row-by-row by `canActOnTransfer`. No bulk approve, no 手動解除.
+    Permission.MembersTransfersApprove,
     Permission.MembershipApplicationsView,
-    Permission.MembershipApplicationsCreate,
+    // C-01: 承認・否認/管理画面入会 are 職位に依る — deferred until per-position permissioning exists.
+    // Permission.MembershipApplicationsCreate,
+    // Permission.MembershipApplicationsApprove,
+    // 入会取り消し is separate and unconditional for Staff (store-scoped).
+    Permission.MembershipApplicationsCancel,
     Permission.VisitExperiencesView,
     Permission.FamilyRegistrationsView,
     Permission.FamilyRegistrationsDashboardView,
@@ -386,7 +549,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.CampaignsPromoCodeEdit,
     Permission.CampaignsPromoCodeCreate,
     Permission.CampaignsPromoCodeDelete,
-    Permission.CampaignsPromoCodeExport,
+    Permission.FCCompaniesView,
     Permission.OptionsView,
     Permission.BrandsView,
     Permission.LockersView,
@@ -397,10 +560,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.LockersPendingView,
     Permission.LockersPendingExport,
     Permission.LockersContractsView,
-    Permission.LockersContractsCreate,
     Permission.LockersContractsEdit,
     Permission.LockersContractsExport,
     Permission.SurveysView,
+    Permission.BannersView,
     Permission.LessonsView,
     Permission.LessonsScheduleManage,
     Permission.LessonsReservationManage,
@@ -425,17 +588,37 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.TrainingEquipmentCreate,
     Permission.TrainingEquipmentEdit,
     Permission.TrainingEquipmentExport,
+    Permission.InstructorsView,
+    Permission.InstructorsCreate,
+    Permission.InstructorsEdit,
+    Permission.InstructorsDelete,
+    Permission.EntryExitView,
+    Permission.ArticleCategoriesView,
     Permission.TermsView,
     Permission.ManualNotificationsView,
     Permission.ManualNotificationsCreate,
     Permission.ManualNotificationsEdit,
     Permission.ManualNotificationsDelete,
+    Permission.AppVersionsView,
+    Permission.SalesView,
+    // Permission.SalesConfirm,
+    Permission.SalesRefundInitiate,
+    Permission.SalesLineItemAdd,
+    // Permission.SalesFeeAdjust,
+    Permission.SalesManualRegister,
+    Permission.SalesTransactionsView,
+    Permission.SalesReceivablesView,
+    Permission.SalesRefundsView,
+    Permission.SalesConvenienceIssue,
+    // Permission.SalesUpcomingBillingConfirm,
+    Permission.AppMaintenanceView,
   ],
 
   // Trainer: own-session scope. Can manage their schedules/reservations/
-  // attendance/memos but NOT release penalties (D-01 matrix).
+  // attendance/memos but NOT release penalties (D-01 matrix). Instructor
+  // self-edit is granted dynamically via RoleGatedButton's allowedRoles,
+  // not this static permission (InstructorsEdit stays HQ/Manager/Staff-only).
   [UserRole.Trainer]: [
-    Permission.MembersView,
     Permission.LessonsView,
     Permission.LessonsScheduleManage,
     Permission.LessonsReservationManage,
@@ -443,6 +626,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.LessonsMemoManage,
     Permission.LessonContentsView,
     Permission.StudiosView,
+    Permission.BannersView,
+    Permission.InstructorsView,
   ],
 
   // Observer: read-only. May view schedules but performs no mutations.
@@ -466,7 +651,14 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.ControllerView,
     Permission.TrainingEquipmentView,
     Permission.TrainingEquipmentExport,
+    Permission.BannersView,
+    Permission.EntryExitView,
+    Permission.EntryExitHistoryView,
+    Permission.ArticleCategoriesView,
+    Permission.AppMaintenanceView,
+    Permission.InstructorsView,
     Permission.TermsView,
+    Permission.AppVersionsView,
     Permission.ManualNotificationsView,
   ],
 };

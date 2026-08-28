@@ -5,41 +5,52 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { LessonScheduleListItem } from '@/lib/api/types.gen';
 
 import {
-  formatBookingLabel,
   formatTimeRange,
+  getBookingStatusLabel,
   getOccupancyColor,
-  getScheduleStatusLabel,
-  getScheduleStatusVariant,
-} from './lesson-schedule-display.util';
+} from '../_utils/lesson-schedule-display.util';
 
 function SortHeader({
   column,
   label,
 }: {
-  column: { getIsSorted: () => false | 'asc' | 'desc'; toggleSorting: (asc?: boolean) => void };
+  column: {
+    getIsSorted: () => false | 'asc' | 'desc';
+    toggleSorting: (asc?: boolean) => void;
+  };
   label: string;
 }) {
   const sorted = column.getIsSorted();
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="-ml-3 h-8"
-      onClick={() => column.toggleSorting(sorted === 'asc')}
-    >
-      {label}
-      {sorted === 'asc' ? (
-        <ArrowUp className="ml-1 size-3.5" />
-      ) : sorted === 'desc' ? (
-        <ArrowDown className="ml-1 size-3.5" />
-      ) : (
-        <ArrowUpDown className="ml-1 size-3.5" />
-      )}
-    </Button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger render={<span className="inline-flex" />}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-3 h-8"
+            onClick={() => column.toggleSorting(sorted === 'asc')}
+          >
+            {label}
+            {sorted === 'asc' ? (
+              <ArrowUp className="ml-1 size-3.5" />
+            ) : sorted === 'desc' ? (
+              <ArrowDown className="ml-1 size-3.5" />
+            ) : (
+              <ArrowUpDown className="ml-1 size-3.5" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p className="text-xs">クリックで降順ソート</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -52,7 +63,7 @@ function formatDateLabel(isoString: string): string {
   return `${m}/${day}(${dow})`;
 }
 
-function isToday(isoString: string): boolean {
+export function isToday(isoString: string): boolean {
   const today = new Date();
   const d = new Date(isoString);
   return (
@@ -121,17 +132,7 @@ export const scheduleListColumns: ColumnDef<LessonScheduleListItem>[] = [
     header: ({ column }) => <SortHeader column={column} label="予約" />,
     cell: ({ row }) => {
       const { booked_count, capacity } = row.original;
-      const rate = capacity > 0 ? booked_count / capacity : 0;
-      const label =
-        capacity === 1
-          ? booked_count >= 1
-            ? '予約済'
-            : '空き'
-          : rate >= 1
-            ? '満席'
-            : rate >= 0.85
-              ? `残${capacity - booked_count}席`
-              : formatBookingLabel(booked_count, capacity);
+      const label = getBookingStatusLabel(booked_count, capacity);
       const colorCls = getOccupancyColor(booked_count, capacity);
       return <span className={`text-center text-xs ${colorCls}`}>{label}</span>;
     },
@@ -152,12 +153,17 @@ export const scheduleListColumns: ColumnDef<LessonScheduleListItem>[] = [
       ),
   },
   {
-    accessorKey: 'status',
-    header: ({ column }) => <SortHeader column={column} label="ステータス" />,
-    cell: ({ row }) => (
-      <Badge variant={getScheduleStatusVariant(row.original.status)} className="text-[10px]">
-        {getScheduleStatusLabel(row.original.status)}
-      </Badge>
-    ),
+    accessorKey: 'is_public',
+    header: ({ column }) => <SortHeader column={column} label="公開" />,
+    cell: ({ row }) =>
+      row.original.is_public ? (
+        <Badge variant="outline" className="text-success border-success/40 text-[10px]">
+          公開
+        </Badge>
+      ) : (
+        <Badge variant="outline" className="text-muted-foreground text-[10px]">
+          内部
+        </Badge>
+      ),
   },
 ];

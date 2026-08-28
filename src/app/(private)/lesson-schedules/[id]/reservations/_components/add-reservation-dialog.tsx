@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { formatDateMDWeekday, formatTime } from '@/utils/date.util';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,7 +29,11 @@ import {
   getCrmLessonSchedulesByScheduleIdReservationsQueryKey,
   postCrmLessonSchedulesByScheduleIdReservationsMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { LessonScheduleListItem, MemberSearchResult } from '@/lib/api/types.gen';
+import type {
+  LessonScheduleListItem,
+  MemberSearchResult,
+  StudioSpaceGridResponse,
+} from '@/lib/api/types.gen';
 
 import { AddReservationMemberSearch } from './add-reservation-member-search';
 
@@ -37,6 +42,7 @@ interface AddReservationDialogProps {
   onOpenChange: (open: boolean) => void;
   scheduleId: string;
   schedule: LessonScheduleListItem;
+  spacesData: StudioSpaceGridResponse;
   preselectedSpaceNumber?: string | null;
   remainingSeats: number;
 }
@@ -51,6 +57,7 @@ export function AddReservationDialog({
   onOpenChange,
   scheduleId,
   schedule,
+  spacesData,
   preselectedSpaceNumber,
   remainingSeats: initialRemainingSeats,
 }: AddReservationDialogProps) {
@@ -58,9 +65,22 @@ export function AddReservationDialog({
   const [warning, setWarning] = useState<MemberWarning | null>(null);
   const [sendNotification, setSendNotification] = useState(true);
   const [spaceNumber, setSpaceNumber] = useState(preselectedSpaceNumber ?? 'auto');
+  const [prevOpen, setPrevOpen] = useState(open);
   const queryClient = useQueryClient();
 
+  // Re-sync the preselected space whenever the dialog transitions to open (it stays
+  // mounted across opens, so a plain useState initializer only runs once).
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setSpaceNumber(preselectedSpaceNumber ?? 'auto');
+  }
+
+  const availableSpaces = spacesData.spaces.filter((s) => s.type === 'available');
+
   const remainingSeats = initialRemainingSeats - addedMembers.length;
+
+  const formatScheduleDateTime = () =>
+    `${formatDateMDWeekday(schedule.start_time, schedule.start_time)} ${formatTime(schedule.start_time, schedule.start_time)}〜${formatTime(schedule.end_time, schedule.end_time)}`;
 
   const addReservation = useMutation({
     ...postCrmLessonSchedulesByScheduleIdReservationsMutation(),
@@ -128,7 +148,7 @@ export function AddReservationDialog({
         <DialogHeader>
           <DialogTitle className="text-base">予約を追加する</DialogTitle>
           <p className="text-muted-foreground text-xs">
-            {schedule.lesson_name} | 残り{remainingSeats}席
+            {formatScheduleDateTime()} | {schedule.lesson_name} | 残り{remainingSeats}席
           </p>
         </DialogHeader>
 
@@ -194,9 +214,9 @@ export function AddReservationDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">自動割り当て</SelectItem>
-                {Array.from({ length: 16 }, (_, i) => String(i + 1)).map((num) => (
-                  <SelectItem key={num} value={num}>
-                    スペース {num}
+                {availableSpaces.map((s) => (
+                  <SelectItem key={s.id} value={s.space_number}>
+                    スペース {s.space_number}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -217,13 +237,11 @@ export function AddReservationDialog({
           <Button variant="ghost" size="sm" onClick={handleClose}>
             キャンセル
           </Button>
-          <Button
-            size="sm"
-            onClick={handleConfirm}
-            disabled={addedMembers.length === 0 || addReservation.isPending}
-          >
-            追加確定（{addedMembers.length}名）
-          </Button>
+          {addedMembers.length > 0 && (
+            <Button size="sm" onClick={handleConfirm} disabled={addReservation.isPending}>
+              追加確定（{addedMembers.length}名）
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

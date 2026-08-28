@@ -29,17 +29,29 @@ export function DatePicker({
   onDateChange,
   disabled = false,
   disabledDate,
-  placeholder = 'Pick a date',
+  placeholder = '日付を選択',
   hasError = false,
 }: Readonly<DatePickerProps>) {
+  const [open, setOpen] = React.useState(false);
+
+  const handleSelect = React.useCallback(
+    (nextDate: Date | undefined) => {
+      onDateChange?.(nextDate);
+      setOpen(false);
+    },
+    [onDateChange],
+  );
+
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <Button
             variant="outline"
+            // aria-invalid lets useScrollToFirstError locate the field while it has an error
+            aria-invalid={hasError || undefined}
             className={cn(
-              'justify-between gap-2 text-left font-medium',
+              'justify-between gap-2 text-left font-normal',
               !date && 'text-muted-foreground',
               hasError && 'border-destructive text-destructive! focus-visible:ring-destructive/20',
             )}
@@ -54,10 +66,11 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={date}
-          onSelect={onDateChange}
+          onSelect={handleSelect}
           disabled={disabledDate}
           defaultMonth={date}
           captionLayout="dropdown"
+          locale={ja}
           initialFocus
         />
       </PopoverContent>

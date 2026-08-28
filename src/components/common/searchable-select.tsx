@@ -1,8 +1,10 @@
 'use client';
 
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChevronsUpDown } from 'lucide-react';
+
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll.hook';
 
 import { TextWithTooltip } from '@/components/common/text-with-tooltip';
 import { Button } from '@/components/ui/button';
@@ -14,12 +16,67 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Spinner } from '@/components/ui/spinner';
 
 import { cn } from '@/lib/utils';
 
 const DEFAULT_SEARCH_DEBOUNCE_MS = 300;
 
-interface SearchableSelectProps<TItem> {
+/** Props shared by the single and multi variants for server-side pagination. */
+interface InfiniteScrollProps {
+  /** Whether more pages can be loaded from the server. */
+  hasMore?: boolean;
+  /** Whether the next page is currently being fetched. */
+  isLoadingMore?: boolean;
+  /** Called when the user scrolls to the bottom of the list. */
+  onLoadMore?: () => void;
+  /** Optional label shown next to the spinner while fetching the next page. */
+  loadingMoreMessage?: string;
+}
+
+/**
+ * Sentinel row rendered at the bottom of the list. When it scrolls into view it
+ * triggers `onLoadMore`; while fetching it shows an inline spinner.
+ */
+function SearchableSelectLoadMore({
+  listRef,
+  enabled,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
+  loadingMoreMessage,
+}: InfiniteScrollProps & {
+  listRef: RefObject<HTMLDivElement | null>;
+  enabled: boolean;
+}) {
+  const sentinelRef = useInfiniteScroll({
+    hasMore,
+    isLoading: isLoadingMore,
+    onLoadMore: onLoadMore ?? (() => {}),
+    rootRef: listRef,
+    enabled: enabled && !!onLoadMore,
+  });
+
+  if (!hasMore && !isLoadingMore) {
+    return null;
+  }
+
+  return (
+    <div
+      ref={sentinelRef}
+      className="text-muted-foreground flex items-center justify-center gap-2 py-2 text-xs"
+    >
+      {isLoadingMore ? (
+        <>
+          <Spinner className="size-3" />
+          {loadingMoreMessage ? <span>{loadingMoreMessage}</span> : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+interface SearchableSelectProps<TItem> extends InfiniteScrollProps {
   value: string | null;
   valueLabel?: string;
   options: readonly TItem[];
@@ -71,9 +128,14 @@ export function SearchableSelect<TItem>({
   contentClassName,
   listClassName,
   hasError = false,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
+  loadingMoreMessage,
 }: SearchableSelectProps<TItem>) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   const isOpen = open ?? internalOpen;
 
@@ -132,6 +194,8 @@ export function SearchableSelect<TItem>({
             size="sm"
             role="combobox"
             aria-expanded={isOpen}
+            // aria-invalid lets useScrollToFirstError locate the field while it has an error
+            aria-invalid={hasError || undefined}
             disabled={disabled}
             className={cn(
               'h-8 w-64 min-w-0 justify-between rounded-lg px-3 text-xs font-normal',
@@ -161,7 +225,7 @@ export function SearchableSelect<TItem>({
           {hint ? (
             <div className="text-muted-foreground border-b px-3 py-2 text-[11px]">{hint}</div>
           ) : null}
-          <CommandList className={listClassName}>
+          <CommandList ref={listRef} className={listClassName}>
             {clearLabel ? (
               <CommandGroup>
                 <CommandItem
@@ -174,26 +238,36 @@ export function SearchableSelect<TItem>({
               </CommandGroup>
             ) : null}
             {options.length > 0 ? (
-              <CommandGroup>
-                {options.map((option) => {
-                  const optionKey = getOptionKey(option);
+              <>
+                <CommandGroup>
+                  {options.map((option) => {
+                    const optionKey = getOptionKey(option);
 
-                  return (
-                    <CommandItem
-                      key={optionKey}
-                      value={getOptionKeywords?.(option) ?? getOptionLabel(option)}
-                      data-checked={value === optionKey}
-                      onSelect={() => handleSelect(option)}
-                    >
-                      {renderOption?.(option) ?? (
-                        <span className="block min-w-0 flex-1 truncate">
-                          {getOptionLabel(option)}
-                        </span>
-                      )}
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
+                    return (
+                      <CommandItem
+                        key={optionKey}
+                        value={getOptionKeywords?.(option) ?? getOptionLabel(option)}
+                        data-checked={value === optionKey}
+                        onSelect={() => handleSelect(option)}
+                      >
+                        {renderOption?.(option) ?? (
+                          <span className="block min-w-0 flex-1 truncate">
+                            {getOptionLabel(option)}
+                          </span>
+                        )}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+                <SearchableSelectLoadMore
+                  listRef={listRef}
+                  enabled={isOpen}
+                  hasMore={hasMore}
+                  isLoadingMore={isLoadingMore}
+                  onLoadMore={onLoadMore}
+                  loadingMoreMessage={loadingMoreMessage}
+                />
+              </>
             ) : (
               <div className="text-muted-foreground py-6 text-center text-sm">
                 {isLoading ? (loadingMessage ?? emptyMessage) : emptyMessage}

@@ -1,9 +1,10 @@
 'use client';
+// Holds local UI/dialog state and mutation calls — client-only.
+import { type Control } from 'react-hook-form';
 
-import { type Control, useWatch } from 'react-hook-form';
-
+import { toSelectItems } from '@/utils/app.util';
 import { useQuery } from '@tanstack/react-query';
-import { addMonths, format } from 'date-fns';
+import { format } from 'date-fns';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -18,44 +19,32 @@ import {
 
 import { getCrmStoresOptions } from '@/lib/api/@tanstack/react-query.gen';
 
-import type { DirectEnrollmentFormValues } from './enrollment-form';
+import { BRAND_OPTIONS } from '../../_constants/constants';
+import type { DirectEnrollmentFormValues } from '../_schemas/enrollment-form.schema';
 
 interface ContractInfoSectionProps {
   readonly control: Control<DirectEnrollmentFormValues>;
-  readonly onBrandChange?: (brand: 'FIT365' | 'JOYFIT' | '') => void;
+  readonly onBrandChange?: () => void;
 }
 
-const PLAN_OPTIONS: Record<'FIT365' | 'JOYFIT', { value: string; label: string }[]> = {
-  FIT365: [
-    { value: 'FIT365-REGULAR', label: 'レギュラー会員' },
-    { value: 'FIT365-DAYTIME', label: 'デイタイム会員' },
-    { value: 'FIT365-NIGHT', label: 'ナイト会員' },
-    { value: 'FIT365-WEEKEND', label: 'ウィークエンド会員' },
-    { value: 'FIT365-STUDENT', label: 'レギュラー会員（学生）' },
-    { value: 'FIT365-SENIOR', label: 'レギュラー会員（シニア）' },
-  ],
-  JOYFIT: [
-    { value: 'JOYFIT-REGULAR', label: 'レギュラー会員' },
-    { value: 'JOYFIT-NIGHT', label: 'ナイト会員' },
-    { value: 'JOYFIT-DAYTIME', label: 'デイタイム会員' },
-    { value: 'JOYFIT-WEEKEND', label: 'ウィークエンド会員' },
-    { value: 'JOYFIT-STUDENT', label: 'レギュラー会員（学生）' },
-    { value: 'JOYFIT-SENIOR', label: 'レギュラー会員（シニア）' },
-  ],
-};
+const REAL_BRAND_OPTIONS = BRAND_OPTIONS.filter((b) => b.value !== 'all');
 
-const BRAND_OPTIONS = [
-  { value: 'FIT365', label: 'FIT365' },
-  { value: 'JOYFIT', label: 'JOYFIT' },
+export const PLAN_OPTIONS = [
+  { value: 'PLN-001', label: 'レギュラー会員' },
+  { value: 'PLN-003', label: 'ナイト会員' },
+  { value: 'PLN-002', label: 'デイタイム会員' },
+  { value: 'PLN-004', label: 'ウィークエンド会員' },
+  { value: 'PLN-005', label: 'レギュラー会員（学生）' },
+  { value: 'PLN-006', label: 'レギュラー会員（シニア）' },
 ];
 
-const CAMPAIGN_OPTIONS = [
+export const CAMPAIGN_OPTIONS = [
   { value: 'none', label: 'なし' },
-  { value: 'SPRING2026', label: '春の入会キャンペーン' },
-  { value: 'STUDENT', label: '学生割引キャンペーン' },
-  { value: 'NEW_LIFE', label: '新生活応援' },
-  { value: 'SENIOR', label: 'シニア割引キャンペーン' },
-  { value: 'CORPORATE', label: '法人会員キャンペーン' },
+  { value: 'CMP-001', label: '春の入会キャンペーン' },
+  { value: 'CMP-002', label: '学生割引キャンペーン' },
+  { value: 'CMP-004', label: '新生活応援' },
+  { value: 'CMP-005', label: 'シニア割引キャンペーン' },
+  { value: 'CMP-006', label: '法人会員キャンペーン' },
 ];
 
 const PAYMENT_METHOD_OPTIONS = [
@@ -65,12 +54,8 @@ const PAYMENT_METHOD_OPTIONS = [
 
 export function ContractInfoSection({ control, onBrandChange }: ContractInfoSectionProps) {
   const { data: storesData } = useQuery(getCrmStoresOptions());
-  const stores =
-    storesData?.stores?.map((s) => ({
-      value: s.id,
-      label: s.name,
-    })) ?? [];
-  const brand = useWatch({ control: control, name: 'contract.brand' });
+  const stores = (storesData?.stores ?? []).map((s) => ({ value: s.id, label: s.name }));
+
   return (
     <Card>
       <CardHeader>
@@ -78,10 +63,9 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-4">
-          {/* Brand */}
           <FormField
             control={control}
-            name="contract.brand"
+            name="contract.brand_id"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
@@ -90,10 +74,10 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
                 <Select
                   onValueChange={(v) => {
                     field.onChange(v);
-                    onBrandChange?.(v as 'FIT365' | 'JOYFIT');
+                    onBrandChange?.();
                   }}
                   value={field.value ?? ''}
-                  items={BRAND_OPTIONS}
+                  items={toSelectItems(REAL_BRAND_OPTIONS)}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -101,7 +85,7 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {BRAND_OPTIONS.map((item) => (
+                    {REAL_BRAND_OPTIONS.map((item) => (
                       <SelectItem key={item.value} value={item.value}>
                         {item.label}
                       </SelectItem>
@@ -112,7 +96,6 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
               </FormItem>
             )}
           />
-          {/* Store */}
           <FormField
             control={control}
             name="contract.store_id"
@@ -121,7 +104,11 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
                 <FormLabel>
                   入会店舗<span className="text-destructive ml-0.5">*</span>
                 </FormLabel>
-                <Select onValueChange={field.onChange} value={field.value ?? ''} items={stores}>
+                <Select
+                  onValueChange={field.onChange}
+                  value={field.value ?? ''}
+                  items={toSelectItems(stores)}
+                >
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="選択してください" />
@@ -139,7 +126,6 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
               </FormItem>
             )}
           />
-          {/* Plan */}
           <FormField
             control={control}
             name="contract.plan_id"
@@ -151,7 +137,7 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
                 <Select
                   onValueChange={field.onChange}
                   value={field.value ?? ''}
-                  items={PLAN_OPTIONS[brand ?? 'FIT365'] ?? []}
+                  items={toSelectItems(PLAN_OPTIONS)}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -159,7 +145,7 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {(PLAN_OPTIONS[brand ?? 'FIT365'] ?? []).map((p) => (
+                    {PLAN_OPTIONS.map((p) => (
                       <SelectItem key={p.value} value={p.value}>
                         {p.label}
                       </SelectItem>
@@ -170,10 +156,9 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
               </FormItem>
             )}
           />
-          {/* Start date */}
           <FormField
             control={control}
-            name="contract.start_date"
+            name="contract.usage_start_date"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
@@ -184,14 +169,12 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
                     date={field.value ? new Date(field.value) : undefined}
                     placeholder="日付を選択"
                     onDateChange={(date) => field.onChange(date ? format(date, 'yyyy-MM-dd') : '')}
-                    disabledDate={{ after: addMonths(new Date(), 2) }}
                   />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          {/* Campaign */}
           <FormField
             control={control}
             name="contract.campaign_id"
@@ -199,9 +182,9 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
               <FormItem>
                 <FormLabel>適用キャンペーン</FormLabel>
                 <Select
-                  onValueChange={field.onChange}
+                  onValueChange={(v) => field.onChange(v === 'none' ? null : v)}
                   value={field.value ?? 'none'}
-                  items={CAMPAIGN_OPTIONS}
+                  items={toSelectItems(CAMPAIGN_OPTIONS)}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -220,7 +203,6 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
               </FormItem>
             )}
           />
-          {/* Payment method */}
           <FormField
             control={control}
             name="contract.payment_method"
@@ -232,7 +214,7 @@ export function ContractInfoSection({ control, onBrandChange }: ContractInfoSect
                 <Select
                   onValueChange={field.onChange}
                   value={field.value ?? ''}
-                  items={PAYMENT_METHOD_OPTIONS}
+                  items={toSelectItems(PAYMENT_METHOD_OPTIONS)}
                 >
                   <FormControl>
                     <SelectTrigger>

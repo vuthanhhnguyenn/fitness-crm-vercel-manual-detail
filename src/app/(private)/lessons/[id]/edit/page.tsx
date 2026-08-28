@@ -25,12 +25,7 @@ function detailToFormValues(detail: LessonDetail): Partial<LessonFormValues> {
     lessonType: detail.lesson_type,
     brand: detail.brand,
     duration: detail.duration,
-    pricingType:
-      detail.pricing_type === 'paid'
-        ? 'per_use'
-        : detail.pricing_type === 'included'
-          ? 'free'
-          : 'free',
+    pricingType: detail.pricing_type === 'included' ? 'free' : detail.pricing_type,
     perUseFee: detail.per_use_fee ?? null,
     restrictedMainContracts: detail.restriction?.restricted_main_contracts ?? [],
     restrictedOptionContracts: detail.restriction?.restricted_option_contracts ?? [],

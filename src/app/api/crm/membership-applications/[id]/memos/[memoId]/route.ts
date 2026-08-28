@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
-import { ErrorResponseSchema } from '@/app/api/_schemas/membership-application.schema';
+import {
+  DeleteMemoResponseSchema,
+  ErrorResponseSchema,
+} from '@/app/api/_schemas/membership-application.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
+import { hasPermissions } from '@/utils/permission.util';
+
+import { Permission, UserRole } from '@/types/permission.type';
 
 // Register OpenAPI documentation for DELETE route
 registerRoute({
@@ -28,21 +35,16 @@ registerRoute({
     },
   ],
   responses: [
+    { status: 200, schema: DeleteMemoResponseSchema, description: 'Memo deleted successfully' },
+    { status: 401, schema: ErrorResponseSchema, description: 'Unauthenticated' },
+    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
+    { status: 404, schema: ErrorResponseSchema, description: 'Application or memo not found' },
     {
-      status: 200,
+      status: 409,
       schema: ErrorResponseSchema,
-      description: 'Memo deleted successfully',
+      description: 'The target entry is a system record and cannot be deleted',
     },
-    {
-      status: 404,
-      schema: ErrorResponseSchema,
-      description: 'Application or memo not found',
-    },
-    {
-      status: 500,
-      schema: ErrorResponseSchema,
-      description: 'Internal server error',
-    },
+    { status: 500, schema: ErrorResponseSchema, description: 'Internal server error' },
   ],
 });
 
@@ -52,22 +54,28 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; memoId: string }> },
 ) {
   try {
+    const authResult = getAuthUserFromRequest(request);
+    if (!authResult.ok) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    }
+    if (
+      !hasPermissions(authResult.user.role as UserRole, [Permission.MembershipApplicationsView])
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const allowedStoreIds = getAllowedStoreIds(authResult.user);
+
     const { id, memoId } = await params;
+    const timeline = db.membershipApplications.deleteMemo(id, memoId, allowedStoreIds);
 
-    // Check if application exists
-    const application = db.membershipApplications.getById(id);
-    if (!application) {
-      return NextResponse.json({ error: 'Membership application not found' }, { status: 404 });
+    if (timeline === 'not_found') {
+      return NextResponse.json({ error: 'Application or memo not found' }, { status: 404 });
+    }
+    if (timeline === 'not_a_memo') {
+      return NextResponse.json({ error: 'System records cannot be deleted' }, { status: 409 });
     }
 
-    // Delete memo
-    const success = db.membershipApplications.deleteMemo(id, memoId);
-
-    if (!success) {
-      return NextResponse.json({ error: 'Memo not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({ message: 'Memo deleted successfully' }, { status: 200 });
+    return NextResponse.json({ timeline }, { status: 200 });
   } catch (error) {
     console.error('Error deleting memo:', error);
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });

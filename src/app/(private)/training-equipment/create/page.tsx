@@ -33,6 +33,7 @@ import {
 import { navigate } from '@/lib/routes/routes.util';
 
 import { TrainingEquipmentFormFields } from '../_components/training-equipment-form-fields';
+import { useSubmitGuard } from '../_hooks/use-submit-guard.hook';
 import {
   type TrainingEquipmentFormSubmitValues,
   type TrainingEquipmentFormValues,
@@ -60,19 +61,34 @@ export default function TrainingEquipmentCreatePage() {
   const createMutation = useMutation({
     ...postCrmTrainingEquipmentMutation(),
     onSuccess: (created) => {
-      toast.success('トレーニング機材を登録しました');
       queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
-      router.push(navigate('/training-equipment/[id]', created.id));
+      const detailPath = navigate('/training-equipment/[id]', created.id);
+
+      // FR-003: after saving, guide the user to the FR-008 exercise-link setup.
+      toast.success('トレーニング機材を登録しました', {
+        description: '続けて、この機材を使用するエクササイズの紐づけを設定してください。',
+        duration: 8000,
+        action: {
+          label: '紐づけ設定へ',
+          onClick: () => router.push(`${detailPath}?tab=exercises`),
+        },
+      });
+      router.push(detailPath);
     },
-    onError: () => toast.error('トレーニング機材の登録に失敗しました'),
   });
 
-  const onSubmit = (values: TrainingEquipmentFormSubmitValues) => {
-    createMutation.mutate({ body: trainingEquipmentFormToCreatePayload(values) });
-  };
+  const { submitOnce } = useSubmitGuard(createMutation.isPending, createMutation.isError);
 
-  const handleSubmit = form.handleSubmit(onSubmit, scrollToFirstError);
+  const handleSubmit = form.handleSubmit(
+    (values) =>
+      // Guarded: rapid clicks on 登録 would otherwise create one record per click.
+      submitOnce(() =>
+        createMutation.mutate({ body: trainingEquipmentFormToCreatePayload(values) }),
+      ),
+    scrollToFirstError,
+  );
 
+  // Both exits lead to the list, so the back link must raise the same guard as キャンセル.
   const handleCancel = () => {
     if (isDirty) {
       setDiscardOpen(true);
@@ -81,23 +97,17 @@ export default function TrainingEquipmentCreatePage() {
     router.push(navigate('/training-equipment'));
   };
 
-  const handleStoreChange = (store: { store_id: string; name: string } | null) => {
-    form.setValue('store_name', store?.name ?? '', { shouldDirty: true });
-  };
-
   return (
     <>
       <PageHeader
-        breadcrumb={
-          <BackLink label="トレーニング機材管理に戻る" href={navigate('/training-equipment')} />
-        }
+        breadcrumb={<BackLink label="トレーニング機材管理に戻る" onClick={handleCancel} />}
         title="トレーニング機材 新規登録"
       />
 
       <main className="bg-background min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <Form {...form}>
-          <form onSubmit={handleSubmit} className="mx-auto max-w-[960px] space-y-6">
-            <TrainingEquipmentFormFields control={form.control} onStoreChange={handleStoreChange} />
+          <form onSubmit={handleSubmit} className="mx-auto max-w-240 space-y-6">
+            <TrainingEquipmentFormFields control={form.control} />
 
             <div className="flex items-center justify-end gap-2 border-t p-4">
               <Button type="button" size="lg" variant="outline" onClick={handleCancel}>

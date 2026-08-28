@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 
-import type { UtilizationSummary } from '@/app/api/_schemas/studio-detail.schema';
-
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+import { UtilizationSummary } from '@/lib/api';
 
 interface StudioUtilizationCardProps {
   utilization: UtilizationSummary;
@@ -23,7 +23,10 @@ interface UsagePeriod {
 const DEFAULT_HOURLY_BANDS = ['10-12時', '12-15時', '15-18時', '18-21時'] as const;
 const TREND_SLOT_COUNT = 7;
 
-const DEFAULT_HOURLY_RATES = DEFAULT_HOURLY_BANDS.map((band) => ({ band, rate: 0 }));
+const DEFAULT_HOURLY_RATES = DEFAULT_HOURLY_BANDS.map((band) => ({
+  band,
+  rate: 0,
+}));
 const DEFAULT_TREND = Array.from({ length: TREND_SLOT_COUNT }, () => 0);
 
 function withDefaultHourlyRates(rates?: Array<{ band: string; rate: number }>) {

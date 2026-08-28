@@ -1,7 +1,10 @@
 import type {
   AreaScheduleKpiSummary,
+  CreateManualReservationRequest,
+  CreateManualReservationResponse,
   LessonScheduleKpiSummary,
   LessonScheduleListItem,
+  ManualReservationMember,
   StoreScheduleSummary,
 } from '@/app/api/_schemas/lesson-schedule.schema';
 
@@ -27,4 +30,8 @@ export type LessonSchedulesType = {
     date: string,
     startTime: string,
   ): import('@/app/api/_schemas/lesson-schedule.schema').InstructorAvailabilityResponse;
+  getManualReservationMembers(): ManualReservationMember[];
+  createManualReservation(
+    input: CreateManualReservationRequest,
+  ): CreateManualReservationResponse | { error: string };
 };

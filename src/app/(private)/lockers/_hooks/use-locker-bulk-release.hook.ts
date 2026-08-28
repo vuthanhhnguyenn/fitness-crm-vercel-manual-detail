@@ -35,13 +35,11 @@ function invalidateLockerReleaseQueries(
   queryClient.invalidateQueries({ queryKey: getCrmLockersSummaryQueryKey() });
   queryClient.invalidateQueries({
     queryKey: getCrmLockersPendingSlotsQueryKey(),
-    refetchType: 'all',
   });
   queryClient.invalidateQueries({
     queryKey: getCrmLockersContractsQueryKey(),
-    refetchType: 'all',
   });
-  queryClient.invalidateQueries({ queryKey: getCrmLockersQueryKey(), refetchType: 'all' });
+  queryClient.invalidateQueries({ queryKey: getCrmLockersQueryKey() });
 }
 
 export function useLockerBulkRelease() {

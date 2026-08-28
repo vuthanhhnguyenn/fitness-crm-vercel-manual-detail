@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Check, CheckCircle, Info, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -29,19 +29,10 @@ import { Textarea } from '@/components/ui/textarea';
 
 import {
   getCrmLessonSchedulesQueryKey,
+  getCrmStudiosOptions,
   patchCrmLessonSchedulesByScheduleIdStudioChangeMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
 import type { LessonScheduleListItem } from '@/lib/api/types.gen';
-
-// Mock studio list (in a real app, this would come from an API)
-const AVAILABLE_STUDIOS = [
-  { id: 'studio-a', name: 'スタジオA', capacity: 20 },
-  { id: 'studio-b', name: 'ヨガスタジオ', capacity: 20 },
-  { id: 'studio-c', name: 'マルチスタジオ', capacity: 30 },
-  { id: 'studio-d', name: 'ダンススタジオ', capacity: 24 },
-  { id: 'studio-e', name: 'パーソナルブースA', capacity: 2 },
-  { id: 'studio-f', name: 'パーソナルブースB', capacity: 2 },
-];
 
 interface ChangeStudioDialogProps {
   open: boolean;
@@ -60,6 +51,14 @@ export function ChangeStudioDialog({
   const [reason, setReason] = useState('');
   const [sendNotification, setSendNotification] = useState(true);
   const queryClient = useQueryClient();
+
+  const studiosQuery = useQuery({
+    ...getCrmStudiosOptions({ query: { status: 'active', limit: 100 } }),
+    enabled: open,
+  });
+  const availableStudios = (studiosQuery.data?.items ?? []).filter(
+    (s) => s.name !== schedule.studio_name,
+  );
 
   const changeMutation = useMutation({
     ...patchCrmLessonSchedulesByScheduleIdStudioChangeMutation(),
@@ -116,7 +115,7 @@ export function ChangeStudioDialog({
               <CommandList className="max-h-[200px]">
                 <CommandEmpty>該当するスタジオが見つかりません</CommandEmpty>
                 <CommandGroup>
-                  {AVAILABLE_STUDIOS.map((studio) => (
+                  {availableStudios.map((studio) => (
                     <CommandItem
                       key={studio.id}
                       value={studio.name}

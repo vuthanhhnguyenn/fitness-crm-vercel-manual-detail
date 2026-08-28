@@ -1,8 +1,10 @@
 'use client';
-
+// Holds local UI/dialog state and mutation calls — client-only.
 import { useCallback, useState } from 'react';
 
-import { useMutation } from '@tanstack/react-query';
+import { TEXTAREA_MAX_LENGTH } from '@/constants/app.constants';
+import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -15,19 +17,14 @@ import { Textarea } from '@/components/ui/textarea';
 
 import {
   deleteCrmMembershipApplicationsByIdMemosByMemoIdMutation,
+  getCrmMembershipApplicationsByIdOptions,
   postCrmMembershipApplicationsByIdMemosMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
 
-interface TimelineEntry {
-  id: string;
-  kind: 'system' | 'memo';
-  date: string;
-  operator: string;
-  content: string;
-}
+import type { ApplicationDetail } from './membership-application.utils';
 
 interface ActivityTimelineCardProps {
-  initialTimeline: TimelineEntry[];
+  initialTimeline: ApplicationDetail['timeline'];
   applicationId: string;
 }
 
@@ -35,56 +32,52 @@ export function ActivityTimelineCard({
   initialTimeline,
   applicationId,
 }: Readonly<ActivityTimelineCardProps>) {
-  const [timeline, setTimeline] = useState<TimelineEntry[]>(initialTimeline);
+  const queryClient = useQueryClient();
   const [memoText, setMemoText] = useState('');
   const [deletingMemoId, setDeletingMemoId] = useState<string | null>(null);
 
-  // Mutation for adding memo
+  function invalidateApplication() {
+    void queryClient.invalidateQueries(
+      getCrmMembershipApplicationsByIdOptions({ path: { id: applicationId } }),
+    );
+  }
+
   const addMemoMutation = useMutation({
     ...postCrmMembershipApplicationsByIdMemosMutation(),
+    onSuccess: () => {
+      setMemoText('');
+      invalidateApplication();
+      toast.success('メモを追加しました');
+    },
+    onError: () => {
+      toast.error('メモの追加に失敗しました');
+    },
   });
 
-  // Mutation for deleting memo
   const deleteMemoMutation = useMutation({
     ...deleteCrmMembershipApplicationsByIdMemosByMemoIdMutation(),
+    onSuccess: () => {
+      invalidateApplication();
+      toast.success('メモを削除しました');
+    },
+    onError: () => {
+      toast.error('メモの削除に失敗しました');
+    },
+    onSettled: () => setDeletingMemoId(null),
   });
 
-  const handleAddMemo = useCallback(async () => {
-    if (!memoText.trim()) return;
-
-    try {
-      const newMemo = await addMemoMutation.mutateAsync({
-        path: { id: applicationId },
-        body: { content: memoText.trim() },
-      });
-
-      setTimeline([newMemo, ...timeline]);
-      setMemoText('');
-      toast.success('メモを追加しました');
-    } catch (error) {
-      console.error('Error adding memo:', error);
-      toast.error('メモの追加に失敗しました');
-    }
-  }, [memoText, timeline, applicationId, addMemoMutation]);
+  const handleAddMemo = useCallback(() => {
+    const trimmed = memoText.trim();
+    if (!trimmed) return;
+    addMemoMutation.mutate({ path: { id: applicationId }, body: { content: trimmed } });
+  }, [memoText, applicationId, addMemoMutation]);
 
   const handleDeleteMemo = useCallback(
-    async (memoId: string) => {
+    (memoId: string) => {
       setDeletingMemoId(memoId);
-      try {
-        await deleteMemoMutation.mutateAsync({
-          path: { id: applicationId, memoId },
-        });
-
-        setTimeline(timeline.filter((e) => e.id !== memoId));
-        toast.success('メモを削除しました');
-      } catch (error) {
-        console.error('Error deleting memo:', error);
-        toast.error('メモの削除に失敗しました');
-      } finally {
-        setDeletingMemoId(null);
-      }
+      deleteMemoMutation.mutate({ path: { id: applicationId, memoId } });
     },
-    [timeline, applicationId, deleteMemoMutation],
+    [applicationId, deleteMemoMutation],
   );
 
   return (
@@ -93,9 +86,8 @@ export function ActivityTimelineCard({
         <CardTitle className="text-sm">対応履歴・メモ</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 px-4">
-        {/* タイムライン */}
         <div className="flex flex-col gap-0">
-          {timeline.map((entry, i) => {
+          {initialTimeline.map((entry, i) => {
             const isSystem = entry.kind === 'system';
             return (
               <div key={entry.id} className="group flex gap-3">
@@ -103,11 +95,13 @@ export function ActivityTimelineCard({
                   <div
                     className={`mt-2 size-2.5 shrink-0 rounded-full ${isSystem ? 'bg-muted-foreground' : 'bg-primary'}`}
                   />
-                  {i < timeline.length - 1 && <div className="bg-border mt-1 w-px flex-1" />}
+                  {i < initialTimeline.length - 1 && <div className="bg-border mt-1 w-px flex-1" />}
                 </div>
-                <div className="flex flex-1 flex-col gap-0.5 pb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-xs">{entry.date}</span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5 pb-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-muted-foreground text-xs">
+                      {formatDateYYYYMMDD_HHMM(entry.datetime, '—')}
+                    </span>
                     <span className="text-xs font-medium">{entry.operator}</span>
                     {!isSystem && (
                       <Badge variant="outline" className="h-4 px-1 text-[10px]">
@@ -118,7 +112,7 @@ export function ActivityTimelineCard({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-muted-foreground hover:text-destructive ml-auto h-6 px-2 text-xs opacity-0 group-hover:opacity-100"
+                        className="text-muted-foreground hover:text-destructive ml-auto h-6 shrink-0 px-2 text-xs opacity-0 group-hover:opacity-100"
                         onClick={() => handleDeleteMemo(entry.id)}
                         disabled={deletingMemoId === entry.id || deleteMemoMutation.isPending}
                       >
@@ -127,14 +121,13 @@ export function ActivityTimelineCard({
                       </Button>
                     )}
                   </div>
-                  <p className="text-sm">{entry.content}</p>
+                  <p className="text-sm wrap-break-word">{entry.content}</p>
                 </div>
               </div>
             );
           })}
         </div>
         <Separator />
-        {/* メモ追加 */}
         <div className="bg-muted/30 flex flex-col gap-2 rounded-lg p-4">
           <Label className="text-muted-foreground text-xs font-medium">メモを追加</Label>
           <p className="text-muted-foreground text-[11px]">
@@ -143,6 +136,7 @@ export function ActivityTimelineCard({
           <Textarea
             placeholder="メモを入力してください..."
             rows={3}
+            maxLength={TEXTAREA_MAX_LENGTH}
             value={memoText}
             onChange={(e) => setMemoText(e.target.value)}
             disabled={addMemoMutation.isPending}

@@ -28,7 +28,9 @@ export default function ForbiddenPage() {
       </div>
 
       {/* Action */}
-      <Button render={<Link href={routes['/'].router} />}>ホームに戻る</Button>
+      <Button nativeButton={false} render={<Link href={routes['/'].router} />}>
+        ホームに戻る
+      </Button>
     </div>
   );
 }

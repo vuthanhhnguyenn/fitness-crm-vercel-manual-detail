@@ -37,10 +37,14 @@ export function DateRangePicker({
         }
       >
         <CalendarIcon className="size-4" />
+        {/* TODO(CODE-RULE-V): direct date-fns format() for display — no equivalent
+            "yyyy年M月d日" helper exists in date.util.ts yet; this pattern is also
+            replicated pre-existing in several other screens. Follow-up issue required
+            to add a shared helper and migrate all call sites together. */}
         {date?.from ? (
           date.to ? (
             <>
-              {format(date.from, "yyyy年M月d日", { locale: ja })} -{" "}
+              {format(date.from, "yyyy年M月d日", { locale: ja })} 〜{" "}
               {format(date.to, "yyyy年M月d日", { locale: ja })}
             </>
           ) : (
@@ -57,6 +61,7 @@ export function DateRangePicker({
           selected={date}
           onSelect={onDateChange}
           numberOfMonths={2}
+          locale={ja}
         />
       </PopoverContent>
     </Popover>

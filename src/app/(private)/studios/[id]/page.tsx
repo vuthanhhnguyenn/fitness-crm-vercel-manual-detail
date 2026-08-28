@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 
 import { useQuery } from '@tanstack/react-query';
 import { Ban, Check } from 'lucide-react';
+import { parseAsStringEnum, useQueryState } from 'nuqs';
 
 import { BackLink } from '@/components/common/back-link';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
@@ -39,10 +40,15 @@ const STUDIO_TYPE_BADGE_CLASSES = {
   'body-care': 'bg-muted text-muted-foreground border-border',
 } as const;
 
+const DETAIL_TABS = ['basic', 'history'] as const;
+
 export default function StudioDetailPage() {
   const params = useParams();
   const studioId = params.id as string;
-  const [activeTab, setActiveTab] = useState('basic');
+  const [activeTab, setActiveTab] = useQueryState(
+    'tab',
+    parseAsStringEnum([...DETAIL_TABS]).withDefault('basic'),
+  );
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const {
@@ -129,7 +135,11 @@ export default function StudioDetailPage() {
         />
 
         <div className="px-6 py-4">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-4">
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => void setActiveTab(value as (typeof DETAIL_TABS)[number])}
+            className="gap-4"
+          >
             <TabsList variant="line">
               <TabsTrigger value="basic">基本情報</TabsTrigger>
               <TabsTrigger value="history">変更履歴</TabsTrigger>
@@ -176,7 +186,7 @@ export default function StudioDetailPage() {
                         {studio.status === 'active' ? '有効' : '無効'}
                       </Badge>
                       <p className="text-muted-foreground mt-3 text-xs">
-                        リンクレッスン数：{studio.assigned_lesson_count}件
+                        リンクレッスン数：{studioData.linked_lessons.length}件
                       </p>
                     </CardContent>
                   </Card>
@@ -196,9 +206,8 @@ export default function StudioDetailPage() {
 
         <StudioDeleteDialog
           open={showDeleteDialog}
-          studioId={studioId}
-          studioName={studio.name}
-          assignedLessonCount={studio.assigned_lesson_count}
+          studio={studio}
+          assignedLessonCount={studioData.linked_lessons.length}
           onOpenChange={setShowDeleteDialog}
         />
       </div>

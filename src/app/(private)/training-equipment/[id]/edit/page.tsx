@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm, useFormState, useWatch } from 'react-hook-form';
+import { useForm, useFormState } from 'react-hook-form';
 
 import { useParams, useRouter } from 'next/navigation';
 
@@ -27,6 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
 
+import { getApiErrorStatus } from '@/lib/api-error.util';
 import {
   getCrmTrainingEquipmentByEquipmentIdExerciseLinksQueryKey,
   getCrmTrainingEquipmentByEquipmentIdOptions,
@@ -34,10 +35,11 @@ import {
   getCrmTrainingEquipmentQueryKey,
   patchCrmTrainingEquipmentByEquipmentIdMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { GetCrmTrainingEquipmentByEquipmentIdResponse } from '@/lib/api/types.gen';
+import type { TrainingEquipmentDetail } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import { TrainingEquipmentFormFields } from '../../_components/training-equipment-form-fields';
+import { useSubmitGuard } from '../../_hooks/use-submit-guard.hook';
 import {
   type TrainingEquipmentFormSubmitValues,
   type TrainingEquipmentFormValues,
@@ -47,10 +49,6 @@ import {
   equipmentToFormDefaults,
   trainingEquipmentFormToUpdatePayload,
 } from '../../_utils/training-equipment-form.mapper';
-
-type TrainingEquipmentDetail = NonNullable<
-  GetCrmTrainingEquipmentByEquipmentIdResponse['equipment']
->;
 
 function TrainingEquipmentEditForm({
   equipment,
@@ -67,7 +65,8 @@ function TrainingEquipmentEditForm({
   const [pendingValues, setPendingValues] = useState<TrainingEquipmentFormSubmitValues | null>(
     null,
   );
-  const originalToolType = equipment.tool_type;
+  const originalToolId = equipment.mstToolId;
+  const linkedExerciseCount = equipment.linkedExercises.length;
 
   const form = useForm<TrainingEquipmentFormValues, unknown, TrainingEquipmentFormSubmitValues>({
     resolver: zodResolver(trainingEquipmentFormSchema) as never,
@@ -79,7 +78,7 @@ function TrainingEquipmentEditForm({
 
   const updateMutation = useMutation({
     ...patchCrmTrainingEquipmentByEquipmentIdMutation(),
-    onSuccess: (response) => {
+    onSuccess: (updated) => {
       toast.success('トレーニング機材の変更を保存しました');
       queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
       queryClient.invalidateQueries({
@@ -90,21 +89,32 @@ function TrainingEquipmentEditForm({
           path: { equipmentId: id },
         }),
       });
-      router.push(navigate('/training-equipment/[id]', response.equipment.id));
+      router.push(navigate('/training-equipment/[id]', updated.id));
     },
-    onError: () => toast.error('トレーニング機材の更新に失敗しました'),
+    onError: (error) => {
+      // The global handler reports the failure. A `404` means the record was deleted from another
+      // tab while this form was open, so saving can never succeed — refresh the list and go back.
+      if (getApiErrorStatus(error) !== 404) return;
+      queryClient.invalidateQueries({ queryKey: getCrmTrainingEquipmentQueryKey() });
+      router.push(navigate('/training-equipment'));
+    },
   });
 
+  const { submitOnce } = useSubmitGuard(updateMutation.isPending, updateMutation.isError);
+
   const submitValues = (values: TrainingEquipmentFormSubmitValues) => {
-    if (!isDirty) return;
-    updateMutation.mutate({
-      path: { equipmentId: id },
-      body: trainingEquipmentFormToUpdatePayload(values),
-    });
+    // Guarded: rapid clicks on 更新 would otherwise send one update per click.
+    submitOnce(() =>
+      updateMutation.mutate({
+        path: { equipmentId: id },
+        body: trainingEquipmentFormToUpdatePayload(values),
+      }),
+    );
   };
 
+  // FR-005: show the confirmation dialog only when the tool type changed and links exist.
   const onSubmit = (values: TrainingEquipmentFormSubmitValues) => {
-    if (values.tool_type !== originalToolType) {
+    if (values.mstToolId !== originalToolId && linkedExerciseCount > 0) {
       setPendingValues(values);
       setToolTypeDialogOpen(true);
       return;
@@ -114,39 +124,41 @@ function TrainingEquipmentEditForm({
 
   const handleSubmit = form.handleSubmit(onSubmit, scrollToFirstError);
 
-  const handleCancel = () => {
+  // Where 破棄する goes depends on which exit the user took (cancel = detail, back link = list).
+  const [discardTarget, setDiscardTarget] = useState(navigate('/training-equipment/[id]', id));
+
+  const leaveTo = (destination: string) => {
     if (isDirty) {
+      setDiscardTarget(destination);
       setDiscardOpen(true);
       return;
     }
-    router.push(navigate('/training-equipment/[id]', id));
+    router.push(destination);
   };
 
-  const handleStoreChange = (store: { store_id: string; name: string } | null) => {
-    form.setValue('store_name', store?.name ?? '', { shouldDirty: true });
-  };
-
-  const toolType = useWatch({ control: form.control, name: 'tool_type' });
-  const showToolTypeWarning = toolType !== originalToolType;
+  const handleCancel = () => leaveTo(navigate('/training-equipment/[id]', id));
 
   return (
     <>
       <PageHeader
         breadcrumb={
-          <BackLink label="トレーニング機材管理に戻る" href={navigate('/training-equipment')} />
+          <BackLink
+            label="トレーニング機材管理に戻る"
+            onClick={() => leaveTo(navigate('/training-equipment'))}
+          />
         }
         title="トレーニング機材 編集"
       />
 
       <main className="bg-background min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <Form {...form}>
-          <form onSubmit={handleSubmit} className="mx-auto max-w-[960px] space-y-6">
+          <form onSubmit={handleSubmit} className="mx-auto max-w-240 space-y-6">
             <TrainingEquipmentFormFields
               control={form.control}
               isEdit
-              currentStatus={equipment.status}
-              showToolTypeWarning={showToolTypeWarning}
-              onStoreChange={handleStoreChange}
+              currentStatus={equipment.installationStatus}
+              storeNameLabel={equipment.storeName}
+              storeCodeLabel={equipment.storeCode}
             />
 
             <div className="flex items-center justify-end gap-2 border-t p-4">
@@ -171,9 +183,7 @@ function TrainingEquipmentEditForm({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>編集を続ける</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => router.push(navigate('/training-equipment/[id]', id))}
-            >
+            <AlertDialogAction onClick={() => router.push(discardTarget)}>
               破棄する
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -214,19 +224,17 @@ export default function TrainingEquipmentEditPage() {
     enabled: Boolean(id),
   });
 
-  const equipment = data?.equipment;
-
-  if (isLoading || isError || !equipment || !id) {
+  if (isLoading || isError || !data || !id) {
     return (
       <DataStateBoundary
         isLoading={isLoading}
         isError={isError}
-        isEmpty={!equipment}
+        isEmpty={!data}
         onRetry={() => refetch()}
         errorTitle="トレーニング機材の取得に失敗しました"
       />
     );
   }
 
-  return <TrainingEquipmentEditForm key={id} equipment={equipment} id={id} />;
+  return <TrainingEquipmentEditForm key={id} equipment={data} id={id} />;
 }

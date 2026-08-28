@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { MOCK_VISIT_RECORDS } from '@/app/api/_mock-db';
+import { getEntryExitEventsForMember } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
   GetUsageHistoryEntriesResponseSchema,
@@ -12,7 +12,8 @@ registerRoute({
   method: 'get',
   path: '/crm/members/{id}/usage-history/entries',
   summary: 'Get member entry/exit history',
-  description: 'Get paginated entry/exit history records with store and period filters',
+  description:
+    'Get paginated gate entry/exit events (one row per event) filtered by a date range (from/to)',
   tags: ['Members'],
   parameters: [
     {
@@ -23,17 +24,17 @@ registerRoute({
       schema: { type: 'string' },
     },
     {
-      name: 'store',
+      name: 'from',
       in: 'query',
       required: false,
-      description: 'Filter by store ID or "all" for all stores',
+      description: 'Start date (inclusive, YYYY-MM-DD)',
       schema: { type: 'string' },
     },
     {
-      name: 'period',
+      name: 'to',
       in: 'query',
       required: false,
-      description: 'Filter by period: this_month, last_month, 3months, or 6months',
+      description: 'End date (inclusive, YYYY-MM-DD)',
       schema: { type: 'string' },
     },
     {
@@ -55,7 +56,7 @@ registerRoute({
     {
       status: 200,
       schema: GetUsageHistoryEntriesResponseSchema,
-      description: 'Paginated entry/exit history records',
+      description: 'Paginated entry/exit events',
     },
     {
       status: 400,
@@ -71,42 +72,15 @@ registerRoute({
 });
 
 const EntriesQuerySchema = z.object({
-  store: z.string().default('all'),
-  period: z.enum(['this_month', 'last_month', '3months', '6months']).default('this_month'),
+  from: z.string().optional(),
+  to: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
-
-function getDateRangeForPeriod(
-  period: 'this_month' | 'last_month' | '3months' | '6months',
-  now: Date = new Date(),
-): { startDate: Date; endDate: Date } {
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  switch (period) {
-    case 'last_month': {
-      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { startDate: lastMonthStart, endDate: lastMonthEnd };
-    }
-    case '3months': {
-      const startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-      return { startDate, endDate: thisMonthEnd };
-    }
-    case '6months': {
-      const startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-      return { startDate, endDate: thisMonthEnd };
-    }
-    case 'this_month':
-    default:
-      return { startDate: thisMonthStart, endDate: thisMonthEnd };
-  }
-}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await params;
+    const { id } = await params;
 
     const queryResult = EntriesQuerySchema.safeParse(
       Object.fromEntries(request.nextUrl.searchParams),
@@ -115,14 +89,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Invalid query parameters' }, { status: 400 });
     }
 
-    const { store, period, page, limit } = queryResult.data;
-    const dateRange = getDateRangeForPeriod(period);
+    const { from, to, page, limit } = queryResult.data;
+    // `to` is inclusive of the whole day
+    const fromTime = from ? new Date(`${from}T00:00:00`).getTime() : null;
+    const toTime = to ? new Date(`${to}T23:59:59`).getTime() : null;
 
-    const filtered = MOCK_VISIT_RECORDS.filter((record) => {
-      const entryDate = new Date(record.entry_time);
-      const matchesStore = store === 'all' || record.store_id === store;
-      const matchesPeriod = entryDate >= dateRange.startDate && entryDate <= dateRange.endDate;
-      return matchesStore && matchesPeriod;
+    const filtered = getEntryExitEventsForMember(id).filter((event) => {
+      const occurredAt = new Date(event.occurredAt).getTime();
+      const afterFrom = fromTime === null || occurredAt >= fromTime;
+      const beforeTo = toTime === null || occurredAt <= toTime;
+      return afterFrom && beforeTo;
     });
 
     const total = filtered.length;
@@ -132,6 +108,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ items, total, page, limit });
   } catch (error) {
     console.error('Error in GET /crm/members/{id}/usage-history/entries:', error);
-    return NextResponse.json({ error: 'Failed to fetch entry/exit history' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch entry/exit events' }, { status: 500 });
   }
 }

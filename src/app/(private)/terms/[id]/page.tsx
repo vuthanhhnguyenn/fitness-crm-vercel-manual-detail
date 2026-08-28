@@ -1,8 +1,16 @@
 'use client';
+
 import { useState } from 'react';
 
 import { useParams, useRouter } from 'next/navigation';
 
+import { TermsDeleteDialog } from '@/app/(private)/terms/_components/terms-delete-dialog';
+import { TermsDetailSkeleton } from '@/app/(private)/terms/_components/terms-detail/terms-detail-skeleton';
+import { TermsDetailTabs } from '@/app/(private)/terms/_components/terms-detail/terms-detail-tabs';
+import {
+  TERMS_STATUS_BADGE_CLASSES,
+  TERMS_STATUS_LABELS,
+} from '@/app/(private)/terms/_constants/constants';
 import { useQuery } from '@tanstack/react-query';
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 
@@ -12,110 +20,85 @@ import { PageHeader } from '@/components/common/page-header';
 import { RoleGatedButton } from '@/components/common/role-gated-button';
 import { RoleGatedMenuItem } from '@/components/common/role-gated-menu-item';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { getCrmTermsByIdOptions } from '@/lib/api/@tanstack/react-query.gen';
-import type { GetCrmTermsByIdResponse } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
+import { cn } from '@/lib/utils';
 
-import { Permission } from '@/types/permission.type';
-
-import { TermsDeleteDialog } from '../_components/terms-delete-dialog';
-import { TERMS_STATUS_LABELS } from '../_constants/constants';
-import { BasicInfoTermDetail } from './_components/basic-info';
-import { HistoryTabTermDetail } from './_components/history-tab';
-
-function getStatusBadgeClass(status: GetCrmTermsByIdResponse['status']) {
-  switch (status) {
-    case 'published':
-      return 'bg-success/15 text-success border-success/20';
-    case 'expired':
-      return 'border-border bg-muted text-muted-foreground';
-    case 'draft':
-      return 'bg-warning/15 text-warning border-warning/20';
-  }
-}
+import { UserRole } from '@/types/permission.type';
 
 export default function TermsDetailPage() {
   const params = useParams();
   const router = useRouter();
-
-  const [activeTab, setActiveTab] = useState('info');
+  const termsId = params.id as string;
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
-  const termId = params.id as string;
-  const { data, isLoading, isError, refetch } = useQuery({
-    ...getCrmTermsByIdOptions({
-      path: {
-        id: termId,
-      },
-    }),
+  const {
+    data: terms,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    ...getCrmTermsByIdOptions({ path: { id: termsId } }),
+    enabled: Boolean(termsId),
   });
 
-  if (isLoading) {
-    return <DataStateBoundary isLoading isEmpty={false} />;
-  }
-
-  if (isError || !data) {
+  if (!terms) {
     return (
       <DataStateBoundary
-        isLoading={false}
-        isEmpty={!data}
+        isLoading={isLoading}
         isError={isError}
-        onRetry={() => {
-          void refetch();
-        }}
-        emptyTitle="規約が見つかりません"
+        isEmpty={!isLoading && !isError}
+        onRetry={() => void refetch()}
+        emptyTitle="規約文書が見つかりません"
+        emptyDescription={`指定された規約ID（${termsId}）は存在しないか、参照権限がありません。`}
+        skeleton={<TermsDetailSkeleton />}
       />
     );
   }
 
-  const detail: GetCrmTermsByIdResponse = data;
-
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex flex-col">
       <PageHeader
         breadcrumb={<BackLink label="規約文書管理に戻る" href={navigate('/terms')} />}
-        title={detail.title}
+        title={terms.title}
         badge={
           <Badge
             variant="outline"
-            className={`gap-1 text-xs ${getStatusBadgeClass(detail.status)}`}
+            className={cn(
+              'gap-1 text-[10px] font-medium',
+              TERMS_STATUS_BADGE_CLASSES[terms.status],
+            )}
           >
             <span className="size-1.5 rounded-full bg-current" />
-            {TERMS_STATUS_LABELS[detail.status]}
+            {TERMS_STATUS_LABELS[terms.status]}
           </Badge>
         }
         actions={
           <div className="flex items-center gap-2">
             <RoleGatedButton
-              requiredPermission={Permission.TermsEdit}
+              allowedRoles={[UserRole.Headquarter, UserRole.System]}
               className="gap-1"
-              onClick={() => {
-                router.push(navigate('/terms/[id]/edit', termId));
-              }}
+              onClick={() => router.push(navigate('/terms/[id]/edit', termsId))}
             >
               <Pencil className="size-4" />
               編集
             </RoleGatedButton>
-            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-              <DropdownMenuTrigger className="border-input hover:bg-accent flex size-8 items-center justify-center rounded-md border">
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="icon" />}>
                 <MoreHorizontal className="size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <RoleGatedMenuItem
-                  requiredPermission={Permission.TermsDelete}
-                  className="text-destructive"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setDeleteOpen(true);
-                  }}
+                  allowedRoles={[UserRole.Headquarter, UserRole.System]}
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setDeleteOpen(true)}
                 >
                   <Trash2 className="size-4" />
                   削除
@@ -125,36 +108,16 @@ export default function TermsDetailPage() {
           </div>
         }
       />
-      <TermsDeleteDialog
-        termId={detail.id}
-        termName={detail.title}
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onDeleted={() => {
-          router.push(navigate('/terms'));
-        }}
-      />
-      <div className="bg-background flex-1 overflow-auto px-6 py-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-4">
-          <TabsList variant="line" className="gap-2">
-            <TabsTrigger value="info">基本情報</TabsTrigger>
-            <TabsTrigger value="versions">バージョン履歴</TabsTrigger>
-          </TabsList>
 
-          <TabsContent value="info">
-            <BasicInfoTermDetail detail={detail} />
-          </TabsContent>
-
-          <TabsContent value="versions">
-            <HistoryTabTermDetail
-              versions={detail.versions}
-              onCreateVersion={() => {
-                router.push(navigate('/terms/create', { mode: 'new-version', sourceId: termId }));
-              }}
-            />
-          </TabsContent>
-        </Tabs>
+      <div className="px-6 py-4">
+        <TermsDetailTabs terms={terms} />
       </div>
+
+      <TermsDeleteDialog
+        target={deleteOpen ? { id: terms.id, title: terms.title } : null}
+        onOpenChange={setDeleteOpen}
+        onDeleted={() => router.push(navigate('/terms'))}
+      />
     </div>
   );
 }

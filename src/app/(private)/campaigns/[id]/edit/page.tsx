@@ -17,6 +17,7 @@ import { PageHeader } from '@/components/common/page-header';
 import { Form } from '@/components/ui/form';
 
 import {
+  getCrmCampaignsByIdChangeHistoryQueryKey,
   getCrmCampaignsByIdOptions,
   getCrmCampaignsByIdQueryKey,
   getCrmCampaignsQueryKey,
@@ -24,17 +25,16 @@ import {
 } from '@/lib/api/@tanstack/react-query.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
+import { CampaignDiscardDialog } from '../../_components/campaign-discard-dialog';
 import { CampaignForm } from '../../_components/campaign-form';
+import { useCampaignUnsavedChanges } from '../../_hooks/use-campaign-unsaved-changes';
+import { toCampaignFormValues, toCampaignRequestBody } from '../../_schemas/campaign-form.mapper';
+import { type CampaignFormValues, campaignFormSchema } from '../../_schemas/campaign-form.schema';
 import {
-  campaignDetailToFormValues,
-  campaignFormValuesToRequestBody,
-} from '../../_schemas/campaign-form.mapper';
-import {
-  type CampaignFormSubmitValues,
-  type CampaignFormValues,
-  campaignFormSchema,
-} from '../../_schemas/campaign-form.schema';
-import { getCampaignCodeServerErrorMessage } from '../../_utils/campaign-error';
+  getCampaignCodeServerErrorMessage,
+  getCampaignErrorMessage,
+  isCampaignInUseError,
+} from '../../_utils/campaign-error';
 
 interface CampaignEditFormProps {
   id: string;
@@ -46,7 +46,7 @@ function CampaignEditForm({ id, defaultValues }: Readonly<CampaignEditFormProps>
   const queryClient = useQueryClient();
   const scrollToFirstError = useScrollToFirstError();
 
-  const form = useForm<CampaignFormValues, unknown, CampaignFormSubmitValues>({
+  const form = useForm<CampaignFormValues>({
     resolver: zodResolver(campaignFormSchema) as never,
     mode: 'onChange',
     defaultValues,
@@ -58,51 +58,64 @@ function CampaignEditForm({ id, defaultValues }: Readonly<CampaignEditFormProps>
       toast.success(res.message || 'キャンペーンを更新しました');
       void queryClient.invalidateQueries({
         queryKey: getCrmCampaignsQueryKey(),
-        refetchType: 'all',
       });
       void queryClient.invalidateQueries({
         queryKey: getCrmCampaignsByIdQueryKey({ path: { id } }),
       });
+      void queryClient.invalidateQueries({
+        queryKey: getCrmCampaignsByIdChangeHistoryQueryKey({ path: { id } }),
+      });
       router.push(navigate('/campaigns/[id]', id));
     },
     onError: (error) => {
-      const message =
-        typeof error === 'object' && error !== null && 'error' in error
-          ? String((error as { error?: string }).error)
-          : 'キャンペーンの更新に失敗しました';
-
       const codeErrorMessage = getCampaignCodeServerErrorMessage(error);
       if (codeErrorMessage) {
-        form.setError('code', { type: 'server', message: codeErrorMessage });
+        form.setError('campaignCode', { type: 'server', message: codeErrorMessage });
       }
 
-      toast.error(message);
+      // E-CMP-002: 適用中の会員・申請があるため受付可否以外は保存できない。
+      // フォームは編集可能なままなので、送信時にこの理由を明示する。
+      if (isCampaignInUseError(error)) {
+        form.setError('name', {
+          type: 'server',
+          message:
+            '適用中の会員または申請があるため変更できません。受付を停止し、新しいキャンペーンを登録してください。',
+        });
+        scrollToFirstError();
+      }
+
+      toast.error(getCampaignErrorMessage(error, 'キャンペーンの更新に失敗しました'));
     },
   });
 
-  const onSubmit = (values: CampaignFormSubmitValues) => {
-    updateMutation.mutate({
-      path: { id },
-      body: campaignFormValuesToRequestBody(values),
-    });
+  const onSubmit = (values: CampaignFormValues) => {
+    updateMutation.mutate({ path: { id }, body: toCampaignRequestBody(values) });
   };
 
+  const { confirmDiscard, discardDialogOpen, handleDiscardConfirm, handleDiscardCancel } =
+    useCampaignUnsavedChanges(form.formState.isDirty);
+  const leaveToDetail = () => confirmDiscard(() => router.push(navigate('/campaigns/[id]', id)));
+
   return (
-    <div className="px-6 py-4">
-      <Form {...form}>
-        <form
-          className="mx-auto max-w-[960px]"
-          onSubmit={form.handleSubmit(onSubmit, scrollToFirstError)}
-        >
-          <CampaignForm
-            isEdit
-            isSubmitting={updateMutation.isPending}
-            campaignId={id}
-            onCancel={() => router.push(navigate('/campaigns/[id]', id))}
-          />
-        </form>
-      </Form>
-    </div>
+    <>
+      <PageHeader
+        breadcrumb={<BackLink label="キャンペーン詳細に戻る" onClick={leaveToDetail} />}
+        title="キャンペーン 編集"
+      />
+      <div className="px-6 py-4">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit, scrollToFirstError)}>
+            <CampaignForm isEdit isSubmitting={updateMutation.isPending} onCancel={leaveToDetail} />
+          </form>
+        </Form>
+      </div>
+
+      <CampaignDiscardDialog
+        open={discardDialogOpen}
+        onCancel={handleDiscardCancel}
+        onConfirm={handleDiscardConfirm}
+      />
+    </>
   );
 }
 
@@ -119,25 +132,17 @@ export default function CampaignEditPage() {
 
   const defaultValues = useMemo<CampaignFormValues | null>(() => {
     if (!campaign) return null;
-    return campaignDetailToFormValues(campaign);
+    return toCampaignFormValues(campaign);
   }, [campaign]);
 
   return (
-    <>
-      <DataStateBoundary
-        isLoading={isLoading}
-        isError={isError}
-        isEmpty={!campaign}
-        onRetry={refetch}
-      >
-        <PageHeader
-          breadcrumb={
-            <BackLink label="キャンペーン詳細に戻る" href={navigate('/campaigns/[id]', id)} />
-          }
-          title="キャンペーン 編集"
-        />
-        {defaultValues && id && <CampaignEditForm id={id} defaultValues={defaultValues} />}
-      </DataStateBoundary>
-    </>
+    <DataStateBoundary
+      isLoading={isLoading}
+      isError={isError}
+      isEmpty={!campaign}
+      onRetry={refetch}
+    >
+      {defaultValues && id && <CampaignEditForm id={id} defaultValues={defaultValues} />}
+    </DataStateBoundary>
   );
 }

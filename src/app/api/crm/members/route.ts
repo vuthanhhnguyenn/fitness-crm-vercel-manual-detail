@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
-  CreateMemberRequestSchema,
-  type CreateMemberResponse,
-  CreateMemberResponseSchema,
   ErrorResponseSchema,
   type GetMembersQuery,
   GetMembersQuerySchema,
@@ -13,9 +9,40 @@ import {
   GetMembersResponseSchema,
 } from '@/app/api/_schemas/member.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
-import { hasPermissions } from '@/utils/permission.util';
 
-import { Permission, type UserRole } from '@/types/permission.type';
+// Member status enum order — used for the `status` sort key (mirrors the
+// PostgreSQL `member_status` enum order in the backend design).
+const MEMBER_STATUS_SORT_ORDER = [
+  'provisional',
+  'active',
+  'pending_suspended',
+  'suspended',
+  'pending_withdrawal',
+  'withdrawal_pending_processing',
+  'withdrawn',
+  'forced_withdrawal',
+] as const;
+
+/**
+ * NFKC-normalizes and lower-cases a value before matching, so a query typed with
+ * full-width digits/latin (`０９０`, `ＡＢＣ`) or half-width kana (`ﾀﾅｶ`) matches the
+ * stored half-width / full-width form and vice versa (FR-002, i18n width handling).
+ */
+function normalizeSearchValue(value: string): string {
+  return value.normalize('NFKC').toLowerCase().trim();
+}
+
+/** Phone numbers are matched digits-only, so separators never break a match. */
+function stripPhoneSeparators(value: string): string {
+  return value.replace(/[-\s()]/g, '');
+}
+
+/** Timestamp for sorting, or `null` when the value is missing/unparsable. */
+function toSortableTime(value?: string): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+}
 
 // Register OpenAPI documentation for this route
 registerRoute({
@@ -36,39 +63,6 @@ registerRoute({
       schema: ErrorResponseSchema,
       description: 'Bad request - invalid query parameters',
     },
-    { status: 401, schema: ErrorResponseSchema, description: 'Unauthorized' },
-    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
-    {
-      status: 500,
-      schema: ErrorResponseSchema,
-      description: 'Internal server error',
-    },
-  ],
-});
-
-registerRoute({
-  method: 'post',
-  path: '/crm/members',
-  summary: 'Create member',
-  description: 'Create a new member',
-  tags: ['Members'],
-  requestBody: {
-    schema: CreateMemberRequestSchema,
-    description: 'Member create payload',
-  },
-  responses: [
-    {
-      status: 200,
-      schema: CreateMemberResponseSchema,
-      description: 'Member created successfully',
-    },
-    {
-      status: 400,
-      schema: ErrorResponseSchema,
-      description: 'Bad request - invalid request body',
-    },
-    { status: 401, schema: ErrorResponseSchema, description: 'Unauthorized' },
-    { status: 403, schema: ErrorResponseSchema, description: 'Forbidden' },
     {
       status: 500,
       schema: ErrorResponseSchema,
@@ -79,12 +73,6 @@ registerRoute({
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = getAuthUserFromRequest(request);
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    if (!hasPermissions(auth.user.role as UserRole, [Permission.MembersView])) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-    }
-
     const searchParams = request.nextUrl.searchParams;
 
     // Build query object from searchParams
@@ -106,53 +94,78 @@ export async function GET(request: NextRequest) {
       limit,
       search = '',
       contract_type,
+      main_contract_id,
       status,
-      brand,
+      brand_group,
       store_id,
-      last_visit_days,
+      enrolled_from,
+      enrolled_to,
+      last_entry_from,
+      last_entry_to,
+      include_never_entered,
+      promo_code,
       has_unpaid,
+      has_gate_stop,
       sort_by = 'member_number',
       sort_order = 'asc',
+      match_mode = 'substring',
     } = query;
 
     // Get data from shared mock DB
     const allMembers = db.members.getList();
-    const allowedStoreIds = getAllowedStoreIds(auth.user);
 
     // Apply filters
-    let filtered =
-      allowedStoreIds === null
-        ? allMembers
-        : allMembers.filter(
-            (member) => member.store_id && allowedStoreIds.includes(member.store_id),
-          );
+    let filtered = allMembers;
 
-    if (search) {
-      const searchLower = search.toLowerCase().trim();
-      const searchNorm = search.trim();
-      filtered = filtered.filter(
-        (m) =>
-          m.member_number.toLowerCase().includes(searchLower) ||
-          m.old_member_number.toLowerCase().includes(searchLower) ||
-          m.name_kanji.includes(search) ||
-          m.name_kana.includes(search) ||
-          m.name_kanji.includes(searchNorm) ||
-          m.name_kana.includes(searchNorm) ||
-          (m.phone && m.phone.replace(/-/g, '').includes(search.replace(/-/g, ''))) ||
-          (m.email && m.email.toLowerCase().includes(searchLower)),
-      );
+    const searchQuery = normalizeSearchValue(search);
+    if (searchQuery) {
+      const queryDigits = stripPhoneSeparators(searchQuery);
+      /**
+       * A-01 FR-038a — `prefix` mirrors the real endpoint, whose member search is
+       * `ILIKE 'kw%'` on every field except the two unique keys, which match exactly.
+       * The blacklist registration Sheet opts into it so it behaves identically against
+       * the mock and the live API.
+       *
+       * Opt-in, never the default: this route also backs A-01's own member list and
+       * several pickers, and switching their matching would change all of them silently
+       * (research §4).
+       */
+      const isPrefix = match_mode === 'prefix';
+      const matches = (value: string | undefined, exact: boolean) => {
+        if (!value) return false;
+        const v = normalizeSearchValue(value);
+        if (!isPrefix) return v.includes(searchQuery);
+        return exact ? v === searchQuery : v.startsWith(searchQuery);
+      };
+
+      filtered = filtered.filter((m) => {
+        const textMatch =
+          matches(m.member_number, isPrefix) ||
+          matches(m.old_member_number, isPrefix) ||
+          matches(m.name_kanji, false) ||
+          matches(m.name_kana, false) ||
+          matches(m.email, false);
+        if (textMatch) return true;
+        const phone = m.phone ? stripPhoneSeparators(normalizeSearchValue(m.phone)) : '';
+        if (!phone || !queryDigits) return false;
+        return isPrefix ? phone.startsWith(queryDigits) : phone.includes(queryDigits);
+      });
     }
 
     if (contract_type && contract_type.length > 0) {
       filtered = filtered.filter((m) => contract_type.includes(m.contract_type));
     }
 
+    if (main_contract_id && main_contract_id.length > 0) {
+      filtered = filtered.filter((m) => main_contract_id.includes(m.contract_id));
+    }
+
     if (status && status.length > 0) {
       filtered = filtered.filter((m) => status.includes(m.status));
     }
 
-    if (brand && brand.length > 0) {
-      filtered = filtered.filter((m) => brand.includes(m.brand));
+    if (brand_group && brand_group.length > 0) {
+      filtered = filtered.filter((m) => brand_group.includes(m.brand_group));
     }
 
     if (store_id && store_id.length > 0) {
@@ -160,63 +173,105 @@ export async function GET(request: NextRequest) {
       filtered = filtered.filter((m) => store_id.some((id) => m.store_id?.includes(id)));
     }
 
-    if (last_visit_days !== undefined) {
-      const now = new Date();
-      if (last_visit_days === -1) {
-        // 3ヶ月以上 (90+ days)
-        const cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        filtered = filtered.filter(
-          (m) => !m.last_visit_date || new Date(m.last_visit_date) < cutoffDate,
-        );
-      } else {
-        // Within X days
-        const cutoffDate = new Date(now.getTime() - last_visit_days * 24 * 60 * 60 * 1000);
-        filtered = filtered.filter(
-          (m) => m.last_visit_date && new Date(m.last_visit_date) >= cutoffDate,
-        );
-      }
+    // 入会日 range. A member with no join date can never satisfy a bound — matching
+    // the backend rule that members without a resolvable main contract drop out of
+    // the result as soon as any contract/enrolment filter is applied.
+    if (enrolled_from) {
+      filtered = filtered.filter((m) => !!m.joined_at && m.joined_at >= enrolled_from);
+    }
+    if (enrolled_to) {
+      filtered = filtered.filter((m) => !!m.joined_at && m.joined_at <= enrolled_to);
+    }
+
+    // 最終来館日 range. `include_never_entered` keeps members who have never entered,
+    // which the 「3週間以上来館なし」/「1ヶ月以上来館なし」 buckets rely on.
+    if (last_entry_from || last_entry_to) {
+      filtered = filtered.filter((m) => {
+        if (!m.last_visit_date) return include_never_entered === true;
+        if (last_entry_from && m.last_visit_date < last_entry_from) return false;
+        if (last_entry_to && m.last_visit_date > last_entry_to) return false;
+        return true;
+      });
+    }
+
+    if (promo_code) {
+      filtered = filtered.filter((m) => m.promotion_code === promo_code);
     }
 
     if (has_unpaid !== undefined) {
       filtered = filtered.filter((m) => m.has_unpaid === has_unpaid);
     }
 
-    // Apply sorting
-    filtered.sort((a, b) => {
-      let comparison = 0;
+    // Gate stop is its own axis, so it AND-combines with `status` instead of being
+    // one of its values.
+    if (has_gate_stop !== undefined) {
+      filtered = filtered.filter((m) => m.has_gate_stop === has_gate_stop);
+    }
+
+    // Apply sorting. Sorting on a copy so the shared mock roster keeps its own order.
+    const sortKeyOf = (m: (typeof filtered)[number]): string | number | null => {
       switch (sort_by) {
         case 'member_number':
-          comparison = a.member_number.localeCompare(b.member_number);
-          break;
+          return m.member_number || null;
         case 'joined_at':
-          comparison = new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
-          break;
+          return toSortableTime(m.joined_at);
         case 'last_visit_date':
-          const aDate = a.last_visit_date ? new Date(a.last_visit_date).getTime() : 0;
-          const bDate = b.last_visit_date ? new Date(b.last_visit_date).getTime() : 0;
-          comparison = aDate - bDate;
-          break;
+          return toSortableTime(m.last_visit_date);
         case 'name':
-          comparison = a.name_kanji.localeCompare(b.name_kanji);
-          break;
+          return m.name_kanji || null;
+        case 'status': {
+          // Sort by the member_status enum order (matches backend `memberStatus` sort)
+          const index = MEMBER_STATUS_SORT_ORDER.indexOf(m.status);
+          return index === -1 ? null : index;
+        }
+        default:
+          return null;
       }
+    };
+    filtered = [...filtered].sort((a, b) => {
+      const aKey = sortKeyOf(a);
+      const bKey = sortKeyOf(b);
+      // Rows missing the sorted attribute go to the END in both directions
+      // (A-01 edge case "Missing sort values"), so the direction sign is not applied.
+      if (aKey === null || bKey === null) {
+        if (aKey === null && bKey === null) return 0;
+        return aKey === null ? 1 : -1;
+      }
+      const comparison =
+        typeof aKey === 'number' && typeof bKey === 'number'
+          ? aKey - bKey
+          : String(aKey).localeCompare(String(bKey));
       return sort_order === 'asc' ? comparison : -comparison;
     });
 
-    // Apply pagination
+    // Apply pagination. A requested page beyond the last valid page falls back to
+    // that last page instead of returning an empty slice (A-01 edge case
+    // "Requested page out of range"); the clamped page is echoed back so the
+    // client can align its URL/footer with the rows it actually received.
     const total = filtered.length;
     const total_pages = Math.ceil(total / limit);
-    const startIndex = (page - 1) * limit;
+    const currentPage = Math.min(Math.max(page, 1), Math.max(total_pages, 1));
+    const startIndex = (currentPage - 1) * limit;
     const endIndex = startIndex + limit;
-    const paginatedMembers = filtered.slice(startIndex, endIndex);
+    /**
+     * A-01 FR-050a — `has_blacklist` needs the blacklist table, which the list-item
+     * mapper has no access to, so it is projected here. HQ / system only, matching the
+     * real contract's restriction on the same field.
+     */
+    const paginatedMembers = filtered.slice(startIndex, endIndex).map((m) => ({
+      ...m,
+      has_blacklist: db.memberBlacklist.hasActiveForMember(m.id),
+    }));
 
     const response: GetMembersResponse = {
       members: paginatedMembers,
       pagination: {
-        page,
+        page: currentPage,
         limit,
         total,
         total_pages,
+        // Unfiltered in-scope total, so the filter banner can show "全 X 件中 Y 件"
+        totalAllItems: allMembers.length,
       },
     };
 
@@ -224,47 +279,5 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching members:', error);
     return NextResponse.json({ error: 'Failed to fetch members' }, { status: 500 });
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const auth = getAuthUserFromRequest(request);
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    if (!hasPermissions(auth.user.role as UserRole, [Permission.MembersCreate])) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-    }
-
-    const body = await request.json();
-    const validationResult = CreateMemberRequestSchema.safeParse(body);
-    if (!validationResult.success) {
-      const errors = validationResult.error.issues.map((issue) => issue.message).join(', ');
-      return NextResponse.json({ error: errors }, { status: 400 });
-    }
-
-    // Check if the user is authorized to create members for the specified store
-    const allowedStoreIds = getAllowedStoreIds(auth.user);
-    const requestedStoreId = validationResult.data.profile_info?.join_store;
-
-    if (allowedStoreIds !== null && requestedStoreId) {
-      if (!allowedStoreIds.includes(requestedStoreId)) {
-        return NextResponse.json(
-          { error: 'Forbidden: Cannot create member for a store outside your scope' },
-          { status: 403 },
-        );
-      }
-    }
-
-    const member = db.members.create(validationResult.data);
-
-    const response: CreateMemberResponse = {
-      message: 'Member created successfully',
-      member: member.basic_info,
-    };
-
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('Error creating member:', error);
-    return NextResponse.json({ error: 'Failed to create member' }, { status: 500 });
   }
 }

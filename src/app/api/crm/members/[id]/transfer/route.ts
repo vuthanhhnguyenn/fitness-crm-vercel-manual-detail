@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { validateProxyAgreement } from '@/app/api/_lib/member-operation';
 import { db } from '@/app/api/_mock-db';
 import {
   ErrorResponseSchema,
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    if (!TRANSFERABLE_STATUSES.includes(member.profile.status)) {
+    if (!TRANSFERABLE_STATUSES.includes(member.memberStatus)) {
       return NextResponse.json(
         { error: 'Member is not in a state that allows transfer' },
         { status: 409 },
@@ -91,9 +92,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: errors }, { status: 400 });
     }
 
-    const { to_store_id, to_store_name, reason } = validationResult.data;
+    const { to_store_id, to_store_name, reason, is_proxy, proxy_agreed_at, proxy_method } =
+      validationResult.data;
 
-    const result = db.members.handleTransfer({ id, to_store_id, to_store_name, reason });
+    // A-01 FR-017: a proxy application must carry a plausible agreement timestamp
+    const proxyError = validateProxyAgreement({ is_proxy, proxy_agreed_at });
+    if (proxyError) {
+      return NextResponse.json({ error: proxyError.message }, { status: 400 });
+    }
+
+    // G-E: the proxy block used to be validated and then dropped here, so a transfer made on
+    // the member's behalf left no 代理申請 trail at all. Pass it through like 休会申請 does.
+    const result = db.members.handleTransfer({
+      id,
+      to_store_id,
+      to_store_name,
+      reason,
+      is_proxy,
+      proxy_agreed_at,
+      proxy_method,
+    });
     if (!result) {
       return NextResponse.json({ error: 'Failed to process transfer request' }, { status: 500 });
     }

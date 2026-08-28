@@ -3,9 +3,15 @@ import {
   STORE_STATUS_LABELS,
 } from '@/app/(private)/stores/_constants/constants';
 
-import { FranchiseCompanyStatus, FranchiseCompanyType, StoreListBrand } from '@/lib/api/types.gen';
+import {
+  FranchiseCompanyAuthMethod,
+  FranchiseCompanyStatus,
+  FranchiseCompanyType,
+  StoreListBrand,
+} from '@/lib/api/types.gen';
 
 import {
+  FRANCHISE_COMPANY_AUTH_METHOD_LABELS,
   FRANCHISE_COMPANY_STATUS_LABELS,
   FRANCHISE_COMPANY_TYPE_LABELS,
 } from '../../_constants/constants';
@@ -27,6 +33,7 @@ export const FRANCHISE_COMPANY_BASIC_INFO_LABELS = {
   fc_contract_renewal_date: 'FC契約更新日',
   royalty_rate: 'ロイヤリティ率',
   note: '備考',
+  auth_method: '認証方式',
   created_at: '作成日時',
   updated_at: '更新日時',
 } as const;
@@ -75,6 +82,7 @@ export const FRANCHISE_COMPANY_DETAIL_FIELD_ORDER = [
   'fc_contract_renewal_date',
   'royalty_rate',
   'note',
+  'auth_method',
   'created_at',
   'updated_at',
 ] as const;
@@ -83,4 +91,8 @@ export const FRANCHISE_COMPANY_TYPE_DISPLAY_LABELS: Record<FranchiseCompanyType,
   FRANCHISE_COMPANY_TYPE_LABELS;
 export const FRANCHISE_COMPANY_STATUS_DISPLAY_LABELS: Record<FranchiseCompanyStatus, string> =
   FRANCHISE_COMPANY_STATUS_LABELS;
+export const FRANCHISE_COMPANY_AUTH_METHOD_DISPLAY_LABELS: Record<
+  FranchiseCompanyAuthMethod,
+  string
+> = FRANCHISE_COMPANY_AUTH_METHOD_LABELS;
 export const STORE_BRAND_DISPLAY_LABELS: Record<StoreListBrand, string> = STORE_BRAND_LABELS;

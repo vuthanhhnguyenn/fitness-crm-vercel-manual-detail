@@ -1,8 +1,14 @@
 'use client';
 
+import { useMemo, useState } from 'react';
+
 import { formatNextMonthStart } from '@/utils/format.util';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
 
+import { RequiredMark } from '@/components/common/field-marker';
+import { SearchableSelect } from '@/components/common/searchable-select';
+import { TextWithTooltip } from '@/components/common/text-with-tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,28 +20,20 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
+import { getCrmMainContractsInfiniteOptions } from '@/lib/api/@tanstack/react-query.gen';
 import type { GetCrmMainContractsResponse, GetCrmMembersResponse } from '@/lib/api/types.gen';
 
 type MemberItem = NonNullable<GetCrmMembersResponse['members']>[0];
+type ContractItem = GetCrmMainContractsResponse['main_contracts'][number];
 
 interface MemberBulkContractDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedMemberIds: string[];
   selectedMembers: MemberItem[];
-  toContract: GetCrmMainContractsResponse['main_contracts'][number] | null;
-  onContractChange: (value: string) => void;
-  contractOptions: GetCrmMainContractsResponse['main_contracts'];
   isChangingMainContract: boolean;
-  onExecute: () => void;
+  onExecute: (contract: ContractItem) => void;
 }
 
 export function MemberBulkContractDialog({
@@ -43,14 +41,45 @@ export function MemberBulkContractDialog({
   onOpenChange,
   selectedMemberIds,
   selectedMembers,
-  toContract,
-  onContractChange,
-  contractOptions,
   isChangingMainContract,
   onExecute,
 }: MemberBulkContractDialogProps) {
+  // The picked target contract lives here — the parent only needs it on execute.
+  const [toContract, setToContract] = useState<ContractItem | null>(null);
+  const [contractOpen, setContractOpen] = useState(false);
+  const [contractSearch, setContractSearch] = useState('');
+
+  // Clear the pick on close so it never lingers into the next bulk change.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setToContract(null);
+    onOpenChange(next);
+  };
+
+  const {
+    data: contractsData,
+    isFetching: isContractsFetching,
+    fetchNextPage: fetchNextContracts,
+    hasNextPage: hasMoreContracts,
+    isFetchingNextPage: isFetchingMoreContracts,
+  } = useInfiniteQuery({
+    ...getCrmMainContractsInfiniteOptions({
+      query: { limit: 20, search: contractSearch || undefined },
+    }),
+    enabled: open && contractOpen,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: GetCrmMainContractsResponse, allPages) => {
+      const currentPage = allPages.length;
+      const totalPages = lastPage.pagination?.total_pages ?? 0;
+      return currentPage < totalPages ? currentPage + 1 : undefined;
+    },
+  });
+  const contractOptions = useMemo(
+    () => contractsData?.pages.flatMap((page) => page.main_contracts ?? []) ?? [],
+    [contractsData],
+  );
+
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent className="max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle>主契約の一括変更</AlertDialogTitle>
@@ -64,23 +93,41 @@ export function MemberBulkContractDialog({
           <div className="space-y-2">
             <Label className="text-sm">
               変更先の主契約
-              <span className="text-destructive ml-1">*</span>
+              <RequiredMark />
             </Label>
-            <Select
-              value={toContract?.id ?? ''}
-              onValueChange={(value) => onContractChange(value ?? '')}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="選択してください" />
-              </SelectTrigger>
-              <SelectContent>
-                {contractOptions.map((contract) => (
-                  <SelectItem key={contract.id} value={contract.id}>
-                    {contract.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect<ContractItem>
+              value={toContract?.id ?? null}
+              valueLabel={toContract?.name ?? '選択してください'}
+              options={contractOptions}
+              placeholder="選択してください"
+              searchPlaceholder="プラン名・コードで検索..."
+              emptyMessage="該当するプランがありません"
+              loadingMessage="プランを読み込み中..."
+              open={contractOpen}
+              onOpenChange={setContractOpen}
+              onSearchChange={setContractSearch}
+              onSelect={(contract) => setToContract(contract)}
+              getOptionKey={(contract) => contract.id}
+              getOptionLabel={(contract) => contract.name}
+              getOptionKeywords={(contract) =>
+                [contract.name, contract.code, contract.id].filter(Boolean).join(' ')
+              }
+              renderOption={(contract) => (
+                <TextWithTooltip
+                  text={contract.name}
+                  wrapperClassName="w-full"
+                  className="w-full"
+                  side="right"
+                  align="center"
+                />
+              )}
+              isLoading={isContractsFetching}
+              hasMore={hasMoreContracts}
+              isLoadingMore={isFetchingMoreContracts}
+              onLoadMore={fetchNextContracts}
+              loadingMoreMessage="読み込み中..."
+              triggerClassName="h-9 w-full text-sm"
+            />
           </div>
 
           {/* 変更内容プレビュー */}
@@ -131,7 +178,14 @@ export function MemberBulkContractDialog({
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isChangingMainContract}>キャンセル</AlertDialogCancel>
-          <AlertDialogAction disabled={!toContract || isChangingMainContract} onClick={onExecute}>
+          <AlertDialogAction
+            disabled={!toContract || isChangingMainContract}
+            onClick={() => {
+              if (!toContract) return;
+              onExecute(toContract);
+              setToContract(null);
+            }}
+          >
             実行
           </AlertDialogAction>
         </AlertDialogFooter>

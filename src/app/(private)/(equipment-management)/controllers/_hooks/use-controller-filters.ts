@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import type { GetCrmControllersData } from '@/lib/api/types.gen';
 
@@ -41,20 +41,10 @@ export function useControllerFilters() {
     },
   );
 
-  const [searchInput, setSearchInput] = useState(() => filters.controller_search);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (searchInput !== filters.controller_search) {
-        setFilters({
-          controller_search: searchInput || null,
-          controller_page: 1,
-        });
-      }
-    }, 300);
-
-    return () => window.clearTimeout(timer);
-  }, [filters.controller_search, searchInput, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(
+    filters.controller_search,
+    (value) => setFilters({ controller_search: value || null, controller_page: 1 }),
+  );
 
   const clearFilterSelects = () => {
     setFilters({

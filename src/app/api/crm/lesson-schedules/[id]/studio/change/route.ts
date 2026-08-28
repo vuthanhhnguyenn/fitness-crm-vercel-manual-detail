@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { db } from '@/app/api/_mock-db';
+import { SEED_STUDIO_LIST } from '@/app/api/_mock-db/seeds/lesson.seed';
 import {
   type ChangeResponse,
   ChangeResponseSchema,
@@ -8,16 +9,6 @@ import {
   ErrorResponseSchema,
 } from '@/app/api/_schemas/lesson-reservation.schema';
 import { registerRoute } from '@/app/api/_scripts/register-route';
-
-const STUDIO_ID_TO_NAME: Record<string, string> = {
-  STD001: 'Zumbaスタジオ',
-  STD002: 'スタジオA',
-  STD003: 'スタジオB',
-  STD004: 'ホットヨガスタジオA',
-  STD005: 'メインスタジオ',
-  STD006: 'PTルーム1',
-  STD007: 'PTルーム2',
-};
 
 registerRoute({
   method: 'patch',
@@ -50,8 +41,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: errors }, { status: 400 });
     }
 
+    const studio = SEED_STUDIO_LIST.find((s) => s.id === parsed.data.studio_id);
+
     db.lessonSchedules.update(scheduleId, {
-      studio_name: STUDIO_ID_TO_NAME[parsed.data.studio_id] ?? parsed.data.studio_id,
+      studio_name: studio?.name ?? existing.studio_name,
     });
 
     const response: ChangeResponse = { message: 'スタジオを変更しました' };

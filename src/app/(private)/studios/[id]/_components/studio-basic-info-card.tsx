@@ -1,14 +1,17 @@
-import type { StudioDetail } from '@/app/api/_schemas/studio-detail.schema';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 
 import { Card, CardContent } from '@/components/ui/card';
 
+import { StudioDetail } from '@/lib/api';
+
+import { TypeBadge } from '../../_components/studio-list-section';
+
 interface StudioBasicInfoCardProps {
   studio: StudioDetail;
 }
 
-export function StudioBasicInfoCard({ studio }: StudioBasicInfoCardProps) {
+export function StudioBasicInfoCard({ studio }: Readonly<StudioBasicInfoCardProps>) {
   return (
     <Card>
       <CardContent className="px-4">
@@ -24,11 +27,7 @@ export function StudioBasicInfoCard({ studio }: StudioBasicInfoCardProps) {
           </div>
           <div>
             <p className="text-muted-foreground mb-1 text-xs">区分</p>
-            <p className="text-sm font-medium">
-              {studio.studio_type === 'studio-lesson' && 'スタジオレッスン'}
-              {studio.studio_type === 'pt' && 'パーソナル'}
-              {studio.studio_type === 'body-care' && 'ボディケア'}
-            </p>
+            <TypeBadge type={studio.studio_type} />
           </div>
           <div>
             <p className="text-muted-foreground mb-1 text-xs">物理定員</p>

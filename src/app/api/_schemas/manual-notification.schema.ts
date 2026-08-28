@@ -23,8 +23,12 @@ export const ManualNotificationBrandSchema = z
     description: 'Brand or JOYFIT sub-brand defined by I-03',
   });
 
+/**
+ * Aligned with the /crm/members ContractTypeSchema (member.schema.ts) so that
+ * 契約種別指定 targeting maps 1:1 onto real member contract types.
+ */
 export const ManualNotificationContractTypeSchema = z
-  .enum(['regular', 'premium', 'visitor', 'corporate'])
+  .enum(['regular', 'one_day_member', 'family'])
   .openapi({
     title: 'ManualNotificationContractType',
     description: 'Member contract category for manual notification targeting',
@@ -119,12 +123,11 @@ const ManualNotificationTargetPreviewCountsSchema = z.object({
     joyfit_plus: z.number().int().nonnegative(),
     fit365: z.number().int().nonnegative(),
   }),
-  stores: z.number().int().nonnegative(),
+  stores: z.record(z.string(), z.number().int().nonnegative()),
   contractType: z.object({
     regular: z.number().int().nonnegative(),
-    premium: z.number().int().nonnegative(),
-    visitor: z.number().int().nonnegative(),
-    corporate: z.number().int().nonnegative(),
+    one_day_member: z.number().int().nonnegative(),
+    family: z.number().int().nonnegative(),
   }),
   membershipDuration: z.number().int().nonnegative(),
   dynamicAttributes: z.object({
@@ -350,14 +353,6 @@ export const ManualNotificationUpsertBodySchema = z
             path: ['timing', 'maxOccurrences'],
           });
         }
-        //One of the two values ​​is required.
-        if (value.timing.endAt === undefined && value.timing.maxOccurrences === undefined) {
-          context.addIssue({
-            code: 'custom',
-            message: 'Recurring timing must specify either endAt or maxOccurrences',
-            path: ['timing'],
-          });
-        }
       }
       const linkUrl = value.contents.in_app?.linkUrl;
       if (value.channels.includes('in_app') && linkUrl && !isSafeHttpsUrl(linkUrl)) {
@@ -446,11 +441,13 @@ export const GetManualNotificationsResponseSchema = z.object({
 });
 
 export const ManualNotificationErrorResponseSchema = z.object({
+  // Canonical `ErrorResponseSchema` envelope (same as campaign/promo-code/store):
+  // the global toast reads `userMessage` via `getApiErrorMessage` (api-error.util.ts),
+  // and `code` powers discriminator helpers (`isNotificationNotFoundError`).
   code: z.string(),
   message: z.string(),
   userMessage: z.string(),
-  traceId: z.string(),
-  details: z.record(z.string(), z.unknown()).optional(),
+  traceId: z.string().optional(),
 });
 
 export const ManualNotificationActionSchema = z.object({

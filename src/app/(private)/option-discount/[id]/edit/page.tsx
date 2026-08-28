@@ -74,7 +74,6 @@ function OptionDiscountEditForm({
       toast.success(res.message || 'セット割を更新しました');
       queryClient.invalidateQueries({
         queryKey: getCrmOptionDiscountsQueryKey(),
-        refetchType: 'all',
       });
       queryClient.invalidateQueries({
         queryKey: getCrmOptionDiscountsByIdQueryKey({ path: { id } }),

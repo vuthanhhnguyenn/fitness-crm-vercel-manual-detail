@@ -37,9 +37,8 @@ export function getLockersTableColumns(): ColumnDef<LockerRow>[] {
     },
     {
       accessorKey: 'slots',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="スロット数" className="justify-center" />
-      ),
+      header: () => <span className="block text-center">スロット数</span>,
+      enableSorting: false,
       cell: ({ row }) => (
         <span className="block text-center font-medium">{row.original.slots}</span>
       ),
@@ -61,7 +60,8 @@ export function getLockersTableColumns(): ColumnDef<LockerRow>[] {
     },
     {
       accessorKey: 'numbering_pattern',
-      header: 'ナンバリング',
+      header: 'ナンバリングパターン',
+      enableSorting: false,
       cell: ({ row }) => (
         <span className="text-muted-foreground text-xs">{row.original.numbering_pattern}</span>
       ),

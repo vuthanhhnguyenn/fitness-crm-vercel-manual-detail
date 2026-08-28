@@ -16,6 +16,11 @@ import type { StudioFormValues } from '../../_components/studio-form.schema';
 import { StudioForm } from '../../_components/studio-form/studio-form';
 import { StudioFormSkeleton } from '../../_components/studio-form/studio-form-skeleton';
 
+function padHour(time: string): string {
+  const [hour, minute] = time.split(':');
+  return `${hour.padStart(2, '0')}:${minute}`;
+}
+
 function detailToFormValues(detail: GetStudioDetailResponse): {
   defaultValues: Partial<StudioFormValues>;
   assignedLessonCount: number;
@@ -38,8 +43,8 @@ function detailToFormValues(detail: GetStudioDetailResponse): {
     defaultValues: {
       storeId: detail.data.store_id,
       name: detail.data.name,
-      studioType: 'normal' as const,
-      operatingHours: detail.data.usage_hours.replace('-', '~'),
+      studioType: detail.data.studio_type,
+      operatingHours: detail.data.usage_hours.split('-').map(padHour).join('~'),
       capacity: detail.data.capacity,
       bufferValue: detail.data.buffer_value,
       equipmentNotes: detail.data.equipment_notes ?? '',

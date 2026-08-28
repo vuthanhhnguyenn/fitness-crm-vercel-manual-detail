@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 
 import { Permission } from '@/types/permission.type';
 
+import { isOwnSessionScope } from '../_utils/session-scope.util';
 import { CancelLessonWizard } from './cancel-lesson-wizard';
 import { ChangeInstructorDialog } from './change-instructor-dialog';
 import { ChangeStudioDialog } from './change-studio-dialog';
@@ -41,12 +42,12 @@ export function ReservationPageActions({
   const [changeStudioOpen, setChangeStudioOpen] = useState(false);
   const [cancelLessonOpen, setCancelLessonOpen] = useState(false);
 
-  const { hasPermission } = useAuthUser();
+  const { hasPermission, user } = useAuthUser();
 
   // Changing instructor/time/studio and cancelling the lesson are schedule-edit
   // operations (D-01 FR-003). Roles without schedule-manage (e.g. Observer)
-  // see no action affordances.
-  if (!hasPermission(Permission.LessonsScheduleManage)) {
+  // see no action affordances; Trainer is further scoped to their own session.
+  if (!hasPermission(Permission.LessonsScheduleManage) || !isOwnSessionScope(user, schedule)) {
     return null;
   }
 

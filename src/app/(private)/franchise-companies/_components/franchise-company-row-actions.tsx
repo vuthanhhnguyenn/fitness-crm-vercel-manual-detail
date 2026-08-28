@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -30,12 +32,8 @@ export function FranchiseCompanyRowActions({
 }: FranchiseCompanyRowActionsProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const deleteBlockedReason =
-    company.status === 'active'
-      ? '有効なFC企業は削除できません'
-      : company.managed_store_count > 0
-        ? '管轄店舗があるため削除できません'
-        : null;
+  // FR-030: 管轄店舗が1件以上ある場合のみ削除不可（理由を明示し、アクション自体は隠さない）
+  const isDeleteBlocked = company.managed_store_count > 0;
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -57,20 +55,35 @@ export function FranchiseCompanyRowActions({
           <Pencil className="size-4" />
           編集
         </RoleGatedMenuItem>
-        <RoleGatedMenuItem
-          requiredPermission={Permission.FCCompaniesDelete}
-          className="text-destructive"
-          disabled={deleteBlockedReason !== null}
-          tooltip={deleteBlockedReason ?? undefined}
-          onClick={(event) => {
-            event.stopPropagation();
-            setOpen(false);
-            onDeleteClick?.(company);
-          }}
-        >
-          <Trash2 className="size-4" />
-          削除
-        </RoleGatedMenuItem>
+        <DropdownMenuSeparator />
+        {isDeleteBlocked ? (
+          <DropdownMenuItem
+            disabled
+            className="text-muted-foreground flex-col items-start gap-0"
+            onSelect={(event) => event.preventDefault()}
+          >
+            <div className="flex items-center gap-2">
+              <Trash2 className="size-4" />
+              <span>削除できません</span>
+            </div>
+            <span className="text-muted-foreground/80 ml-6 text-[10px]">
+              管轄店舗が存在するため
+            </span>
+          </DropdownMenuItem>
+        ) : (
+          <RoleGatedMenuItem
+            requiredPermission={Permission.FCCompaniesDelete}
+            className="text-destructive"
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen(false);
+              onDeleteClick?.(company);
+            }}
+          >
+            <Trash2 className="size-4" />
+            削除
+          </RoleGatedMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

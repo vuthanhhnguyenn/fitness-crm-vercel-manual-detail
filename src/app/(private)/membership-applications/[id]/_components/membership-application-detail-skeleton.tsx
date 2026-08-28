@@ -17,10 +17,11 @@ export function MembershipApplicationDetailSkeleton() {
       </div>
 
       <div className="flex gap-6">
-        {/* Left column */}
+        {/* Left column — companion banner (conditional) / applicant / blacklist /
+            contract / fee (incl. checklist rows) / timeline */}
         <div className="flex w-[60%] flex-col gap-4">
-          {[120, 80, 140, 160, 200].map((h) => (
-            <Card key={h}>
+          {[90, 120, 80, 140, 220, 200].map((h, i) => (
+            <Card key={`left-${i}-${h}`}>
               <CardHeader>
                 <Skeleton className="h-4 w-24" />
               </CardHeader>
@@ -30,10 +31,10 @@ export function MembershipApplicationDetailSkeleton() {
             </Card>
           ))}
         </div>
-        {/* Right column */}
+        {/* Right column — status/checklist/actions card, meta card */}
         <div className="flex w-[40%] flex-col gap-4">
-          {[240, 120].map((h) => (
-            <Card key={h}>
+          {[320, 120].map((h, i) => (
+            <Card key={`right-${i}-${h}`}>
               <CardHeader>
                 <Skeleton className="h-4 w-20" />
               </CardHeader>

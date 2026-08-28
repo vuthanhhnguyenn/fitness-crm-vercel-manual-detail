@@ -15,6 +15,12 @@ export interface UserRow {
   position: string;
   staff_id?: string;
   role: 'System' | 'Headquarter' | 'Manager' | 'Staff' | 'Trainer' | 'Observer';
+  /**
+   * Store IDs a Manager oversees (their 所轄店舗 / territory span). Only meaningful for the
+   * `Manager` role — B-01 権限マトリクス scopes Managers to managed stores only, so `getAllowedStoreIds`
+   * resolves Manager access from this list instead of granting all stores.
+   */
+  managed_store_ids?: string[];
 }
 
 export interface FranchiseCompanyRow {
@@ -33,6 +39,7 @@ export interface FranchiseCompanyRow {
   fc_contract_renewal_date: string | null;
   royalty_rate: number | null;
   note: string | null;
+  auth_method: 'google_sso' | 'idaas';
   managed_store_count: number;
   status: 'active' | 'inactive';
   created_at: string;
@@ -63,6 +70,15 @@ export const SEED_USERS: UserRow[] = [
     name: 'Manager',
     position: 'ブロック長',
     role: 'Manager',
+    // Block manager oversees the whole 関東 block (all kanto-area stores).
+    managed_store_ids: [
+      'store-001',
+      'store-002',
+      'store-003',
+      'store-004',
+      'store-005',
+      'store-006',
+    ],
   },
   {
     id: 'U-006',
@@ -71,6 +87,8 @@ export const SEED_USERS: UserRow[] = [
     name: 'Area Manager',
     position: 'テリトリーマネージャー',
     role: 'Manager',
+    // Territory manager oversees a smaller cluster within the block.
+    managed_store_ids: ['store-001', 'store-002', 'store-003'],
   },
   {
     id: 'U-007',
@@ -78,7 +96,7 @@ export const SEED_USERS: UserRow[] = [
     password: 'password123',
     name: 'Store Manager',
     position: '店舗責任者',
-    staff_id: 'STF-005',
+    staff_id: 'STF-006',
     role: 'Staff',
   },
   {
@@ -105,6 +123,7 @@ export const SEED_USERS: UserRow[] = [
     password: 'password123',
     name: 'Trainer',
     position: '社員トレーナー',
+    staff_id: 'STF-003',
     role: 'Trainer',
   },
   {
@@ -113,6 +132,7 @@ export const SEED_USERS: UserRow[] = [
     password: 'password123',
     name: 'Observer',
     position: '閲覧専任',
+    staff_id: 'STF-022',
     role: 'Observer',
   },
 ];

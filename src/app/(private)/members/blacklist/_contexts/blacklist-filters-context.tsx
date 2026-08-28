@@ -2,7 +2,7 @@
 
 import { type ReactNode, createContext, useContext } from 'react';
 
-import type { useBlacklistFilters } from '../_hooks/use-blacklist-filters';
+import type { useBlacklistFilters } from '../_hooks/use-blacklist-filters.hook';
 
 export type BlacklistFiltersContextValue = ReturnType<typeof useBlacklistFilters>;
 

@@ -4,6 +4,8 @@ import type {
   FamilyRelationship,
 } from '@/app/api/_schemas/family-registration.schema';
 
+import type { MainBrand } from '@/lib/api/types.gen';
+
 export type FamilyType = {
   _seeded: boolean;
   _seed(): void;
@@ -35,6 +37,8 @@ export type FamilyType = {
     brand: string;
     settings: { family_member_limit: number; family_member_fee: number; payment_cycle: string };
   };
+  /** Cap for a brand group, resolved without reading the member table. */
+  getFamilyMemberLimit(brandGroup: MainBrand | undefined): number;
   getFamilyMembers(primary_member_id: string): {
     brand: string;
     settings: { family_member_limit: number; family_member_fee: number; payment_cycle: string };

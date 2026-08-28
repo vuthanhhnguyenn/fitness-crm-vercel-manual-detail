@@ -1,14 +1,13 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { useState } from 'react';
 
-import { useRouter } from 'next/navigation';
-
-import { RejectTransferBodySchema } from '@/app/api/_schemas/transfer.schema';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { TEXTAREA_MAX_LENGTH } from '@/constants/app.constants';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { OptionalMark } from '@/components/common/field-marker';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,11 +26,7 @@ import {
   getCrmTransfersQueryKey,
   patchCrmTransfersByIdRejectMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { GetCrmTransfersByIdResponse } from '@/lib/api/types.gen';
-import { navigate } from '@/lib/routes/routes.util';
-
-type TransferDetail = NonNullable<GetCrmTransfersByIdResponse>['transfer'];
-type FormValues = { comment?: string };
+import type { TransferDetail } from '@/lib/api/types.gen';
 
 interface Props {
   open: boolean;
@@ -40,38 +35,31 @@ interface Props {
 }
 
 export function TransferRejectDialog({ open, onOpenChange, transfer }: Readonly<Props>) {
-  const router = useRouter();
   const queryClient = useQueryClient();
+  const [comment, setComment] = useState('');
 
-  const { register, handleSubmit, reset } = useForm<FormValues>({
-    resolver: zodResolver(RejectTransferBodySchema),
-    defaultValues: { comment: '' },
-  });
+  // Cleared on close rather than in an effect, so reopening always starts from a blank draft
+  // without triggering a cascading render.
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) setComment('');
+    onOpenChange(nextOpen);
+  }
 
   const { mutate: reject, isPending } = useMutation({
     ...patchCrmTransfersByIdRejectMutation(),
     onSuccess: () => {
       toast.success('移籍申請を却下しました');
-      queryClient.invalidateQueries({ queryKey: getCrmTransfersQueryKey() });
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({ queryKey: getCrmTransfersQueryKey() });
+      void queryClient.invalidateQueries({
         queryKey: getCrmTransfersByIdQueryKey({ path: { id: transfer.id } }),
       });
-      router.push(navigate('/members/transfers'));
+      onOpenChange(false);
     },
     onError: () => {
       toast.error('却下処理に失敗しました');
       onOpenChange(false);
     },
   });
-
-  function onSubmit(values: FormValues) {
-    reject({ path: { id: transfer.id }, body: { comment: values.comment || undefined } });
-  }
-
-  function handleOpenChange(nextOpen: boolean) {
-    if (!nextOpen) reset();
-    onOpenChange(nextOpen);
-  }
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
@@ -85,22 +73,32 @@ export function TransferRejectDialog({ open, onOpenChange, transfer }: Readonly<
 
         <div className="flex flex-col gap-2">
           <Label className="text-sm">
-            コメント <span className="text-muted-foreground text-xs font-normal">任意</span>
+            コメント
+            <OptionalMark />
           </Label>
           <Textarea
+            className="resize-none text-sm"
             placeholder="却下理由を入力してください（任意）"
             rows={3}
-            {...register('comment')}
+            maxLength={TEXTAREA_MAX_LENGTH}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
           />
         </div>
 
         <AlertDialogFooter>
-          <AlertDialogCancel>キャンセル</AlertDialogCancel>
+          <AlertDialogCancel disabled={isPending}>キャンセル</AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleSubmit(onSubmit)}
-            variant="destructive"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             disabled={isPending}
+            onClick={() =>
+              reject({
+                path: { id: transfer.id },
+                body: { comment: comment.trim() || undefined },
+              })
+            }
           >
+            {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
             却下する
           </AlertDialogAction>
         </AlertDialogFooter>

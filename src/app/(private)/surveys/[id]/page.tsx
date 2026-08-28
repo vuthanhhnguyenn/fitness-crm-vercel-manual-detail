@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { formatDateYYYYMMDD } from '@/utils/date.util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,12 +13,15 @@ import { toast } from 'sonner';
 import { BackLink } from '@/components/common/back-link';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
 import { PageHeader } from '@/components/common/page-header';
+import { SearchableSelect } from '@/components/common/searchable-select';
 import { StatusCard } from '@/components/common/status-card';
 
 import {
   deleteCrmSurveysByIdMutation,
+  getCrmStoresOptions,
   getCrmSurveysByIdOptions,
   getCrmSurveysByIdQueryKey,
+  getCrmSurveysByIdStoresByStoreIdVisibilityOptions,
   getCrmSurveysQueryKey,
   getCrmSurveysResponsesOptions,
   patchCrmSurveysByIdMutation,
@@ -36,10 +39,14 @@ import { SurveyDisableDialog } from './_components/survey-disable-dialog';
 import { SurveyQuestionsSection } from './_components/survey-questions-section';
 import { SurveySummaryCard } from './_components/survey-summary-card';
 
+type SurveyStoreOption = { id: string; name: string; store_id: string };
+
 type SurveyDetail = NonNullable<GetCrmSurveysByIdResponse>['survey'];
 
 export default function SurveyDetailPage() {
   const params = useParams();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
   const surveyId = params.id as string;
@@ -70,11 +77,55 @@ export default function SurveyDetailPage() {
     }),
   });
 
+  const { data: storesData } = useQuery({
+    ...getCrmStoresOptions({ query: { page: 1, limit: 100 } }),
+  });
+
+  const storeOptions = useMemo(
+    () =>
+      storesData?.stores?.map((store) => ({
+        id: store.id,
+        name: store.name,
+        store_id: store.store_id,
+      })) ?? [],
+    [storesData],
+  );
+  const activeStoreId = searchParams.get('storeId') ?? storeOptions[0]?.id ?? null;
+  const activeStore =
+    storeOptions.find((store) => store.id === activeStoreId) ?? storeOptions[0] ?? null;
+
+  useEffect(() => {
+    if (!storeOptions.length || searchParams.get('storeId')) {
+      return;
+    }
+
+    const next = new URLSearchParams(searchParams.toString());
+    next.set('storeId', storeOptions[0]!.id);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, storeOptions]);
+
+  const handleStoreChange = (storeId: string) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (storeId) {
+      next.set('storeId', storeId);
+    } else {
+      next.delete('storeId');
+    }
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  };
+
+  const { data: visibilityData } = useQuery({
+    ...getCrmSurveysByIdStoresByStoreIdVisibilityOptions({
+      path: { id: surveyId, storeId: activeStoreId ?? '' },
+    }),
+    enabled: Boolean(activeStoreId),
+  });
+
   const disableMutation = useMutation({
     ...patchCrmSurveysByIdMutation(),
     onSuccess: (response) => {
       toast.success(response.message || 'アンケートを無効化しました');
-      queryClient.invalidateQueries({ queryKey: getCrmSurveysQueryKey(), refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: getCrmSurveysQueryKey() });
       queryClient.invalidateQueries({
         queryKey: getCrmSurveysByIdQueryKey({ path: { id: surveyId } }),
       });
@@ -90,7 +141,7 @@ export default function SurveyDetailPage() {
     ...deleteCrmSurveysByIdMutation(),
     onSuccess: (response) => {
       toast.success(response.message || 'アンケートを削除しました');
-      queryClient.invalidateQueries({ queryKey: getCrmSurveysQueryKey(), refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: getCrmSurveysQueryKey() });
       setDeleteDialogOpen(false);
       router.push(navigate('/surveys'));
     },
@@ -129,10 +180,24 @@ export default function SurveyDetailPage() {
         breadcrumb={<BackLink label="アンケート管理に戻る" href={navigate('/surveys')} />}
         title={survey.name}
         actions={
-          <SurveyDetailHeaderActions
-            surveyId={surveyId}
-            onDeleteClick={() => setDeleteDialogOpen(true)}
-          />
+          <div className="flex items-center gap-2">
+            <SearchableSelect<SurveyStoreOption>
+              value={activeStoreId}
+              valueLabel={activeStore ? `${activeStore.store_id} ${activeStore.name}` : undefined}
+              options={storeOptions}
+              placeholder="店舗を選択"
+              searchPlaceholder="店舗名・店舗IDで検索..."
+              emptyMessage="該当する店舗がありません"
+              onSelect={(store) => handleStoreChange(store?.id ?? '')}
+              getOptionKey={(store) => store.id}
+              getOptionLabel={(store) => `${store.store_id} ${store.name}`}
+              getOptionKeywords={(store) => [store.name, store.store_id, store.id].join(' ')}
+            />
+            <SurveyDetailHeaderActions
+              surveyId={surveyId}
+              onDeleteClick={() => setDeleteDialogOpen(true)}
+            />
+          </div>
         }
       />
 
@@ -141,7 +206,11 @@ export default function SurveyDetailPage() {
           main={
             <>
               <SurveyBasicInfoSection survey={survey} />
-              <SurveyQuestionsSection questions={survey.questions} />
+              <SurveyQuestionsSection
+                questions={survey.questions}
+                storeId={activeStoreId}
+                visibility={visibilityData?.visibility ?? null}
+              />
             </>
           }
           aside={

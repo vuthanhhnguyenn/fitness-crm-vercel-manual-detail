@@ -3,6 +3,8 @@
 import { PAGE_SIZE } from '@/constants/app.constants';
 import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
 
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
+
 export function useBrandsFilters() {
   const [filters, setFilters] = useQueryStates(
     {
@@ -16,7 +18,12 @@ export function useBrandsFilters() {
     },
   );
 
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(filters.search, (value) =>
+    setFilters({ search: value || null, page: 1 }),
+  );
+
   const clearFilters = () => {
+    setSearchInput('');
     setFilters({
       page: 1,
       limit: PAGE_SIZE,
@@ -25,6 +32,8 @@ export function useBrandsFilters() {
   };
 
   return {
+    searchInput,
+    setSearchInput,
     filters,
     setFilters,
     clearFilters,

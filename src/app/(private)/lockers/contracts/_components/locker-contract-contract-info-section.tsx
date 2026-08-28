@@ -1,10 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 import { formatDateYYYYMMDD } from '@/utils/date.util';
-import { useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,36 +18,73 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { getCrmOptionsOptions } from '@/lib/api/@tanstack/react-query.gen';
-import type { GetCrmLockersContractsByIdResponse } from '@/lib/api/types.gen';
+import type {
+  GetCrmLockersByIdResponse,
+  GetCrmLockersContractsByIdResponse,
+} from '@/lib/api/types.gen';
 
 import type { LockerContractFormValues } from '../_schemas/locker-contract-form.schema';
 
+type LockerDetail = NonNullable<GetCrmLockersByIdResponse>['locker'];
 type LockerContractDetail = NonNullable<GetCrmLockersContractsByIdResponse>['contract'];
 
 type LockerContractContractInfoSectionProps = {
-  contract?: LockerContractDetail;
+  contract: LockerContractDetail;
+  locker?: LockerDetail;
 };
 
 export function LockerContractContractInfoSection({
   contract,
+  locker,
 }: LockerContractContractInfoSectionProps) {
   const form = useFormContext<LockerContractFormValues>();
   const contractTypeCode = useWatch({ control: form.control, name: 'contract_type_code' });
+  const slotNumber = useWatch({ control: form.control, name: 'slot_number' });
 
-  const { data: optionsData, isLoading: isLoadingTypes } = useQuery({
-    ...getCrmOptionsOptions({
-      query: { page: 1, limit: 200, status: 'active', category: 'locker_option' },
-    }),
-  });
-
-  const contractTypes = useMemo(() => optionsData?.options ?? [], [optionsData?.options]);
-  const selectedContractType = useMemo(
-    () => contractTypes.find((type) => type.code === contractTypeCode) ?? null,
-    [contractTypeCode, contractTypes],
+  const selectedSlot = useMemo(
+    () => (locker?.slot_items ?? []).find((slot) => slot.slot_number === slotNumber),
+    [locker?.slot_items, slotNumber],
   );
 
-  const endDateLabel = contract?.end_date ? formatDateYYYYMMDD(contract.end_date) : '';
+  /**
+   * FR-013: the fee applying to a slot comes from the cabinet's pair — the bottom-row code for
+   * slots flagged `is_bottom_row`, the standard code otherwise — so those are the only codes
+   * the contract may name. The designed backend rejects anything else (E-VAL-001).
+   */
+  const feeOptions = useMemo(() => {
+    const candidates = [
+      locker?.standard_option_contract_master,
+      locker?.bottom_option_contract_master,
+    ].filter((option) => option != null);
+    return candidates.filter(
+      (option, index) => candidates.findIndex((item) => item.code === option.code) === index,
+    );
+  }, [locker?.standard_option_contract_master, locker?.bottom_option_contract_master]);
+
+  const applicableCode = selectedSlot?.is_bottom_row
+    ? (locker?.bottom_contract_type_code ?? locker?.contract_type_code)
+    : locker?.contract_type_code;
+
+  const selectedContractType = feeOptions.find((option) => option.code === contractTypeCode);
+  // Only the slot's own resolved master carries a description; the pair refs do not.
+  const selectedDescription =
+    selectedSlot?.contract_type?.code === contractTypeCode
+      ? selectedSlot?.contract_type?.description
+      : null;
+
+  const endDateLabel = contract.end_date ? formatDateYYYYMMDD(contract.end_date) : '';
+
+  // Moving the contract to a slot on another row changes which of the cabinet's two fee options applies (FR-013)
+  useEffect(() => {
+    if (!contractTypeCode || !applicableCode) return;
+    // Wait for the locker detail: realigning while it is still in flight would silently rewrite
+    // an existing 割引・割増 contract and mark the form dirty, offering to save a change the
+    // user never made.
+    if (!locker) return;
+    if (feeOptions.some((option) => option.code === contractTypeCode)) return;
+
+    form.setValue('contract_type_code', applicableCode, { shouldDirty: true });
+  }, [applicableCode, contractTypeCode, feeOptions, form, locker]);
 
   return (
     <Card>
@@ -78,6 +114,11 @@ export function LockerContractContractInfoSection({
             )}
           />
 
+          {/*
+            FR-006: the end date is recorded by the cancellation flow (解約処理 → 解約日),
+            which also enforces the cancellation-fee rule (#36). It is display-only here so
+            editing a contract cannot bypass that rule; use the 解約 dialog to change it.
+          */}
           <FormItem>
             <FormLabel>契約終了日</FormLabel>
             <Input className="bg-muted h-8" value={endDateLabel} disabled readOnly />
@@ -85,7 +126,7 @@ export function LockerContractContractInfoSection({
         </div>
 
         <div className="bg-muted/30 mt-4 rounded-lg border px-4 py-4">
-          <p className="mb-3 text-xs font-medium">契約種類（G-02）</p>
+          <p className="mb-3 text-xs font-medium">契約種類</p>
           <FormField
             control={form.control}
             name="contract_type_code"
@@ -97,7 +138,7 @@ export function LockerContractContractInfoSection({
                 <Select
                   value={field.value ?? ''}
                   onValueChange={field.onChange}
-                  disabled={isLoadingTypes}
+                  disabled={feeOptions.length === 0}
                 >
                   <FormControl>
                     <SelectTrigger className="h-8">
@@ -107,9 +148,9 @@ export function LockerContractContractInfoSection({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {contractTypes.map((type) => (
-                      <SelectItem key={type.code} value={type.code}>
-                        {type.name}（¥{type.price_including_tax.toLocaleString()}/月）
+                    {feeOptions.map((option) => (
+                      <SelectItem key={option.code} value={option.code}>
+                        {option.name}（¥{option.price_including_tax.toLocaleString()}/月）
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -133,7 +174,7 @@ export function LockerContractContractInfoSection({
               </div>
               <div className="col-span-2">
                 <p className="text-muted-foreground mb-1 text-xs">適用条件</p>
-                <p className="text-sm">{selectedContractType.description ?? ''}</p>
+                <p className="text-sm">{selectedDescription ?? '—'}</p>
               </div>
             </div>
           ) : null}
@@ -141,8 +182,10 @@ export function LockerContractContractInfoSection({
           <div className="mt-3 flex items-start gap-2 border-t pt-3">
             <Info className="text-muted-foreground mt-0.5 size-3 shrink-0" />
             <p className="text-muted-foreground text-xs">
-              選択した契約種類に基づき、契約形態コードと料金が自動適用されます（G-02
-              オプション契約管理）。
+              選択した契約種類に基づき、契約形態コードと料金が自動適用されます。
+              {selectedSlot?.is_bottom_row
+                ? '最下段スロットのため、ロッカー設備に登録された最下段用の契約形態コードが適用されます。'
+                : '最下段以外のスロットのため、ロッカー設備に登録された標準の契約形態コードが適用されます。'}
             </p>
           </div>
         </div>

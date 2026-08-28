@@ -2,41 +2,56 @@
 
 import { useParams } from 'next/navigation';
 
+import { TermsForm } from '@/app/(private)/terms/_components/terms-form/terms-form';
+import { TermsFormSkeleton } from '@/app/(private)/terms/_components/terms-form/terms-form-skeleton';
 import { useQuery } from '@tanstack/react-query';
 
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
 
 import { getCrmTermsByIdOptions } from '@/lib/api/@tanstack/react-query.gen';
 
-import { TermsForm } from '../../_components/terms-form/terms-form';
-import { getTermsFormDefaultValues } from '../../_schemas/terms-form.mapper';
-
 export default function TermsEditPage() {
-  const params = useParams<{ id: string }>();
-  const termId = params.id;
-  const { isLoading, isError, data, refetch } = useQuery({
-    ...getCrmTermsByIdOptions({ path: { id: termId } }),
+  const params = useParams();
+  const termsId = params.id as string;
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    ...getCrmTermsByIdOptions({ path: { id: termsId } }),
+    enabled: Boolean(termsId),
   });
 
+  if (!data) {
+    return (
+      <DataStateBoundary
+        isLoading={isLoading}
+        isError={isError}
+        isEmpty={!isLoading && !isError}
+        onRetry={() => void refetch()}
+        emptyTitle="規約文書が見つかりません"
+        emptyDescription={`指定された規約ID（${termsId}）は存在しないか、参照権限がありません。`}
+        skeleton={<TermsFormSkeleton />}
+      />
+    );
+  }
+
   return (
-    <DataStateBoundary
-      isLoading={isLoading}
-      isError={isError}
-      isEmpty={!data}
-      onRetry={() => {
-        void refetch();
+    <TermsForm
+      mode="edit"
+      termsId={termsId}
+      currentStatus={data.status}
+      defaultValues={{
+        brandEnum: [data.brandEnum],
+        title: data.title,
+        termsType: data.termsType,
+        version: data.version,
+        effectiveFrom: data.effectiveFrom,
+        effectiveTo: data.effectiveTo,
+        displayOrder: data.displayOrder,
+        requiresConsent: data.requiresConsent,
+        remarks: data.remarks,
+        pdfUrl: data.pdfUrl,
+        pdfFileName: data.pdfFileName,
+        pdfFileSize: data.pdfFileSize,
       }}
-      emptyTitle="規約が見つかりません"
-      errorTitle="規約を取得できませんでした"
-    >
-      {data ? (
-        <TermsForm
-          mode="edit"
-          termsId={termId}
-          defaultValues={getTermsFormDefaultValues(data)}
-          showActiveVersionWarning={data.status === 'published'}
-        />
-      ) : null}
-    </DataStateBoundary>
+    />
   );
 }

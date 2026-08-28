@@ -31,7 +31,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type {
   GetCrmLockersByIdResponse,
   LockerLockType,
-  OptionMasterListItem,
+  LockerOptionMasterRef,
   PatchCrmLockersByIdSlotsBySlotIdData,
 } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
@@ -53,7 +53,7 @@ type UpdateLockerSlotBody = NonNullable<PatchCrmLockersByIdSlotsBySlotIdData['bo
 
 interface SlotContractTypeSectionProps {
   slot: SlotItem;
-  lockerOptionMasters: OptionMasterListItem[];
+  feeOptions: LockerOptionMasterRef[];
   isUpdating: boolean;
   canAssignContract: boolean;
   onContractTypeSave: (slotId: string, code: string) => void;
@@ -61,20 +61,23 @@ interface SlotContractTypeSectionProps {
 
 function SlotContractTypeSection({
   slot,
-  lockerOptionMasters,
+  feeOptions,
   isUpdating,
   canAssignContract,
   onContractTypeSave,
 }: SlotContractTypeSectionProps) {
+  // Static display; "変更" switches to edit mode (same pattern as the lock type). No always-editable Select, to prevent accidental changes while browsing.
+  const [isEditing, setIsEditing] = useState(false);
   const [selectedContractCode, setSelectedContractCode] = useState(slot.contract_type_code ?? '');
-  const currentType = lockerOptionMasters.find((item) => item.code === slot.contract_type_code);
+  // Resolved server-side (FR-005 / FR-013) so the sheet does not need the whole G-02 master.
+  const currentType = slot.contract_type;
   const isAssigned = Boolean(slot.contract_type_code);
 
   return (
     <div className="py-4">
       <h3 className="text-muted-foreground mb-3 flex items-center gap-1 text-xs font-semibold">
         <CircleDollarSign className="size-3" />
-        G-02 契約種類
+        契約種類
       </h3>
       <div className="bg-card flex flex-col gap-3 rounded-lg border p-4">
         {isAssigned && currentType ? (
@@ -82,7 +85,9 @@ function SlotContractTypeSection({
             <div>
               <p className="text-muted-foreground mb-1 text-xs">適用中の契約種類</p>
               <p className="text-base font-semibold">{currentType.name}</p>
-              <p className="text-muted-foreground mt-0.5 font-mono text-xs">{currentType.code}</p>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                {currentType.description ?? currentType.code}
+              </p>
             </div>
             <div className="text-right">
               <p className="text-xl font-bold">
@@ -103,55 +108,77 @@ function SlotContractTypeSection({
             <p className="text-muted-foreground text-center text-xs">
               契約種類が未割当です。
               <br />
-              下のセレクトから割り当ててください。
+              「割り当て」から契約種類を選択してください。
             </p>
           </div>
         )}
 
-        <div className="flex flex-col gap-2">
-          <p className="text-muted-foreground text-xs">
-            {isAssigned ? '契約種類を変更' : '契約種類を割り当てる'}
-          </p>
-          {canAssignContract ? (
-            <div className="flex items-center gap-2">
-              <Select
-                value={selectedContractCode}
-                onValueChange={(code) => code && setSelectedContractCode(code)}
-              >
-                <SelectTrigger className="h-8 flex-1 text-xs">
-                  <SelectValue placeholder="契約種類を選択...">
-                    {selectedContractCode
-                      ? lockerOptionMasters.find((item) => item.code === selectedContractCode)?.name
-                      : undefined}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {lockerOptionMasters.map((item) => (
-                    <SelectItem key={item.code} value={item.code}>
-                      <span className="flex items-center gap-2">
-                        <span>{item.name}</span>
-                        <span className="text-muted-foreground">
-                          ¥{item.price_including_tax.toLocaleString()}/月
-                        </span>
+        {!canAssignContract ? (
+          <p className="text-muted-foreground text-xs">契約種類の割当権限がありません</p>
+        ) : isEditing ? (
+          <div className="bg-muted/30 flex flex-col gap-3 rounded-lg border p-3">
+            <Select
+              value={selectedContractCode}
+              onValueChange={(code) => code && setSelectedContractCode(code)}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="契約種類を選択...">
+                  {feeOptions.find((item) => item.code === selectedContractCode)?.name}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {feeOptions.map((item) => (
+                  <SelectItem key={item.code} value={item.code}>
+                    <span className="flex items-center gap-2">
+                      <span>{item.name}</span>
+                      <span className="text-muted-foreground">
+                        ¥{item.price_including_tax.toLocaleString()}/月
                       </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  setSelectedContractCode(slot.contract_type_code ?? '');
+                  setIsEditing(false);
+                }}
+              >
+                キャンセル
+              </Button>
               <Button
                 size="sm"
-                variant={isAssigned ? 'outline' : 'default'}
-                className="shrink-0 text-xs"
+                className="text-xs"
                 disabled={!selectedContractCode || isUpdating}
-                onClick={() => onContractTypeSave(slot.id, selectedContractCode)}
+                onClick={() => {
+                  onContractTypeSave(slot.id, selectedContractCode);
+                  setIsEditing(false);
+                }}
               >
-                {isAssigned ? '変更' : '割り当て'}
+                保存
               </Button>
             </div>
-          ) : (
-            <p className="text-muted-foreground text-xs">契約種類の割当権限がありません</p>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant={isAssigned ? 'outline' : 'default'}
+              className="shrink-0 text-xs"
+              onClick={() => {
+                setSelectedContractCode(slot.contract_type_code ?? '');
+                setIsEditing(true);
+              }}
+            >
+              {isAssigned ? '変更' : '割り当て'}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -163,7 +190,8 @@ interface SlotDetailSheetProps {
   slot: SlotItem | null;
   contractDetailId?: string | null;
   lockerArea: string;
-  lockerOptionMasters: OptionMasterListItem[];
+  /** FR-013: the cabinet's fee options — standard row and bottom row (may be one when equal). */
+  feeOptions: LockerOptionMasterRef[];
   isUpdating?: boolean;
   isSendingReminder?: boolean;
   onContractTypeSave: (slotId: string, code: string) => void;
@@ -178,7 +206,7 @@ export function SlotDetailSheet({
   slot,
   contractDetailId = null,
   lockerArea,
-  lockerOptionMasters,
+  feeOptions,
   isUpdating = false,
   isSendingReminder = false,
   onContractTypeSave,
@@ -217,7 +245,7 @@ export function SlotDetailSheet({
           if (!value) handleClose();
         }}
       >
-        <SheetContent className="flex w-[480px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[480px]">
+        <SheetContent className="flex w-full max-w-full flex-col gap-0 overflow-hidden p-0 sm:w-[480px] sm:max-w-[480px]">
           <div className="shrink-0 border-b px-6 py-4">
             <SheetHeader className="gap-0 p-0">
               <SheetTitle className="flex items-center gap-2 text-sm font-semibold">
@@ -296,9 +324,15 @@ export function SlotDetailSheet({
                           className="text-xs"
                           disabled={isUpdating}
                           onClick={() => {
-                            onUpdateSlot(slot.id, { lock_type: selectedLockType }).then(() => {
-                              setEditingLockType(false);
-                            });
+                            // `mutateAsync` rejects on failure; the mutation's `onError` already
+                            // toasts, so swallow it here rather than leaving it unhandled.
+                            onUpdateSlot(slot.id, { lock_type: selectedLockType })
+                              .then(() => {
+                                setEditingLockType(false);
+                              })
+                              .catch(() => {
+                                // keep the editor open so the user can retry
+                              });
                           }}
                         >
                           保存
@@ -396,7 +430,7 @@ export function SlotDetailSheet({
                     </div>
                     {slot.cancel_date ? (
                       <div className="col-span-2">
-                        <p className="text-muted-foreground mb-1 text-xs">開放待ち日</p>
+                        <p className="text-muted-foreground mb-1 text-xs">解約日</p>
                         <p className="text-warning text-sm font-medium">
                           {formatDateYYYYMMDD(slot.cancel_date)}
                         </p>
@@ -416,6 +450,7 @@ export function SlotDetailSheet({
                       {canEditSlot ? (
                         <LockerPasswordEditor
                           currentPassword={slot.password}
+                          updatedAt={slot.password_changed_at}
                           isSaving={isUpdating}
                           onSave={(password) => onUpdateSlot(slot.id, { password })}
                         />
@@ -428,7 +463,7 @@ export function SlotDetailSheet({
                   </>
                 ) : null}
 
-                {slot.status === 'pending_release' && slot.cancel_date ? (
+                {slot.status === 'in_use' && slot.cancel_date ? (
                   <>
                     <Separator className="-mx-6 w-[calc(100%+48px)]" />
                     <ReminderNotificationSection
@@ -446,7 +481,7 @@ export function SlotDetailSheet({
                     <SlotContractTypeSection
                       key={`${slot.id}-${slot.contract_type_code ?? ''}`}
                       slot={slot}
-                      lockerOptionMasters={lockerOptionMasters}
+                      feeOptions={feeOptions}
                       isUpdating={isUpdating}
                       canAssignContract={canAssignContract}
                       onContractTypeSave={onContractTypeSave}
@@ -489,7 +524,7 @@ export function SlotDetailSheet({
               <div className="py-4">
                 <div className="bg-muted/30 rounded-lg border p-8 text-center">
                   <Lock className="text-muted-foreground mx-auto mb-3 size-8" />
-                  <p className="text-sm font-medium">このスロットは利用可能です</p>
+                  <p className="text-sm font-medium">このスロットは「利用可」です</p>
                 </div>
               </div>
             )}

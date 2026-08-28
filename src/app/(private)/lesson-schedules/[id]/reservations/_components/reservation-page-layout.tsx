@@ -2,6 +2,11 @@
 
 import { useState } from 'react';
 
+import { useRouter } from 'next/navigation';
+
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import type {
@@ -12,9 +17,12 @@ import type {
   ReservationStatsResponse,
   StudioSpaceGridResponse,
 } from '@/lib/api/types.gen';
+import { navigate } from '@/lib/routes/routes.util';
 
 import { AddReservationDialog } from './add-reservation-dialog';
+import { CANCEL_REASON_OPTIONS } from './cancel-lesson-wizard';
 import { CancelReservationDialog } from './cancel-reservation-dialog';
+import { PtLimitedProfileCard } from './pt-limited-profile-card';
 import { ReservationListTable } from './reservation-list-table';
 import { ReservationStatsPanel } from './reservation-stats-panel';
 import { SessionMemoCard } from './session-memo-card';
@@ -39,10 +47,15 @@ export function ReservationPageLayout({
   memosData,
   isCancelled,
 }: ReservationPageLayoutProps) {
+  const router = useRouter();
   const [addReservationOpen, setAddReservationOpen] = useState(false);
   const [preselectedSpace, setPreselectedSpace] = useState<string | null>(null);
   const [cancelReservationOpen, setCancelReservationOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+
+  const handleNavigateToMember = (memberId: string) => {
+    router.push(navigate('/members/[id]', memberId));
+  };
 
   const handleOpenAddReservation = (spaceNumber?: string) => {
     setPreselectedSpace(spaceNumber ?? null);
@@ -60,6 +73,8 @@ export function ReservationPageLayout({
   };
 
   const remainingSeats = statsData.stats.remaining_seats;
+  const isPersonalSession = schedule.lesson_type === 'personal';
+  const primaryReservation = reservationsData.reservations[0] ?? null;
 
   return (
     <>
@@ -76,28 +91,72 @@ export function ReservationPageLayout({
                 <p className="text-muted-foreground">
                   このレッスンは中止されています。変更操作はできません。
                 </p>
+                {schedule.cancelled_at && (
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                    <span className="text-muted-foreground">中止日時</span>
+                    <span className="font-medium">
+                      {(() => {
+                        try {
+                          return format(new Date(schedule.cancelled_at), 'yyyy/M/d HH:mm', {
+                            locale: ja,
+                          });
+                        } catch {
+                          return schedule.cancelled_at;
+                        }
+                      })()}
+                    </span>
+                    {schedule.cancelled_by && (
+                      <>
+                        <span className="text-muted-foreground">担当者</span>
+                        <span className="font-medium">{schedule.cancelled_by}</span>
+                      </>
+                    )}
+                    {schedule.cancel_reason && (
+                      <>
+                        <span className="text-muted-foreground">中止理由</span>
+                        <span className="font-medium">
+                          {CANCEL_REASON_OPTIONS[schedule.cancel_reason] ?? schedule.cancel_reason}
+                        </span>
+                      </>
+                    )}
+                    {schedule.cancel_reason_detail && (
+                      <>
+                        <span className="text-muted-foreground">詳細</span>
+                        <span className="font-medium">{schedule.cancel_reason_detail}</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
 
-          {/* Space grid */}
-          <Card className="pb-0">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold">スペース予約状況</CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <SpaceReservationGrid
-                data={spacesData}
-                onAddReservation={handleOpenAddReservation}
-                onCancelReservation={handleCancelFromGrid}
-              />
-            </CardContent>
-          </Card>
+          {/* Space grid (studio lessons) / limited profile card (PT sessions) */}
+          {isPersonalSession ? (
+            <PtLimitedProfileCard reservation={primaryReservation} />
+          ) : (
+            <Card className="pb-0">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold">スペース予約状況</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <SpaceReservationGrid
+                  schedule={schedule}
+                  data={spacesData}
+                  onAddReservation={handleOpenAddReservation}
+                  onCancelReservation={handleCancelFromGrid}
+                  onNavigateToMember={handleNavigateToMember}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Reservation list */}
           <ReservationListTable
             scheduleId={scheduleId}
+            schedule={schedule}
             data={reservationsData}
+            isCancelled={isCancelled}
             onAddReservation={() => handleOpenAddReservation()}
             onCancelReservation={handleOpenCancelReservation}
           />
@@ -105,8 +164,10 @@ export function ReservationPageLayout({
 
         {/* Right sidebar */}
         <div className="w-[320px] shrink-0 space-y-4">
-          <ReservationStatsPanel schedule={schedule} statsData={statsData} />
-          <SessionMemoCard scheduleId={scheduleId} memosData={memosData} />
+          {!isPersonalSession && (
+            <ReservationStatsPanel schedule={schedule} statsData={statsData} />
+          )}
+          <SessionMemoCard scheduleId={scheduleId} schedule={schedule} memosData={memosData} />
         </div>
       </div>
 
@@ -116,6 +177,7 @@ export function ReservationPageLayout({
         onOpenChange={setAddReservationOpen}
         scheduleId={scheduleId}
         schedule={schedule}
+        spacesData={spacesData}
         preselectedSpaceNumber={preselectedSpace}
         remainingSeats={remainingSeats}
       />
