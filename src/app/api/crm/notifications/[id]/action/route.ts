@@ -19,7 +19,10 @@ import {
   canReadManualNotification,
   canWriteManualNotification,
 } from '../../_lib/manual-notification-access.util';
-import { manualNotificationErrorResponse } from '../../_lib/manual-notification-error.util';
+import {
+  formatManualNotificationSubmissionValidationError,
+  manualNotificationErrorResponse,
+} from '../../_lib/manual-notification-error.util';
 import { countManualNotificationTarget } from '../../_lib/manual-notification-target-count.util';
 import {
   getManualNotificationTargetStoreIds,
@@ -112,7 +115,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       intent: 'submit',
     });
     if (!parsedSubmission.success) {
-      return manualNotificationErrorResponse(400, '通知内容に未入力または不正な項目があります');
+      const message =
+        row.status === 'draft' && (action === 'send' || action === 'request_approval')
+          ? formatManualNotificationSubmissionValidationError(parsedSubmission.error.issues)
+          : '通知内容に未入力または不正な項目があります';
+      return manualNotificationErrorResponse(400, message);
     }
 
     const allowedStoreIds = row.recipientScopeStoreIds;

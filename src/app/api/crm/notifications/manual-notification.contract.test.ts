@@ -131,6 +131,63 @@ test('manual notification route contracts cover happy and error paths', async (c
     assert.equal(invalid.status, 400);
   });
 
+  await context.test(
+    'draft distribution actions return detailed validation errors without changing state',
+    async () => {
+      const incompleteDraftBody = {
+        ...notificationBody,
+        title: '',
+        contents: { push: { title: '', body: '' } },
+      };
+      const expectedLabels = ['タイトル（管理用）', 'プッシュ通知本文', 'プッシュ通知タイトル'];
+
+      for (const testCase of [
+        {
+          action: 'request_approval' as const,
+          target: { type: 'all_members' as const },
+        },
+        {
+          action: 'send' as const,
+          target: { type: 'stores' as const, storeIds: ['store-001'] },
+        },
+      ]) {
+        const created = await createNotification(
+          request('/crm/notifications', {
+            method: 'POST',
+            userId: 'U-002',
+            body: { ...incompleteDraftBody, target: testCase.target },
+          }),
+        );
+        assert.equal(created.status, 201);
+        const createdBody = await created.json();
+        const draftId = createdBody.item.id as string;
+        const beforeAction = structuredClone(db.manualNotifications.getById(draftId));
+        assert.equal(beforeAction?.status, 'draft');
+
+        const response = await actionNotification(
+          request(`/crm/notifications/${draftId}/action`, {
+            method: 'PATCH',
+            userId: 'U-002',
+            body: { action: testCase.action },
+          }),
+          { params: Promise.resolve({ id: draftId }) },
+        );
+        assert.equal(response.status, 400);
+
+        const responseBody = await response.json();
+        for (const label of expectedLabels) assert.match(responseBody.error, new RegExp(label));
+        assert.doesNotMatch(
+          responseBody.error,
+          /contents\.push|Title is required|Content is required/,
+        );
+
+        const afterAction = db.manualNotifications.getById(draftId);
+        assert.equal(afterAction?.status, 'draft');
+        assert.deepEqual(afterAction, beforeAction);
+      }
+    },
+  );
+
   await context.test('approval keeps Staff scope and invalid actions return 400', async () => {
     const requestApproval = await actionNotification(
       request(`/crm/notifications/${notificationId}/action`, {
