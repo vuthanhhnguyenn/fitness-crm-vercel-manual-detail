@@ -37,13 +37,10 @@ export const API_ERROR_FALLBACK_MESSAGE = 'エラーが発生しました。後�
 /**
  * The server's user-facing message for a failed call.
  *
- * Every route handler in `src/app/api` answers a failure with `{ error: "<message in
- * Japanese>" }`, so that is the field read first. `detail.message` is kept as a second
- * shape because a real backend may answer that way. The canonical structured error
- * envelope (`ErrorResponseSchema`) carries the Japanese-facing `userMessage` field, which
- * is read next so those toasts surface the real message instead of a generic fallback.
- * Anything else — a plain string body, an empty message — falls back, since a raw response
- * body is not something to put in a toast.
+ * Newer route handlers use `{ error }`, while older feature routes still return
+ * `{ code, message, userMessage }`; a real backend may also answer with
+ * `{ detail: { message } }`. Keep all three structured shapes readable so a
+ * feature migration does not turn useful validation messages into generic toasts.
  */
 export function getApiErrorMessage(error: unknown, fallback = API_ERROR_FALLBACK_MESSAGE): string {
   if (typeof error === 'object' && error !== null) {

@@ -1,10 +1,11 @@
 import { Suspense } from 'react';
 
 import { ManualNotificationsPageContent } from './_components/manual-notifications-page-content';
+import { ManualNotificationsPageSkeleton } from './_components/manual-notifications-page-skeleton';
 
 export default function ManualNotificationsPage() {
   return (
-    <Suspense fallback={<div className="text-muted-foreground px-6 py-4 text-sm">Loading...</div>}>
+    <Suspense fallback={<ManualNotificationsPageSkeleton />}>
       <ManualNotificationsPageContent />
     </Suspense>
   );

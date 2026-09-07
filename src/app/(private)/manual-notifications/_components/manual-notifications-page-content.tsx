@@ -19,7 +19,7 @@ import { navigate } from '@/lib/routes/routes.util';
 
 import { Permission } from '@/types/permission.type';
 
-import { useManualNotificationFilters } from '../_hooks/use-manual-notification-filters';
+import { useManualNotificationFilters } from '../_hooks/use-manual-notification-filters.hook';
 import { ManualNotificationsFilters } from './manual-notifications-filters';
 import { ManualNotificationsTable } from './manual-notifications-table';
 

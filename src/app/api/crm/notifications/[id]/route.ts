@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
+import { getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
   GetManualNotificationDetailResponseSchema,
@@ -11,6 +11,8 @@ import {
 import { registerRoute } from '@/app/api/_scripts/register-route';
 import { hasPermissions } from '@/utils/permission.util';
 
+import { manualNotificationRequiresApproval } from '@/lib/manual-notification-target.util';
+
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
 
@@ -20,8 +22,11 @@ import {
 } from '../_lib/manual-notification-access.util';
 import { manualNotificationErrorResponse } from '../_lib/manual-notification-error.util';
 import {
+  countManualNotificationTarget,
+  getManualNotificationRowTargetCount,
+} from '../_lib/manual-notification-target-count.util';
+import {
   buildManualNotificationRow,
-  manualNotificationRequiresApproval,
   validateManualNotificationTarget,
   validateManualNotificationTiming,
 } from '../_lib/manual-notification-upsert.util';
@@ -73,7 +78,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   const row = db.manualNotifications.getById(id);
   if (!row || row.deletedAt !== null) {
-    return manualNotificationErrorResponse(404, '通知が見つかりません', 'E-NOTIFICATION-404');
+    return manualNotificationErrorResponse(404, '通知が見つかりません');
   }
   if (!canReadManualNotification(auth.user, row)) {
     return manualNotificationErrorResponse(403, 'この通知を閲覧する権限がありません');
@@ -86,7 +91,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       createdBy: creator?.name ?? row.createdByUserId,
     },
   };
-  return NextResponse.json(GetManualNotificationDetailResponseSchema.parse(response));
+  return NextResponse.json(
+    GetManualNotificationDetailResponseSchema.parse({
+      ...response,
+      item:
+        response.item.status === 'sent'
+          ? response.item
+          : {
+              ...response.item,
+              targetCount: getManualNotificationRowTargetCount(response.item),
+            },
+    }),
+  );
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -101,7 +117,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const existing = db.manualNotifications.getById(id);
   if (!existing || existing.deletedAt !== null) {
-    return manualNotificationErrorResponse(404, '通知が見つかりません', 'E-NOTIFICATION-404');
+    return manualNotificationErrorResponse(404, '通知が見つかりません');
   }
   const creator = db.users.getById(existing.createdByUserId);
   if (!canWriteManualNotification(auth.user, existing)) {
@@ -129,7 +145,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return manualNotificationErrorResponse(400, '通知内容が不正です');
   }
   const body = parsed.data;
-  const allowedStoreIds = getAllowedStoreIds(auth.user);
+  const allowedStoreIds = existing.recipientScopeStoreIds;
   const targetValidationError = validateManualNotificationTarget(body.target, allowedStoreIds);
   if (targetValidationError === 'not_found') {
     return manualNotificationErrorResponse(400, '配信対象が存在しません');
@@ -142,7 +158,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (timingError) {
     return manualNotificationErrorResponse(400, timingError);
   }
-  const targetCount = db.manualNotifications.estimateTargetCount(body.target);
+  const targetCount = countManualNotificationTarget(body.target, allowedStoreIds);
   if (body.intent === 'submit' && targetCount === 0) {
     return manualNotificationErrorResponse(400, '配信対象の会員が存在しません');
   }
@@ -152,10 +168,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     targetCount,
     createdByUserId: auth.user.id,
     existing,
+    allowedStoreIds,
   });
   const updated = db.manualNotifications.update(id, next);
   if (!updated) {
-    return manualNotificationErrorResponse(404, '通知が見つかりません', 'E-NOTIFICATION-404');
+    return manualNotificationErrorResponse(404, '通知が見つかりません');
   }
   return NextResponse.json(
     ManualNotificationUpsertResponseSchema.parse({

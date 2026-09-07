@@ -12,6 +12,7 @@ import { useUnsavedChanges } from '@/hooks/use-unsaved-changes.hook';
 
 import { BackLink } from '@/components/common/back-link';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
+import { DiscardChangesDialog } from '@/components/common/discard-changes-dialog';
 import { PageHeader } from '@/components/common/page-header';
 import { Form } from '@/components/ui/form';
 
@@ -23,8 +24,8 @@ import {
 import type { GetCrmNotificationsFormConfigResponse } from '@/lib/api/types.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
-import { ManualNotificationDiscardDialog } from '../_components/manual-notification-discard-dialog';
 import { ManualNotificationForm } from '../_components/manual-notification-form';
+import { ManualNotificationFormSkeleton } from '../_components/manual-notification-form-skeleton';
 import { MANUAL_NOTIFICATION_SAVE_SUCCESS_MESSAGES } from '../_constants/manual-notification.constants';
 import {
   type ManualNotificationFormValues,
@@ -38,7 +39,7 @@ export default function ManualNotificationCreatePage() {
   const queryClient = useQueryClient();
   const formConfigQuery = useQuery({ ...getCrmNotificationsFormConfigOptions() });
   const form = useForm<ManualNotificationFormValues>({
-    resolver: zodResolver(manualNotificationFormSchema) as never,
+    resolver: zodResolver(manualNotificationFormSchema),
     mode: 'onChange',
     defaultValues: emptyManualNotificationFormValues,
   });
@@ -75,6 +76,7 @@ export default function ManualNotificationCreatePage() {
         isError={formConfigQuery.isError}
         isEmpty={!formConfigQuery.data}
         onRetry={() => void formConfigQuery.refetch()}
+        skeleton={<ManualNotificationFormSkeleton />}
       >
         {formConfigQuery.data ? (
           <CreateFormContent
@@ -86,8 +88,11 @@ export default function ManualNotificationCreatePage() {
           />
         ) : null}
       </DataStateBoundary>
-      <ManualNotificationDiscardDialog
+      <DiscardChangesDialog
         open={discardDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) handleDiscardCancel();
+        }}
         onCancel={handleDiscardCancel}
         onConfirm={handleDiscardConfirm}
       />

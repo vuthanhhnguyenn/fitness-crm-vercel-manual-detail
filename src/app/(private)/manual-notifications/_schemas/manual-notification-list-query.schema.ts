@@ -12,7 +12,7 @@ export const ManualNotificationListQuerySchema = z.object({
   limit: z
     .number()
     .int()
-    .refine((value) => MANUAL_NOTIFICATION_PAGE_SIZE_OPTIONS.includes(value as never)),
+    .refine((value) => MANUAL_NOTIFICATION_PAGE_SIZE_OPTIONS.some((option) => option === value)),
   q: z.string().max(100).optional(),
   status: z.enum(MANUAL_NOTIFICATION_STATUS_OPTIONS).optional(),
   channel: z.enum(MANUAL_NOTIFICATION_CHANNEL_OPTIONS).optional(),

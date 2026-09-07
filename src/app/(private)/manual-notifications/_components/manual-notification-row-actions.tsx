@@ -26,18 +26,19 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 
 import { navigate } from '@/lib/routes/routes.util';
+
 import { Permission } from '@/types/permission.type';
 
 import {
   type ManualNotificationRow,
-  getManualNotificationActionPolicy,
   getManualNotificationStatusLabel,
 } from '../_constants/manual-notification.constants';
 import {
   type ManualNotificationAction,
   manualNotificationReturnReasonSchema,
   useManualNotificationAction,
-} from '../_hooks/use-manual-notification-action';
+} from '../_hooks/use-manual-notification-action.hook';
+import { getManualNotificationActionPolicy } from '../_utils/manual-notification-action.util';
 
 interface ManualNotificationRowActionsProps {
   readonly row: ManualNotificationRow;

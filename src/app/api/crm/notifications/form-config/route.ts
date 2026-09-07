@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
+import { getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { MANUAL_NOTIFICATION_FORM_CONFIG_SEED } from '@/app/api/_mock-db/seeds/manual-notification.seed';
 import {
   GetManualNotificationFormConfigResponseSchema,
@@ -11,6 +11,7 @@ import { hasPermissions } from '@/utils/permission.util';
 
 import { Permission, type UserRole } from '@/types/permission.type';
 
+import { getManualNotificationValidationScope } from '../_lib/manual-notification-access.util';
 import { manualNotificationErrorResponse } from '../_lib/manual-notification-error.util';
 import { getManualNotificationFormPreviewCounts } from '../_lib/manual-notification-target-count.util';
 
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
   if (!canCreate && !canEdit) {
     return errorResponse(403, 'この操作を実行する権限がありません');
   }
-  const allowedStoreIds = getAllowedStoreIds(auth.user);
+  const allowedStoreIds = getManualNotificationValidationScope(auth.user);
   if (allowedStoreIds !== null && allowedStoreIds.length === 0) {
     return errorResponse(403, 'この操作を実行する権限がありません');
   }
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(
     GetManualNotificationFormConfigResponseSchema.parse({
       templates: MANUAL_NOTIFICATION_FORM_CONFIG_SEED.templates,
-      targetPreviewCounts: getManualNotificationFormPreviewCounts(),
+      targetPreviewCounts: getManualNotificationFormPreviewCounts(allowedStoreIds),
     }),
   );
 }

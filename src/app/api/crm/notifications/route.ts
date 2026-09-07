@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
+import { getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import type { ManualNotificationRow } from '@/app/api/_mock-db/types/manual-notifications.type';
 import {
@@ -18,8 +18,15 @@ import { hasPermissions } from '@/utils/permission.util';
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
 
-import { canReadManualNotification } from './_lib/manual-notification-access.util';
+import {
+  canReadManualNotification,
+  getManualNotificationValidationScope,
+} from './_lib/manual-notification-access.util';
 import { manualNotificationErrorResponse } from './_lib/manual-notification-error.util';
+import {
+  countManualNotificationTarget,
+  getManualNotificationRowTargetCount,
+} from './_lib/manual-notification-target-count.util';
 import {
   buildManualNotificationRow,
   validateManualNotificationTarget,
@@ -63,6 +70,14 @@ registerRoute({
 
 type SortableField = 'id' | 'title' | 'status' | 'updatedAt';
 
+function projectRowForList(row: ManualNotificationRow): ManualNotificationRow {
+  if (row.status === 'sent') return row;
+  return {
+    ...row,
+    targetCount: getManualNotificationRowTargetCount(row),
+  };
+}
+
 function targetSearchText(item: ManualNotificationRow): string {
   switch (item.target.type) {
     case 'all_members':
@@ -92,8 +107,11 @@ function compareRows(
     return comparison || first.id.localeCompare(second.id);
   }
 
-  const comparison = String(first[field]).localeCompare(String(second[field]), 'ja');
-  return comparison || first.id.localeCompare(second.id);
+  const comparison =
+    field === 'id'
+      ? first.id.localeCompare(second.id, undefined, { numeric: true })
+      : String(first[field]).localeCompare(String(second[field]), 'ja');
+  return comparison || first.id.localeCompare(second.id, undefined, { numeric: true });
 }
 
 export async function GET(request: NextRequest) {
@@ -103,11 +121,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsView])) {
-    return manualNotificationErrorResponse(
-      403,
-      'この操作を実行する権限がありません',
-      'E-AUTH-006',
-    );
+    return manualNotificationErrorResponse(403, 'この操作を実行する権限がありません');
   }
 
   const searchParams = request.nextUrl.searchParams;
@@ -123,11 +137,7 @@ export async function GET(request: NextRequest) {
 
   const parsedQuery = GetManualNotificationsQuerySchema.safeParse(queryInput);
   if (!parsedQuery.success) {
-    return manualNotificationErrorResponse(
-      400,
-      '検索条件に誤りがあります',
-      'E-VAL-001',
-    );
+    return manualNotificationErrorResponse(400, '検索条件に誤りがあります');
   }
 
   const { includeTotalAll, page, limit, sort, order, status, channel, targetType, q } =
@@ -170,7 +180,7 @@ export async function GET(request: NextRequest) {
   const start = (page - 1) * limit;
   const items = filtered
     .slice(start, start + limit)
-    .map((row) => ManualNotificationListItemSchema.parse(row));
+    .map((row) => ManualNotificationListItemSchema.parse(projectRowForList(row)));
 
   const response: GetManualNotificationsResponse = {
     items,
@@ -192,11 +202,7 @@ export async function POST(request: NextRequest) {
     return manualNotificationErrorResponse(auth.status, 'この操作を実行する権限がありません');
   }
   if (!hasPermissions(auth.user.role as UserRole, [Permission.ManualNotificationsCreate])) {
-    return manualNotificationErrorResponse(
-      403,
-      'この操作を実行する権限がありません',
-      'E-AUTH-006',
-    );
+    return manualNotificationErrorResponse(403, 'この操作を実行する権限がありません');
   }
 
   const parsed = ManualNotificationUpsertBodySchema.safeParse(
@@ -207,7 +213,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = parsed.data;
-  const allowedStoreIds = getAllowedStoreIds(auth.user);
+  const allowedStoreIds = getManualNotificationValidationScope(auth.user);
   const targetValidationError = validateManualNotificationTarget(body.target, allowedStoreIds);
   if (targetValidationError === 'not_found') {
     return manualNotificationErrorResponse(400, '配信対象が存在しません');
@@ -219,10 +225,10 @@ export async function POST(request: NextRequest) {
   const timingError =
     body.intent === 'submit' ? validateManualNotificationTiming(body.timing) : undefined;
   if (timingError) {
-    return manualNotificationErrorResponse(400, timingError, 'E-VAL-001');
+    return manualNotificationErrorResponse(400, timingError);
   }
 
-  const targetCount = db.manualNotifications.estimateTargetCount(body.target);
+  const targetCount = countManualNotificationTarget(body.target, allowedStoreIds);
   if (body.intent === 'submit' && targetCount === 0) {
     return manualNotificationErrorResponse(400, '配信対象の会員が存在しません');
   }
@@ -232,6 +238,7 @@ export async function POST(request: NextRequest) {
       body,
       targetCount,
       createdByUserId: auth.user.id,
+      allowedStoreIds,
     }),
   );
 

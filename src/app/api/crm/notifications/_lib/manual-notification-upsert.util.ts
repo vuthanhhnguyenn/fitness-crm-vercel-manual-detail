@@ -6,6 +6,8 @@ import type {
   ManualNotificationUpsertBody,
 } from '@/app/api/_schemas/manual-notification.schema';
 
+import { manualNotificationRequiresApproval } from '@/lib/manual-notification-target.util';
+
 /**
  * Spec FR-006 & Prototype:
  * HQ Approval is required when target is:
@@ -14,33 +16,9 @@ import type {
  *  - all JOYFIT sub-brands individually selected (equivalent to joyfit_all)
  * NOTE: Keep in sync with src/app/(private)/manual-notifications/_constants/manual-notification.constants.ts
  */
-export function manualNotificationRequiresApproval(target: {
-  type: string;
-  brands?: string[];
-}): boolean {
-  if (target.type === 'all_members') return true;
-
-  if (target.type === 'brands') {
-    const brands = target.brands ?? [];
-    // (a) Whole-brand explicit token (JOYFIT全体 or FIT365) -> approval required
-    if (brands.some((brand) => brand === 'joyfit_all' || brand === 'fit365')) {
-      return true;
-    }
-    // (b) All JOYFIT sub-brands individually selected == JOYFIT全体 -> approval required.
-    // Keep in sync with the JOYFIT_SUB_BRANDS list in getManualNotificationTargetStoreIds below.
-    const JOYFIT_SUB_BRANDS = ['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus'];
-    if (JOYFIT_SUB_BRANDS.every((brand) => brands.includes(brand))) {
-      return true;
-    }
-    return false;
-  }
-
-  // Limited targets (single sub-brand / stores / members / etc.) -> no approval required
-  return false;
-}
-
 export function getManualNotificationTargetStoreIds(
   target: ManualNotificationTargetInput,
+  allowedStoreIds: readonly string[] | null = null,
 ): string[] {
   if (target.type === 'stores') return [...new Set(target.storeIds)];
   if (target.type === 'members') {
@@ -53,7 +31,9 @@ export function getManualNotificationTargetStoreIds(
       ),
     ];
   }
-  const stores = db.stores.getList();
+  const stores = db.stores
+    .getList()
+    .filter((store) => allowedStoreIds === null || allowedStoreIds.includes(store.id));
   if (target.type === 'brands') {
     const JOYFIT_SUB_BRANDS = ['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus'];
     const brandSet = new Set(
@@ -156,8 +136,9 @@ export function buildManualNotificationRow(input: {
   targetCount: number;
   createdByUserId: string;
   existing?: ManualNotificationRow;
+  allowedStoreIds?: readonly string[] | null;
 }): Omit<ManualNotificationRow, 'id'> {
-  const { body, existing } = input;
+  const { body, existing, allowedStoreIds = null } = input;
   const now = new Date().toISOString();
   return {
     title: body.title,
@@ -169,9 +150,12 @@ export function buildManualNotificationRow(input: {
     status: resolveManualNotificationStatus(body, existing),
     requiresApproval: manualNotificationRequiresApproval(body.target),
     createdByUserId: existing?.createdByUserId ?? input.createdByUserId,
+    recipientScopeStoreIds:
+      existing?.recipientScopeStoreIds ??
+      (allowedStoreIds === null ? null : [...new Set(allowedStoreIds)]),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    targetStoreIds: getManualNotificationTargetStoreIds(body.target),
+    targetStoreIds: getManualNotificationTargetStoreIds(body.target, allowedStoreIds),
     deletedAt: null,
     ...(existing?.approvedBy ? { approvedBy: existing.approvedBy } : {}),
     ...(existing?.approvedAt ? { approvedAt: existing.approvedAt } : {}),

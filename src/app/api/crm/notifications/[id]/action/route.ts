@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAllowedStoreIds, getAuthUserFromRequest } from '@/app/api/_lib/auth';
+import { getAuthUserFromRequest } from '@/app/api/_lib/auth';
 import { db } from '@/app/api/_mock-db';
 import {
   ManualNotificationActionResponseSchema,
@@ -20,6 +20,7 @@ import {
   canWriteManualNotification,
 } from '../../_lib/manual-notification-access.util';
 import { manualNotificationErrorResponse } from '../../_lib/manual-notification-error.util';
+import { countManualNotificationTarget } from '../../_lib/manual-notification-target-count.util';
 import {
   getManualNotificationTargetStoreIds,
   manualNotificationTargetToInput,
@@ -51,7 +52,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const row = db.manualNotifications.getById(id);
   if (!row || row.deletedAt !== null) {
-    return manualNotificationErrorResponse(404, '通知が見つかりません', 'E-NOTIFICATION-404');
+    return manualNotificationErrorResponse(404, '通知が見つかりません');
   }
   if (!canReadManualNotification(auth.user, row)) {
     return manualNotificationErrorResponse(403, 'この通知を操作する権限がありません');
@@ -114,7 +115,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return manualNotificationErrorResponse(400, '通知内容に未入力または不正な項目があります');
     }
 
-    const allowedStoreIds = getAllowedStoreIds(auth.user);
+    const allowedStoreIds = row.recipientScopeStoreIds;
     const targetValidationError = validateManualNotificationTarget(target, allowedStoreIds);
     if (targetValidationError) {
       return manualNotificationErrorResponse(
@@ -130,16 +131,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return manualNotificationErrorResponse(400, timingError);
     }
 
-    const targetCount = db.manualNotifications.estimateTargetCount(target);
+    const targetCount = countManualNotificationTarget(target, allowedStoreIds);
     if (targetCount === 0) {
       return manualNotificationErrorResponse(400, '配信対象の会員が存在しません');
     }
     targetMetadata = {
       targetCount,
-      targetStoreIds: getManualNotificationTargetStoreIds(target),
+      targetStoreIds: getManualNotificationTargetStoreIds(target, allowedStoreIds),
     };
   }
 
+  // TODO(#28): `sending` never advances to `sent` here because delivery
+  // execution and result write-back are deferred from the Phase 1 mock.
   const nextStatus =
     action === 'request_approval'
       ? 'pending_approval'
@@ -167,7 +170,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
   const updated = db.manualNotifications.updateStatus(id, nextStatus, targetMetadata);
   if (!updated) {
-    return manualNotificationErrorResponse(404, '通知が見つかりません', 'E-NOTIFICATION-404');
+    return manualNotificationErrorResponse(404, '通知が見つかりません');
   }
   if (action === 'approve') {
     db.manualNotifications.updateAudit(id, {

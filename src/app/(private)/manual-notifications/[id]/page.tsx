@@ -36,22 +36,22 @@ import {
   MANUAL_NOTIFICATION_STATUS_CLASSES,
   MANUAL_NOTIFICATION_STATUS_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
-  getManualNotificationActionPolicy,
 } from '../_constants/manual-notification.constants';
 import {
   type ManualNotificationAction,
   manualNotificationReturnReasonSchema,
   useManualNotificationAction,
-} from '../_hooks/use-manual-notification-action';
+} from '../_hooks/use-manual-notification-action.hook';
+import { getManualNotificationActionPolicy } from '../_utils/manual-notification-action.util';
 import {
   ManualNotificationDetailContent,
   timingName,
 } from './_components/manual-notification-detail-content';
+import { ManualNotificationDetailSkeleton } from './_components/manual-notification-detail-skeleton';
 
 function isNotificationNotFoundError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
-  const candidate = error as { code?: unknown; status?: unknown };
-  return candidate.code === 'E-NOTIFICATION-404' || candidate.status === 404;
+  return (error as { status?: unknown }).status === 404;
 }
 
 export default function ManualNotificationDetailPage() {
@@ -78,7 +78,11 @@ export default function ManualNotificationDetailPage() {
           badge={<Skeleton className="h-5 w-20" />}
         />
         <div className="flex-1 p-6">
-          <DataStateBoundary isLoading isEmpty={false} />
+          <DataStateBoundary
+            isLoading
+            isEmpty={false}
+            skeleton={<ManualNotificationDetailSkeleton />}
+          />
         </div>
       </div>
     );
@@ -328,10 +332,7 @@ export default function ManualNotificationDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog
-        open={dialog === 'resubmit'}
-        onOpenChange={(open) => !open && setDialog(null)}
-      >
+      <AlertDialog open={dialog === 'resubmit'} onOpenChange={(open) => !open && setDialog(null)}>
         <AlertDialogContent className="gap-4 sm:max-w-sm">
           <AlertDialogHeader>
             <AlertDialogTitle>再申請しますか？</AlertDialogTitle>

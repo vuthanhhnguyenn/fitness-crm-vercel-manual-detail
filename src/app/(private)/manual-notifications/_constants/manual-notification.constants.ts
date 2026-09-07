@@ -1,5 +1,7 @@
 import type { GetCrmNotificationsResponse } from '@/lib/api/types.gen';
 
+export { manualNotificationRequiresApproval } from '@/lib/manual-notification-target.util';
+
 export type ManualNotificationRow = GetCrmNotificationsResponse['items'][number];
 type ManualNotificationStatus = ManualNotificationRow['status'];
 export type ManualNotificationChannel = ManualNotificationRow['channels'][number];
@@ -192,66 +194,5 @@ export const MANUAL_NOTIFICATION_STATUS_OPTIONS = [
   'sending',
   'sent',
 ] as const satisfies readonly ManualNotificationStatus[];
-
-/**
- * Spec FR-006 & Prototype:
- * HQ Approval is required when target is:
- *  - "全会員" (all_members)
- *  - a whole brand: "JOYFIT全体" (joyfit_all) or "FIT365" (fit365)
- *  - all JOYFIT sub-brands individually selected (equivalent to joyfit_all)
- * NOTE: Keep in sync with src/app/api/crm/notifications/_lib/manual-notification-upsert.util.ts
- */
-export function manualNotificationRequiresApproval(target: {
-  type: ManualNotificationTargetType;
-  brands?: ManualNotificationBrand[];
-}): boolean {
-  if (target.type === 'all_members') return true;
-
-  if (target.type === 'brands') {
-    const brands = target.brands ?? [];
-    // Whole-brand explicit token (JOYFIT全体 or FIT365) -> approval required
-    if (brands.some((brand) => brand === 'joyfit_all' || brand === 'fit365')) {
-      return true;
-    }
-    // All JOYFIT sub-brands individually selected == JOYFIT全体 -> approval required
-    const JOYFIT_SUB_BRANDS = [
-      'joyfit',
-      'joyfit24',
-      'joyfit_yoga',
-      'joyfit_plus',
-    ] satisfies readonly ManualNotificationBrand[];
-    if (JOYFIT_SUB_BRANDS.every((brand) => brands.includes(brand))) {
-      return true;
-    }
-    return false;
-  }
-
-  // Limited targets (single sub-brand / stores / members / etc.) -> no approval required
-  return false;
-}
-
-interface ManualNotificationActionPolicy {
-  canRequestApproval: boolean;
-  canSend: boolean;
-  canApprove: boolean;
-  canReturn: boolean;
-  canResubmit: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-}
-
-export function getManualNotificationActionPolicy(
-  row: Pick<ManualNotificationRow, 'status' | 'requiresApproval'>,
-): ManualNotificationActionPolicy {
-  return {
-    canRequestApproval: row.status === 'draft' && row.requiresApproval,
-    canSend: row.status === 'draft' && !row.requiresApproval,
-    canApprove: row.status === 'pending_approval' && row.requiresApproval,
-    canReturn: row.status === 'pending_approval' && row.requiresApproval,
-    canResubmit: row.status === 'returned' && row.requiresApproval,
-    canEdit: ['draft', 'returned', 'pending_approval'].includes(row.status),
-    canDelete: ['draft', 'returned'].includes(row.status),
-  };
-}
 
 export const MANUAL_NOTIFICATION_PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;

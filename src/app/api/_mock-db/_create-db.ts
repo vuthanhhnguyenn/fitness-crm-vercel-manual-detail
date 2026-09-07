@@ -109,7 +109,10 @@ export function createDb(): DbType {
     db,
     createLessonTables(() => db),
   );
-  Object.assign(db, createManualNotificationTable());
+  Object.assign(
+    db,
+    createManualNotificationTable(() => db),
+  );
   Object.assign(
     db,
     createEntryExitLogTables(() => db),

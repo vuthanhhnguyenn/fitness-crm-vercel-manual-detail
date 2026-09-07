@@ -6,8 +6,9 @@ import type ReactQuill from 'react-quill-new';
 
 import dynamic from 'next/dynamic';
 
+import { TEXTAREA_MAX_LENGTH, TEXT_MAX_LENGTH } from '@/constants/app.constants';
+
 import { RoleGatedButton } from '@/components/common/role-gated-button';
-import { TEXT_MAX_LENGTH, TEXTAREA_MAX_LENGTH } from '@/constants/app.constants';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {

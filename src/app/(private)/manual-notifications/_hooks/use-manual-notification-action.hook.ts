@@ -32,10 +32,13 @@ export function useManualNotificationAction() {
       if (!action) return;
 
       void queryClient.invalidateQueries({ queryKey: getCrmNotificationsQueryKey() });
-      if (action !== 'delete') {
-        void queryClient.invalidateQueries({
-          queryKey: getCrmNotificationsByIdQueryKey({ path: { id: variables.path.id } }),
-        });
+      const detailQueryKey = getCrmNotificationsByIdQueryKey({
+        path: { id: variables.path.id },
+      });
+      if (action === 'delete') {
+        queryClient.removeQueries({ queryKey: detailQueryKey, exact: true });
+      } else {
+        void queryClient.invalidateQueries({ queryKey: detailQueryKey });
       }
       const successMessages: Record<
         ManualNotificationAction,

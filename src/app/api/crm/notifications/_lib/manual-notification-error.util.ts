@@ -5,32 +5,19 @@ import type { ManualNotificationErrorResponse } from '@/app/api/_schemas/manual-
 /**
  * Shared error envelope for all /crm/notifications/* routes.
  *
- * Follows the repo's canonical `ErrorResponseSchema`
- * (`{ code, message, userMessage, traceId? }`). The global toast reads `userMessage`
- * via `api-error.util.ts:getApiErrorMessage`, and `code` powers the discriminator
- * helper (`isNotificationNotFoundError`).
+ * Matches the surveys convention: `{ error, detail: { message } }`. The
+ * global toast reads `body.error` via `api-error.util.ts:getApiErrorMessage`.
+ * The `isNotificationNotFoundError` discriminator checks `status` (attached
+ * by the error interceptor on every rejection), so the 404 case is still
+ * distinguishable from a generic 400/403.
  */
-export type ManualNotificationErrorCode =
-  | 'E-AUTH-001'
-  | 'E-AUTH-006'
-  | 'E-VAL-001'
-  | 'E-NOTIFICATION-404';
-
 export function manualNotificationErrorResponse(
   status: 400 | 401 | 403 | 404,
   message: string,
-  code: ManualNotificationErrorCode = status === 401
-    ? 'E-AUTH-001'
-    : status === 403
-      ? 'E-AUTH-006'
-      : status === 404
-        ? 'E-NOTIFICATION-404'
-        : 'E-VAL-001',
 ): NextResponse<ManualNotificationErrorResponse> {
   const body: ManualNotificationErrorResponse = {
-    code,
-    message,
-    userMessage: message,
+    error: message,
+    detail: { message },
   };
   return NextResponse.json(body, { status });
 }

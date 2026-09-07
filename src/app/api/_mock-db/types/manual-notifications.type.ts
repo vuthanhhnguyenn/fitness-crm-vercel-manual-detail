@@ -2,7 +2,6 @@ import type {
   ManualNotificationChannel,
   ManualNotificationContents,
   ManualNotificationListItem,
-  ManualNotificationTargetInput,
 } from '@/app/api/_schemas/manual-notification.schema';
 
 type ManualNotificationDeliveryResult = {
@@ -20,6 +19,8 @@ type ManualNotificationDeliveryResult = {
 
 export type ManualNotificationRow = ManualNotificationListItem & {
   createdByUserId: string;
+  /** Immutable creator scope used for every later recipient calculation. `null` means unrestricted. */
+  recipientScopeStoreIds: string[] | null;
   targetStoreIds: string[];
   createdAt: string;
   deletedAt: string | null;
@@ -34,10 +35,8 @@ export type ManualNotificationsType = {
   _rows: ManualNotificationRow[];
   _seeded: boolean;
   _seed(): void;
-  _fillRealTargetCounts(): void;
   getList(): ManualNotificationRow[];
   getById(id: string): ManualNotificationRow | undefined;
-  estimateTargetCount(target: ManualNotificationTargetInput): number;
   updateStatus(
     id: string,
     status: ManualNotificationRow['status'],

@@ -59,6 +59,7 @@ export const registeredSchemaMap = new Map<string, ZodTypeAny>();
  * This must be called before registering routes
  */
 export function registerAllSchemas() {
+  // Register manual notification schemas
   registeredSchemaMap.set(
     'ManualNotificationDetail',
     registry.register(
@@ -87,6 +88,105 @@ export function registerAllSchemas() {
       manualNotificationSchemas.ManualNotificationUpsertResponseSchema,
     ),
   );
+  registeredSchemaMap.set(
+    'ManualNotificationTargetInput',
+    registry.register(
+      'ManualNotificationTargetInput',
+      manualNotificationSchemas.ManualNotificationTargetInputSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ManualNotificationListItem',
+    registry.register(
+      'ManualNotificationListItem',
+      manualNotificationSchemas.ManualNotificationListItemSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetManualNotificationFormConfigResponse',
+    registry.register(
+      'GetManualNotificationFormConfigResponse',
+      manualNotificationSchemas.GetManualNotificationFormConfigResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetManualNotificationsQuery',
+    registry.register(
+      'GetManualNotificationsQuery',
+      manualNotificationSchemas.GetManualNotificationsQuerySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ManualNotificationPagination',
+    registry.register(
+      'ManualNotificationPagination',
+      manualNotificationSchemas.ManualNotificationPaginationSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetManualNotificationsResponse',
+    registry.register(
+      'GetManualNotificationsResponse',
+      manualNotificationSchemas.GetManualNotificationsResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetManualNotificationTargetStoresQuery',
+    registry.register(
+      'GetManualNotificationTargetStoresQuery',
+      manualNotificationSchemas.GetManualNotificationTargetStoresQuerySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetManualNotificationTargetStoresResponse',
+    registry.register(
+      'GetManualNotificationTargetStoresResponse',
+      manualNotificationSchemas.GetManualNotificationTargetStoresResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetManualNotificationTargetMembersQuery',
+    registry.register(
+      'GetManualNotificationTargetMembersQuery',
+      manualNotificationSchemas.GetManualNotificationTargetMembersQuerySchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'GetManualNotificationTargetMembersResponse',
+    registry.register(
+      'GetManualNotificationTargetMembersResponse',
+      manualNotificationSchemas.GetManualNotificationTargetMembersResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ManualNotificationErrorResponse',
+    registry.register(
+      'ManualNotificationErrorResponse',
+      manualNotificationSchemas.ManualNotificationErrorResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ManualNotificationAction',
+    registry.register(
+      'ManualNotificationAction',
+      manualNotificationSchemas.ManualNotificationActionSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ManualNotificationActionResponse',
+    registry.register(
+      'ManualNotificationActionResponse',
+      manualNotificationSchemas.ManualNotificationActionResponseSchema,
+    ),
+  );
+  registeredSchemaMap.set(
+    'ManualNotificationTargetPreviewResponse',
+    registry.register(
+      'ManualNotificationTargetPreviewResponse',
+      manualNotificationSchemas.ManualNotificationTargetPreviewResponseSchema,
+    ),
+  );
+
   // Register auth schemas
   registeredSchemaMap.set(
     'LoginRequest',

@@ -1,9 +1,9 @@
 'use client';
 
-import { type ReactNode, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
-import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { Bell, ChevronsUpDown, Users } from 'lucide-react';
 
 import { useDebounce } from '@/hooks/use-debounce.hook';
@@ -25,7 +25,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { getCrmStoresInfiniteOptions } from '@/lib/api/@tanstack/react-query.gen';
+import {
+  getCrmNotificationsTargetOptionsStoresInfiniteOptions,
+  postCrmNotificationsTargetPreviewMutation,
+} from '@/lib/api/@tanstack/react-query.gen';
 import type { GetCrmNotificationsFormConfigResponse } from '@/lib/api/types.gen';
 import { cn } from '@/lib/utils';
 
@@ -38,7 +41,10 @@ import {
   MANUAL_NOTIFICATION_MEMBERSHIP_DURATION_CONDITION_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
 } from '../_constants/manual-notification.constants';
-import type { ManualNotificationFormValues } from '../_schemas/manual-notification-form.schema';
+import {
+  type ManualNotificationFormValues,
+  manualNotificationTargetToRequest,
+} from '../_schemas/manual-notification-form.schema';
 import { ManualNotificationMemberSelect } from './manual-notification-member-select';
 
 type Target = ManualNotificationFormValues['target'];
@@ -76,6 +82,9 @@ function getTargetPreviewCount(
     case 'contract_type':
       return targetPreviewCounts.contractType[target.contractType] ?? 0;
     case 'membership_duration':
+      // The form-config value is a safe fallback while the server-authoritative
+      // preview request is in flight. The selected duration is replaced by the
+      // response as soon as it arrives.
       return targetPreviewCounts.membershipDuration;
     case 'dynamic_attribute':
       return targetPreviewCounts.dynamicAttributes[target.attribute];
@@ -124,24 +133,23 @@ function ManualNotificationStoreSelect({
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const query = useInfiniteQuery({
-    ...getCrmStoresInfiniteOptions({
+    ...getCrmNotificationsTargetOptionsStoresInfiniteOptions({
       query: {
         page: 1,
         limit: 30,
-        status: 'operating',
-        search: debouncedSearch || undefined,
+        q: debouncedSearch || undefined,
       },
     }),
     enabled: open,
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
-      lastPage.pagination.page < lastPage.pagination.total_pages
+      lastPage.pagination.page < lastPage.pagination.totalPages
         ? lastPage.pagination.page + 1
         : undefined,
     placeholderData: keepPreviousData,
   });
-  const stores = query.data?.pages.flatMap((page) => page.stores) ?? [];
-  const total = query.data?.pages[0]?.pagination.total ?? stores.length;
+  const stores = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const total = query.data?.pages[0]?.pagination.totalItems ?? stores.length;
   const storeListRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useInfiniteScroll({
     hasMore: Boolean(query.hasNextPage),
@@ -195,7 +203,17 @@ function ManualNotificationStoreSelect({
             <p className="text-muted-foreground p-3 text-center text-xs">店舗を読み込み中...</p>
           ) : null}
           {query.isError ? (
-            <p className="text-destructive p-3 text-center text-xs">店舗の取得に失敗しました</p>
+            <div className="flex flex-col items-center gap-2 p-3">
+              <p className="text-destructive text-center text-xs">店舗の取得に失敗しました</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void query.refetch()}
+              >
+                再試行
+              </Button>
+            </div>
           ) : null}
           {!query.isLoading && !query.isError && stores.length === 0 ? (
             <p className="text-muted-foreground p-3 text-center text-xs">店舗が見つかりません</p>
@@ -222,7 +240,7 @@ function ManualNotificationStoreSelect({
             );
           })}
           {(query.hasNextPage || query.isFetchingNextPage) && (
-            <div ref={sentinelRef} className="py-1 text-center text-xs text-muted-foreground">
+            <div ref={sentinelRef} className="text-muted-foreground py-1 text-center text-xs">
               {query.isFetchingNextPage ? '読み込み中...' : null}
             </div>
           )}
@@ -273,7 +291,48 @@ export function ManualNotificationTargetSection({
 }: ManualNotificationTargetSectionProps) {
   const form = useFormContext<ManualNotificationFormValues>();
   const target = useWatch({ control: form.control, name: 'target' });
-  const targetPreviewCount = getTargetPreviewCount(target, formConfig.targetPreviewCounts);
+  const { mutate: previewTargetCount } = useMutation(postCrmNotificationsTargetPreviewMutation());
+  const previewTarget = useMemo(() => manualNotificationTargetToRequest(target), [target]);
+  const previewTargetKey = JSON.stringify(previewTarget);
+  const [serverPreview, setServerPreview] = useState<{
+    key: string;
+    count: number;
+  } | null>(null);
+  const previewRequestId = useRef(0);
+  const isPreviewTargetReady =
+    target.type !== 'membership_duration' ||
+    (Number.isInteger(target.months) && target.months >= 1 && target.months <= 60);
+
+  useEffect(() => {
+    if (!isPreviewTargetReady) return;
+
+    const requestId = ++previewRequestId.current;
+    const timeoutId = window.setTimeout(
+      () => {
+        previewTargetCount(
+          { body: previewTarget },
+          {
+            onSuccess: (response) => {
+              if (requestId === previewRequestId.current) {
+                setServerPreview({ key: previewTargetKey, count: response.targetCount });
+              }
+            },
+            onError: () => {
+              if (requestId === previewRequestId.current) setServerPreview(null);
+            },
+          },
+        );
+      },
+      target.type === 'membership_duration' ? 250 : 0,
+    );
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isPreviewTargetReady, previewTarget, previewTargetCount, previewTargetKey, target.type]);
+
+  const targetPreviewCount =
+    serverPreview?.key === previewTargetKey
+      ? serverPreview.count
+      : getTargetPreviewCount(target, formConfig.targetPreviewCounts);
 
   const setTarget = (value: Target) =>
     form.setValue('target', value, { shouldDirty: true, shouldValidate: true });

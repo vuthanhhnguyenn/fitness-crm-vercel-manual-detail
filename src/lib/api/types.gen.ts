@@ -237,6 +237,11 @@ export type GetManualNotificationDetailResponse = {
  */
 export type ManualNotificationUpsertBody = {
     title: string;
+    /**
+     * ManualNotificationTargetInput
+     *
+     * Manual notification target selector accepted by write and preview APIs
+     */
     target: {
         type: 'all_members';
     } | {
@@ -415,6 +420,447 @@ export type ManualNotificationUpsertResponse = {
             }>;
         };
     };
+};
+
+/**
+ * ManualNotificationTargetInput
+ *
+ * Manual notification target selector accepted by write and preview APIs
+ */
+export type ManualNotificationTargetInput = {
+    type: 'all_members';
+} | {
+    type: 'brands';
+    brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+} | {
+    type: 'stores';
+    storeIds: Array<string>;
+} | {
+    type: 'contract_type';
+    /**
+     * ManualNotificationContractType
+     *
+     * Member contract category for manual notification targeting
+     */
+    contractType: 'regular' | 'one_day_member' | 'family';
+} | {
+    type: 'membership_duration';
+    condition: 'within' | 'at_least';
+    months: number;
+} | {
+    type: 'dynamic_attribute';
+    attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+} | {
+    type: 'members';
+    memberIds: Array<string>;
+};
+
+/**
+ * ManualNotificationListItem
+ *
+ * Manual notification list projection for I-03
+ */
+export type ManualNotificationListItem = {
+    id: string;
+    title: string;
+    target: {
+        type: 'all_members';
+    } | {
+        type: 'brands';
+        brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+    } | {
+        type: 'stores';
+        stores: Array<{
+            id: string;
+            name: string;
+        }>;
+    } | {
+        type: 'contract_type';
+        /**
+         * ManualNotificationContractType
+         *
+         * Member contract category for manual notification targeting
+         */
+        contractType: 'regular' | 'one_day_member' | 'family';
+    } | {
+        type: 'membership_duration';
+        condition: 'within' | 'at_least';
+        months: number;
+    } | {
+        type: 'dynamic_attribute';
+        attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+    } | {
+        type: 'members';
+        members: Array<{
+            id: string;
+            name: string;
+            memberNumber?: string;
+            storeName?: string;
+        }>;
+    };
+    channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+    timing: {
+        type: 'immediate';
+    } | {
+        type: 'scheduled';
+        scheduledAt: string;
+    } | {
+        type: 'recurring';
+        frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+        startAt: string;
+        intervalValue?: number;
+        intervalUnit?: 'day' | 'week' | 'month';
+        endAt?: string;
+        maxOccurrences?: number;
+    };
+    targetCount: number;
+    /**
+     * ManualNotificationStatus
+     *
+     * Manual notification lifecycle state defined by I-03
+     */
+    status: 'draft' | 'pending_approval' | 'returned' | 'scheduled' | 'sending' | 'sent';
+    requiresApproval: boolean;
+    updatedAt: string;
+};
+
+/**
+ * GetManualNotificationFormConfigResponse
+ *
+ * Manual notification form configuration and baseline preview counts
+ */
+export type GetManualNotificationFormConfigResponse = {
+    templates: Array<{
+        id: string;
+        label: string;
+        body: string;
+    }>;
+    targetPreviewCounts: {
+        allMembers: number;
+        brands: {
+            joyfit_all: number;
+            joyfit: number;
+            joyfit24: number;
+            joyfit_yoga: number;
+            joyfit_plus: number;
+            fit365: number;
+        };
+        stores: {
+            [key: string]: number;
+        };
+        contractType: {
+            regular: number;
+            one_day_member: number;
+            family: number;
+        };
+        membershipDuration: number;
+        dynamicAttributes: {
+            unpaid: number;
+            dormant: number;
+            withdrawal_pending: number;
+            birthday_month: number;
+            trial: number;
+        };
+    };
+};
+
+/**
+ * GetManualNotificationsQuery
+ *
+ * Manual notification list query for I-03
+ */
+export type GetManualNotificationsQuery = {
+    includeTotalAll?: boolean;
+    page?: number;
+    limit?: number;
+    sort?: 'id' | 'title' | 'status' | 'updatedAt';
+    order?: 'asc' | 'desc';
+    status?: Array<'draft' | 'pending_approval' | 'returned' | 'scheduled' | 'sending' | 'sent'> | null;
+    channel?: Array<'sms' | 'push' | 'email' | 'in_app'> | null;
+    targetType?: Array<'all_members' | 'brands' | 'stores' | 'contract_type' | 'membership_duration' | 'dynamic_attribute' | 'members'> | null;
+    q?: string;
+};
+
+/**
+ * ManualNotificationPagination
+ *
+ * Manual notification list pagination metadata
+ */
+export type ManualNotificationPagination = {
+    page: number;
+    limit: number;
+    totalItems: number;
+    totalPages: number;
+    totalAllItems?: number;
+};
+
+/**
+ * GetManualNotificationsResponse
+ *
+ * Manual notification list response
+ */
+export type GetManualNotificationsResponse = {
+    items: Array<{
+        id: string;
+        title: string;
+        target: {
+            type: 'all_members';
+        } | {
+            type: 'brands';
+            brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+        } | {
+            type: 'stores';
+            stores: Array<{
+                id: string;
+                name: string;
+            }>;
+        } | {
+            type: 'contract_type';
+            /**
+             * ManualNotificationContractType
+             *
+             * Member contract category for manual notification targeting
+             */
+            contractType: 'regular' | 'one_day_member' | 'family';
+        } | {
+            type: 'membership_duration';
+            condition: 'within' | 'at_least';
+            months: number;
+        } | {
+            type: 'dynamic_attribute';
+            attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+        } | {
+            type: 'members';
+            members: Array<{
+                id: string;
+                name: string;
+                memberNumber?: string;
+                storeName?: string;
+            }>;
+        };
+        channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+        timing: {
+            type: 'immediate';
+        } | {
+            type: 'scheduled';
+            scheduledAt: string;
+        } | {
+            type: 'recurring';
+            frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+            startAt: string;
+            intervalValue?: number;
+            intervalUnit?: 'day' | 'week' | 'month';
+            endAt?: string;
+            maxOccurrences?: number;
+        };
+        targetCount: number;
+        /**
+         * ManualNotificationStatus
+         *
+         * Manual notification lifecycle state defined by I-03
+         */
+        status: 'draft' | 'pending_approval' | 'returned' | 'scheduled' | 'sending' | 'sent';
+        requiresApproval: boolean;
+        updatedAt: string;
+    }>;
+    /**
+     * ManualNotificationPagination
+     *
+     * Manual notification list pagination metadata
+     */
+    pagination: {
+        page: number;
+        limit: number;
+        totalItems: number;
+        totalPages: number;
+        totalAllItems?: number;
+    };
+};
+
+/**
+ * GetManualNotificationTargetStoresQuery
+ *
+ * Role-scoped store picker query for manual notifications
+ */
+export type GetManualNotificationTargetStoresQuery = {
+    page?: number;
+    limit?: number;
+    q?: string;
+};
+
+/**
+ * GetManualNotificationTargetStoresResponse
+ *
+ * Role-scoped operating stores available to the manual notification picker
+ */
+export type GetManualNotificationTargetStoresResponse = {
+    items: Array<{
+        id: string;
+        name: string;
+    }>;
+    /**
+     * ManualNotificationPagination
+     *
+     * Manual notification list pagination metadata
+     */
+    pagination: {
+        page: number;
+        limit: number;
+        totalItems: number;
+        totalPages: number;
+        totalAllItems?: number;
+    };
+};
+
+/**
+ * GetManualNotificationTargetMembersQuery
+ *
+ * Role-scoped active member picker query for manual notifications
+ */
+export type GetManualNotificationTargetMembersQuery = {
+    page?: number;
+    limit?: number;
+    q?: string;
+    brandGroup?: 'joyfit' | 'fit365';
+    /**
+     * ManualNotificationContractType
+     *
+     * Member contract category for manual notification targeting
+     */
+    contractType?: 'regular' | 'one_day_member' | 'family';
+};
+
+/**
+ * GetManualNotificationTargetMembersResponse
+ *
+ * Role-scoped active members available to the manual notification picker
+ */
+export type GetManualNotificationTargetMembersResponse = {
+    items: Array<{
+        id: string;
+        name: string;
+        memberNumber: string;
+        storeName: string;
+    }>;
+    /**
+     * ManualNotificationPagination
+     *
+     * Manual notification list pagination metadata
+     */
+    pagination: {
+        page: number;
+        limit: number;
+        totalItems: number;
+        totalPages: number;
+        totalAllItems?: number;
+    };
+};
+
+/**
+ * ManualNotificationErrorResponse
+ *
+ * Manual notification error envelope
+ */
+export type ManualNotificationErrorResponse = {
+    error: string;
+    detail: {
+        message: string;
+    };
+};
+
+/**
+ * ManualNotificationAction
+ *
+ * Action applied to a manual notification
+ */
+export type ManualNotificationAction = {
+    action: 'request_approval' | 'send' | 'approve' | 'return' | 'resubmit' | 'delete';
+    reason?: string;
+};
+
+/**
+ * ManualNotificationActionResponse
+ *
+ * Manual notification action response
+ */
+export type ManualNotificationActionResponse = {
+    /**
+     * ManualNotificationListItem
+     *
+     * Manual notification list projection for I-03
+     */
+    item: {
+        id: string;
+        title: string;
+        target: {
+            type: 'all_members';
+        } | {
+            type: 'brands';
+            brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+        } | {
+            type: 'stores';
+            stores: Array<{
+                id: string;
+                name: string;
+            }>;
+        } | {
+            type: 'contract_type';
+            /**
+             * ManualNotificationContractType
+             *
+             * Member contract category for manual notification targeting
+             */
+            contractType: 'regular' | 'one_day_member' | 'family';
+        } | {
+            type: 'membership_duration';
+            condition: 'within' | 'at_least';
+            months: number;
+        } | {
+            type: 'dynamic_attribute';
+            attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+        } | {
+            type: 'members';
+            members: Array<{
+                id: string;
+                name: string;
+                memberNumber?: string;
+                storeName?: string;
+            }>;
+        };
+        channels: Array<'sms' | 'push' | 'email' | 'in_app'>;
+        timing: {
+            type: 'immediate';
+        } | {
+            type: 'scheduled';
+            scheduledAt: string;
+        } | {
+            type: 'recurring';
+            frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+            startAt: string;
+            intervalValue?: number;
+            intervalUnit?: 'day' | 'week' | 'month';
+            endAt?: string;
+            maxOccurrences?: number;
+        };
+        targetCount: number;
+        /**
+         * ManualNotificationStatus
+         *
+         * Manual notification lifecycle state defined by I-03
+         */
+        status: 'draft' | 'pending_approval' | 'returned' | 'scheduled' | 'sending' | 'sent';
+        requiresApproval: boolean;
+        updatedAt: string;
+    };
+};
+
+/**
+ * ManualNotificationTargetPreviewResponse
+ *
+ * Server-authoritative recipient count for a manual notification target
+ */
+export type ManualNotificationTargetPreviewResponse = {
+    targetCount: number;
 };
 
 /**
@@ -69656,6 +70102,11 @@ export type GetCrmMembershipApplicationsResponses = {
 export type GetCrmMembershipApplicationsResponse = GetCrmMembershipApplicationsResponses[keyof GetCrmMembershipApplicationsResponses];
 
 export type PatchCrmNotificationsByIdActionData = {
+    /**
+     * ManualNotificationAction
+     *
+     * Action applied to a manual notification
+     */
     body?: {
         action: 'request_approval' | 'send' | 'approve' | 'return' | 'resubmit' | 'delete';
         reason?: string;
@@ -69669,40 +70120,48 @@ export type PatchCrmNotificationsByIdActionData = {
 
 export type PatchCrmNotificationsByIdActionErrors = {
     /**
-     * Invalid action
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     400: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Unauthorized
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     401: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Forbidden
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     403: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Not found
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     404: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
 };
 
@@ -69710,7 +70169,9 @@ export type PatchCrmNotificationsByIdActionError = PatchCrmNotificationsByIdActi
 
 export type PatchCrmNotificationsByIdActionResponses = {
     /**
-     * Action applied
+     * ManualNotificationActionResponse
+     *
+     * Manual notification action response
      */
     200: {
         /**
@@ -69797,31 +70258,37 @@ export type GetCrmNotificationsByIdData = {
 
 export type GetCrmNotificationsByIdErrors = {
     /**
-     * Unauthorized
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     401: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Forbidden
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     403: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Not found
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     404: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
 };
 
@@ -69956,6 +70423,11 @@ export type PatchCrmNotificationsByIdData = {
      */
     body?: {
         title: string;
+        /**
+         * ManualNotificationTargetInput
+         *
+         * Manual notification target selector accepted by write and preview APIs
+         */
         target: {
             type: 'all_members';
         } | {
@@ -70030,40 +70502,48 @@ export type PatchCrmNotificationsByIdData = {
 
 export type PatchCrmNotificationsByIdErrors = {
     /**
-     * Bad request
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     400: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Unauthorized
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     401: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Forbidden
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     403: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Not found
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     404: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
 };
 
@@ -70199,22 +70679,26 @@ export type GetCrmNotificationsFormConfigData = {
 
 export type GetCrmNotificationsFormConfigErrors = {
     /**
-     * Unauthorized
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     401: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Forbidden
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     403: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
 };
 
@@ -70222,7 +70706,9 @@ export type GetCrmNotificationsFormConfigError = GetCrmNotificationsFormConfigEr
 
 export type GetCrmNotificationsFormConfigResponses = {
     /**
-     * Manual notification form configuration
+     * GetManualNotificationFormConfigResponse
+     *
+     * Manual notification form configuration and baseline preview counts
      */
     200: {
         templates: Array<{
@@ -70281,31 +70767,37 @@ export type GetCrmNotificationsData = {
 
 export type GetCrmNotificationsErrors = {
     /**
-     * Bad request
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     400: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Unauthorized
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     401: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Forbidden
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     403: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
 };
 
@@ -70313,7 +70805,9 @@ export type GetCrmNotificationsError = GetCrmNotificationsErrors[keyof GetCrmNot
 
 export type GetCrmNotificationsResponses = {
     /**
-     * Notification list
+     * GetManualNotificationsResponse
+     *
+     * Manual notification list response
      */
     200: {
         items: Array<{
@@ -70379,6 +70873,11 @@ export type GetCrmNotificationsResponses = {
             requiresApproval: boolean;
             updatedAt: string;
         }>;
+        /**
+         * ManualNotificationPagination
+         *
+         * Manual notification list pagination metadata
+         */
         pagination: {
             page: number;
             limit: number;
@@ -70399,6 +70898,11 @@ export type PostCrmNotificationsData = {
      */
     body?: {
         title: string;
+        /**
+         * ManualNotificationTargetInput
+         *
+         * Manual notification target selector accepted by write and preview APIs
+         */
         target: {
             type: 'all_members';
         } | {
@@ -70471,31 +70975,37 @@ export type PostCrmNotificationsData = {
 
 export type PostCrmNotificationsErrors = {
     /**
-     * Bad request
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     400: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Unauthorized
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     401: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
     /**
-     * Forbidden
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
      */
     403: {
-        code: string;
-        message: string;
-        userMessage: string;
-        traceId?: string;
+        error: string;
+        detail: {
+            message: string;
+        };
     };
 };
 
@@ -70621,6 +71131,258 @@ export type PostCrmNotificationsResponses = {
 };
 
 export type PostCrmNotificationsResponse = PostCrmNotificationsResponses[keyof PostCrmNotificationsResponses];
+
+export type GetCrmNotificationsTargetOptionsMembersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        page?: number;
+        limit?: number;
+        q?: string;
+        brandGroup?: 'joyfit' | 'fit365';
+        /**
+         * ManualNotificationContractType
+         *
+         * Member contract category for manual notification targeting
+         */
+        contractType?: 'regular' | 'one_day_member' | 'family';
+    };
+    url: '/crm/notifications/target-options/members';
+};
+
+export type GetCrmNotificationsTargetOptionsMembersErrors = {
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    400: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    401: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    403: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+};
+
+export type GetCrmNotificationsTargetOptionsMembersError = GetCrmNotificationsTargetOptionsMembersErrors[keyof GetCrmNotificationsTargetOptionsMembersErrors];
+
+export type GetCrmNotificationsTargetOptionsMembersResponses = {
+    /**
+     * GetManualNotificationTargetMembersResponse
+     *
+     * Role-scoped active members available to the manual notification picker
+     */
+    200: {
+        items: Array<{
+            id: string;
+            name: string;
+            memberNumber: string;
+            storeName: string;
+        }>;
+        /**
+         * ManualNotificationPagination
+         *
+         * Manual notification list pagination metadata
+         */
+        pagination: {
+            page: number;
+            limit: number;
+            totalItems: number;
+            totalPages: number;
+            totalAllItems?: number;
+        };
+    };
+};
+
+export type GetCrmNotificationsTargetOptionsMembersResponse = GetCrmNotificationsTargetOptionsMembersResponses[keyof GetCrmNotificationsTargetOptionsMembersResponses];
+
+export type GetCrmNotificationsTargetOptionsStoresData = {
+    body?: never;
+    path?: never;
+    query?: {
+        page?: number;
+        limit?: number;
+        q?: string;
+    };
+    url: '/crm/notifications/target-options/stores';
+};
+
+export type GetCrmNotificationsTargetOptionsStoresErrors = {
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    400: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    401: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    403: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+};
+
+export type GetCrmNotificationsTargetOptionsStoresError = GetCrmNotificationsTargetOptionsStoresErrors[keyof GetCrmNotificationsTargetOptionsStoresErrors];
+
+export type GetCrmNotificationsTargetOptionsStoresResponses = {
+    /**
+     * GetManualNotificationTargetStoresResponse
+     *
+     * Role-scoped operating stores available to the manual notification picker
+     */
+    200: {
+        items: Array<{
+            id: string;
+            name: string;
+        }>;
+        /**
+         * ManualNotificationPagination
+         *
+         * Manual notification list pagination metadata
+         */
+        pagination: {
+            page: number;
+            limit: number;
+            totalItems: number;
+            totalPages: number;
+            totalAllItems?: number;
+        };
+    };
+};
+
+export type GetCrmNotificationsTargetOptionsStoresResponse = GetCrmNotificationsTargetOptionsStoresResponses[keyof GetCrmNotificationsTargetOptionsStoresResponses];
+
+export type PostCrmNotificationsTargetPreviewData = {
+    /**
+     * ManualNotificationTargetInput
+     *
+     * Manual notification target selector accepted by write and preview APIs
+     */
+    body?: {
+        type: 'all_members';
+    } | {
+        type: 'brands';
+        brands: Array<'joyfit_all' | 'joyfit' | 'joyfit24' | 'joyfit_yoga' | 'joyfit_plus' | 'fit365'>;
+    } | {
+        type: 'stores';
+        storeIds: Array<string>;
+    } | {
+        type: 'contract_type';
+        /**
+         * ManualNotificationContractType
+         *
+         * Member contract category for manual notification targeting
+         */
+        contractType: 'regular' | 'one_day_member' | 'family';
+    } | {
+        type: 'membership_duration';
+        condition: 'within' | 'at_least';
+        months: number;
+    } | {
+        type: 'dynamic_attribute';
+        attribute: 'unpaid' | 'dormant' | 'withdrawal_pending' | 'birthday_month' | 'trial';
+    } | {
+        type: 'members';
+        memberIds: Array<string>;
+    };
+    path?: never;
+    query?: never;
+    url: '/crm/notifications/target-preview';
+};
+
+export type PostCrmNotificationsTargetPreviewErrors = {
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    400: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    401: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+    /**
+     * ManualNotificationErrorResponse
+     *
+     * Manual notification error envelope
+     */
+    403: {
+        error: string;
+        detail: {
+            message: string;
+        };
+    };
+};
+
+export type PostCrmNotificationsTargetPreviewError = PostCrmNotificationsTargetPreviewErrors[keyof PostCrmNotificationsTargetPreviewErrors];
+
+export type PostCrmNotificationsTargetPreviewResponses = {
+    /**
+     * ManualNotificationTargetPreviewResponse
+     *
+     * Server-authoritative recipient count for a manual notification target
+     */
+    200: {
+        targetCount: number;
+    };
+};
+
+export type PostCrmNotificationsTargetPreviewResponse = PostCrmNotificationsTargetPreviewResponses[keyof PostCrmNotificationsTargetPreviewResponses];
 
 export type GetCrmOptionDiscountsByIdChangeHistoryData = {
     body?: never;

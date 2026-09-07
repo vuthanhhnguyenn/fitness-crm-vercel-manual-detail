@@ -28,8 +28,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { getCrmMembersInfiniteOptions } from '@/lib/api/@tanstack/react-query.gen';
-import type { GetCrmMembersResponse } from '@/lib/api/types.gen';
+import { getCrmNotificationsTargetOptionsMembersInfiniteOptions } from '@/lib/api/@tanstack/react-query.gen';
+import type { GetCrmNotificationsTargetOptionsMembersResponse } from '@/lib/api/types.gen';
 
 import {
   MANUAL_NOTIFICATION_BRAND_LABELS,
@@ -40,8 +40,8 @@ import {
 import type { ManualNotificationFormValues } from '../_schemas/manual-notification-form.schema';
 
 /**
- * The /crm/members list API only filters by brand GROUP (joyfit | fit365) — it has no
- * sub-brand query param — so the dialog offers exactly those three choices.
+ * The picker API filters by brand group (joyfit | fit365), so the dialog offers
+ * exactly those choices while sub-brand targeting remains in the segment selector.
  */
 type MemberBrandFilter = 'joyfit' | 'fit365';
 
@@ -56,7 +56,7 @@ const MEMBER_BRAND_FILTER_OPTIONS: ReadonlyArray<{
 const MEMBER_CONTRACT_TYPE_OPTIONS = MANUAL_NOTIFICATION_CONTRACT_TYPE_OPTIONS;
 type MemberContractType = ManualNotificationContractType;
 
-type Member = GetCrmMembersResponse['members'][number];
+type Member = GetCrmNotificationsTargetOptionsMembersResponse['items'][number];
 type SelectedMember = Extract<
   ManualNotificationFormValues['target'],
   { type: 'members' }
@@ -70,9 +70,9 @@ interface ManualNotificationMemberSelectProps {
 function toSelectedMember(member: Member): SelectedMember {
   return {
     id: member.id,
-    name: member.name_kanji,
-    memberNumber: member.member_number,
-    storeName: member.store_name,
+    name: member.name,
+    memberNumber: member.memberNumber,
+    storeName: member.storeName,
   };
 }
 
@@ -88,26 +88,25 @@ export function ManualNotificationMemberSelect({
   const debouncedSearch = useDebounce(search, 300);
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const query = useInfiniteQuery({
-    ...getCrmMembersInfiniteOptions({
+    ...getCrmNotificationsTargetOptionsMembersInfiniteOptions({
       query: {
         page: 1,
         limit: 15,
-        search: debouncedSearch || undefined,
-        status: ['active'],
-        brand_group: brand === 'all' ? undefined : [brand],
-        contract_type: contractType === 'all' ? undefined : [contractType],
+        q: debouncedSearch || undefined,
+        brandGroup: brand === 'all' ? undefined : brand,
+        contractType: contractType === 'all' ? undefined : contractType,
       },
     }),
     enabled: open,
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
-      lastPage.pagination.page < lastPage.pagination.total_pages
+      lastPage.pagination.page < lastPage.pagination.totalPages
         ? lastPage.pagination.page + 1
         : undefined,
     placeholderData: keepPreviousData,
   });
-  const loadedMembers = query.data?.pages.flatMap((page) => page.members) ?? [];
-  const total = query.data?.pages[0]?.pagination.total ?? loadedMembers.length;
+  const loadedMembers = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const total = query.data?.pages[0]?.pagination.totalItems ?? loadedMembers.length;
   const sentinelRef = useInfiniteScroll({
     hasMore: Boolean(query.hasNextPage),
     isLoading: query.isFetchingNextPage,
@@ -199,9 +198,7 @@ export function ManualNotificationMemberSelect({
                   >
                     <SelectTrigger className="bg-background h-8 w-[120px] text-xs">
                       <SelectValue>
-                        {brand === 'all'
-                          ? '全ブランド'
-                          : MANUAL_NOTIFICATION_BRAND_LABELS[brand]}
+                        {brand === 'all' ? '全ブランド' : MANUAL_NOTIFICATION_BRAND_LABELS[brand]}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -244,19 +241,24 @@ export function ManualNotificationMemberSelect({
                   </Select>
                 </div>
               </div>
-              <div
-                ref={listContainerRef}
-                className="h-full min-h-0 space-y-1 overflow-y-auto p-2"
-              >
+              <div ref={listContainerRef} className="h-full min-h-0 space-y-1 overflow-y-auto p-2">
                 {query.isLoading ? (
                   <p className="text-muted-foreground p-4 text-center text-xs">
                     会員を読み込み中...
                   </p>
                 ) : null}
                 {query.isError ? (
-                  <p className="text-destructive p-4 text-center text-xs">
-                    会員の取得に失敗しました
-                  </p>
+                  <div className="flex flex-col items-center gap-2 p-4">
+                    <p className="text-destructive text-center text-xs">会員の取得に失敗しました</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void query.refetch()}
+                    >
+                      再試行
+                    </Button>
+                  </div>
                 ) : null}
                 {!query.isLoading && !query.isError && loadedMembers.length === 0 ? (
                   <p className="text-muted-foreground p-4 text-center text-xs">
@@ -273,15 +275,15 @@ export function ManualNotificationMemberSelect({
                       onCheckedChange={(checked) => toggleMember(member, Boolean(checked))}
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm">{member.name_kanji}</span>
+                      <span className="block text-sm">{member.name}</span>
                       <span className="text-muted-foreground text-xs">
-                        {member.member_number} / {member.store_name}
+                        {member.memberNumber} / {member.storeName}
                       </span>
                     </span>
                   </label>
                 ))}
                 {(query.hasNextPage || query.isFetchingNextPage) && (
-                  <div ref={sentinelRef} className="py-2 text-center text-xs text-muted-foreground">
+                  <div ref={sentinelRef} className="text-muted-foreground py-2 text-center text-xs">
                     {query.isFetchingNextPage ? '読み込み中...' : null}
                   </div>
                 )}

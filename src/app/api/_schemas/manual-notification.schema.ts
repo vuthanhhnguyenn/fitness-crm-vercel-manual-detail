@@ -90,28 +90,33 @@ export const ManualNotificationTargetSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-export const ManualNotificationTargetInputSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('all_members') }),
-  z.object({
-    type: z.literal('brands'),
-    brands: z.array(ManualNotificationBrandSchema),
-  }),
-  z.object({ type: z.literal('stores'), storeIds: z.array(z.string().min(1)) }),
-  z.object({
-    type: z.literal('contract_type'),
-    contractType: ManualNotificationContractTypeSchema,
-  }),
-  z.object({
-    type: z.literal('membership_duration'),
-    condition: z.enum(['within', 'at_least']),
-    months: z.number().int().min(1).max(60),
-  }),
-  z.object({
-    type: z.literal('dynamic_attribute'),
-    attribute: z.enum(['unpaid', 'dormant', 'withdrawal_pending', 'birthday_month', 'trial']),
-  }),
-  z.object({ type: z.literal('members'), memberIds: z.array(z.string().min(1)) }),
-]);
+export const ManualNotificationTargetInputSchema = z
+  .discriminatedUnion('type', [
+    z.object({ type: z.literal('all_members') }),
+    z.object({
+      type: z.literal('brands'),
+      brands: z.array(ManualNotificationBrandSchema),
+    }),
+    z.object({ type: z.literal('stores'), storeIds: z.array(z.string().min(1)) }),
+    z.object({
+      type: z.literal('contract_type'),
+      contractType: ManualNotificationContractTypeSchema,
+    }),
+    z.object({
+      type: z.literal('membership_duration'),
+      condition: z.enum(['within', 'at_least']),
+      months: z.number().int().min(1).max(60),
+    }),
+    z.object({
+      type: z.literal('dynamic_attribute'),
+      attribute: z.enum(['unpaid', 'dormant', 'withdrawal_pending', 'birthday_month', 'trial']),
+    }),
+    z.object({ type: z.literal('members'), memberIds: z.array(z.string().min(1)) }),
+  ])
+  .openapi({
+    title: 'ManualNotificationTargetInput',
+    description: 'Manual notification target selector accepted by write and preview APIs',
+  });
 
 const ManualNotificationTargetPreviewCountsSchema = z.object({
   allMembers: z.number().int().nonnegative(),
@@ -145,10 +150,15 @@ const ManualNotificationTemplateSchema = z.object({
   body: z.string(),
 });
 
-export const GetManualNotificationFormConfigResponseSchema = z.object({
-  templates: z.array(ManualNotificationTemplateSchema),
-  targetPreviewCounts: ManualNotificationTargetPreviewCountsSchema,
-});
+export const GetManualNotificationFormConfigResponseSchema = z
+  .object({
+    templates: z.array(ManualNotificationTemplateSchema),
+    targetPreviewCounts: ManualNotificationTargetPreviewCountsSchema,
+  })
+  .openapi({
+    title: 'GetManualNotificationFormConfigResponse',
+    description: 'Manual notification form configuration and baseline preview counts',
+  });
 
 const ManualNotificationRecurringTimingSchema = z.object({
   type: z.literal('recurring'),
@@ -427,37 +437,125 @@ export const GetManualNotificationsQuerySchema = z
     description: 'Manual notification list query for I-03',
   });
 
-export const ManualNotificationPaginationSchema = z.object({
-  page: z.number().int().min(1),
-  limit: z.number().int().min(1),
-  totalItems: z.number().int().nonnegative(),
-  totalPages: z.number().int().nonnegative(),
-  totalAllItems: z.number().int().nonnegative().optional(),
+export const ManualNotificationPaginationSchema = z
+  .object({
+    page: z.number().int().min(1),
+    limit: z.number().int().min(1),
+    totalItems: z.number().int().nonnegative(),
+    totalPages: z.number().int().nonnegative(),
+    totalAllItems: z.number().int().nonnegative().optional(),
+  })
+  .openapi({
+    title: 'ManualNotificationPagination',
+    description: 'Manual notification list pagination metadata',
+  });
+
+export const GetManualNotificationTargetStoresQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(50).default(30),
+    q: z.string().trim().max(100).optional(),
+  })
+  .openapi({
+    title: 'GetManualNotificationTargetStoresQuery',
+    description: 'Role-scoped store picker query for manual notifications',
+  });
+
+const ManualNotificationTargetStoreOptionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
 });
 
-export const GetManualNotificationsResponseSchema = z.object({
-  items: z.array(ManualNotificationListItemSchema),
-  pagination: ManualNotificationPaginationSchema,
+export const GetManualNotificationTargetStoresResponseSchema = z
+  .object({
+    items: z.array(ManualNotificationTargetStoreOptionSchema),
+    pagination: ManualNotificationPaginationSchema,
+  })
+  .openapi({
+    title: 'GetManualNotificationTargetStoresResponse',
+    description: 'Role-scoped operating stores available to the manual notification picker',
+  });
+
+export const GetManualNotificationTargetMembersQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(50).default(15),
+    q: z.string().trim().max(100).optional(),
+    brandGroup: z.enum(['joyfit', 'fit365']).optional(),
+    contractType: ManualNotificationContractTypeSchema.optional(),
+  })
+  .openapi({
+    title: 'GetManualNotificationTargetMembersQuery',
+    description: 'Role-scoped active member picker query for manual notifications',
+  });
+
+const ManualNotificationTargetMemberOptionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  memberNumber: z.string().min(1),
+  storeName: z.string().min(1),
 });
 
-export const ManualNotificationErrorResponseSchema = z.object({
-  // Canonical `ErrorResponseSchema` envelope (same as campaign/promo-code/store):
-  // the global toast reads `userMessage` via `getApiErrorMessage` (api-error.util.ts),
-  // and `code` powers discriminator helpers (`isNotificationNotFoundError`).
-  code: z.string(),
-  message: z.string(),
-  userMessage: z.string(),
-  traceId: z.string().optional(),
-});
+export const GetManualNotificationTargetMembersResponseSchema = z
+  .object({
+    items: z.array(ManualNotificationTargetMemberOptionSchema),
+    pagination: ManualNotificationPaginationSchema,
+  })
+  .openapi({
+    title: 'GetManualNotificationTargetMembersResponse',
+    description: 'Role-scoped active members available to the manual notification picker',
+  });
 
-export const ManualNotificationActionSchema = z.object({
-  action: z.enum(['request_approval', 'send', 'approve', 'return', 'resubmit', 'delete']),
-  reason: z.string().trim().min(1).max(500).optional(),
-});
+export const GetManualNotificationsResponseSchema = z
+  .object({
+    items: z.array(ManualNotificationListItemSchema),
+    pagination: ManualNotificationPaginationSchema,
+  })
+  .openapi({
+    title: 'GetManualNotificationsResponse',
+    description: 'Manual notification list response',
+  });
 
-export const ManualNotificationActionResponseSchema = z.object({
-  item: ManualNotificationListItemSchema,
-});
+export const ManualNotificationErrorResponseSchema = z
+  .object({
+    // Matches the surveys convention (`{ error, detail: { message } }`).
+    // `getApiErrorMessage` reads body.error first and supports the canonical
+    // userMessage field used by older API routes as a compatibility fallback.
+    error: z.string(),
+    detail: z.object({ message: z.string() }),
+  })
+  .openapi({
+    title: 'ManualNotificationErrorResponse',
+    description: 'Manual notification error envelope',
+  });
+
+export const ManualNotificationActionSchema = z
+  .object({
+    action: z.enum(['request_approval', 'send', 'approve', 'return', 'resubmit', 'delete']),
+    reason: z.string().trim().min(1).max(500).optional(),
+  })
+  .openapi({
+    title: 'ManualNotificationAction',
+    description: 'Action applied to a manual notification',
+  });
+
+export const ManualNotificationActionResponseSchema = z
+  .object({
+    item: ManualNotificationListItemSchema,
+  })
+  .openapi({
+    title: 'ManualNotificationActionResponse',
+    description: 'Manual notification action response',
+  });
+
+export const ManualNotificationTargetPreviewResponseSchema = z
+  .object({
+    targetCount: z.number().int().nonnegative(),
+  })
+  .openapi({
+    title: 'ManualNotificationTargetPreviewResponse',
+    description: 'Server-authoritative recipient count for a manual notification target',
+  });
 
 export type ManualNotificationChannel = z.infer<typeof ManualNotificationChannelSchema>;
 export type ManualNotificationTarget = z.infer<typeof ManualNotificationTargetSchema>;
@@ -467,7 +565,18 @@ export type ManualNotificationListItem = z.infer<typeof ManualNotificationListIt
 export type GetManualNotificationFormConfigResponse = z.infer<
   typeof GetManualNotificationFormConfigResponseSchema
 >;
-export type ManualNotificationTemplate = z.infer<typeof ManualNotificationTemplateSchema>;
 export type GetManualNotificationsResponse = z.infer<typeof GetManualNotificationsResponseSchema>;
 export type ManualNotificationErrorResponse = z.infer<typeof ManualNotificationErrorResponseSchema>;
 export type ManualNotificationUpsertBody = z.infer<typeof ManualNotificationUpsertBodySchema>;
+export type GetManualNotificationTargetStoresQuery = z.infer<
+  typeof GetManualNotificationTargetStoresQuerySchema
+>;
+export type GetManualNotificationTargetStoresResponse = z.infer<
+  typeof GetManualNotificationTargetStoresResponseSchema
+>;
+export type GetManualNotificationTargetMembersQuery = z.infer<
+  typeof GetManualNotificationTargetMembersQuerySchema
+>;
+export type GetManualNotificationTargetMembersResponse = z.infer<
+  typeof GetManualNotificationTargetMembersResponseSchema
+>;

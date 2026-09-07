@@ -69,6 +69,9 @@ function notification(input: SeedInput): ManualNotificationRow {
     channels: [...input.channels].sort(
       (first, second) => CHANNEL_ORDER[first] - CHANNEL_ORDER[second],
     ),
+    // Broad targets are expanded to concrete store IDs by the table after the
+    // store/member tables have been seeded. Explicit store/member targets may
+    // provide their IDs here and are preserved as-is.
     targetStoreIds: [...(input.targetStoreIds ?? [])],
     contents: buildContents(input),
   };
@@ -92,6 +95,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'pending_approval',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.manager,
+    recipientScopeStoreIds: null,
     createdAt: '2026-06-15T14:30:00+09:00',
     updatedAt: '2026-06-18T09:15:00+09:00',
     deletedAt: null,
@@ -106,6 +110,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'sent',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.headquarter,
+    recipientScopeStoreIds: null,
     approvedBy: 'Headquarter',
     approvedAt: '2026-06-25T10:05:00+09:00',
     deliveryResult: {
@@ -133,6 +138,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'scheduled',
     requiresApproval: false,
     createdByUserId: STAFF_IDS.manager,
+    recipientScopeStoreIds: null,
     createdAt: '2026-05-10T11:00:00+09:00',
     updatedAt: '2026-08-01T09:00:00+09:00',
     deletedAt: null,
@@ -150,6 +156,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'sent',
     requiresApproval: false,
     createdByUserId: STAFF_IDS.staff,
+    recipientScopeStoreIds: ['store-004'],
     deliveryResult: {
       deliveredCount: 960,
       reachedCount: 940,
@@ -180,6 +187,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'scheduled',
     requiresApproval: false,
     createdByUserId: STAFF_IDS.staff,
+    recipientScopeStoreIds: ['store-001'],
     createdAt: '2026-05-01T09:00:00+09:00',
     updatedAt: '2026-07-30T09:00:00+09:00',
     deletedAt: null,
@@ -193,12 +201,12 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     },
     channels: ['email', 'in_app'],
     timing: { type: 'scheduled', scheduledAt: '2026-09-15T12:00:00+09:00' },
-    // Placeholder; the real live count of `contract_type: regular` members is computed
-    // at seed time in `manual-notification.table.ts:_seed()`.
+    // Draft counts are projected from the current roster when list/detail is read.
     targetCount: 0,
     status: 'draft',
     requiresApproval: false,
     createdByUserId: STAFF_IDS.manager,
+    recipientScopeStoreIds: null,
     createdAt: '2026-06-01T10:00:00+09:00',
     updatedAt: '2026-07-29T09:00:00+09:00',
     deletedAt: null,
@@ -213,6 +221,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'returned',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.manager,
+    recipientScopeStoreIds: null,
     createdAt: '2026-07-01T10:00:00+09:00',
     updatedAt: '2026-07-28T09:00:00+09:00',
     returnReason: '配信対象の範囲を確認して再申請してください。',
@@ -228,6 +237,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'draft',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.headquarter,
+    recipientScopeStoreIds: null,
     createdAt: '2026-06-30T09:00:00+09:00',
     updatedAt: '2026-07-27T09:00:00+09:00',
     deletedAt: null,
@@ -242,6 +252,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'sent',
     requiresApproval: false,
     createdByUserId: STAFF_IDS.headquarter,
+    recipientScopeStoreIds: null,
     deliveryResult: {
       deliveredCount: 120,
       reachedCount: 118,
@@ -261,6 +272,7 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
     status: 'draft',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.staff,
+    recipientScopeStoreIds: ['store-001'],
     createdAt: '2026-06-01T09:00:00+09:00',
     updatedAt: '2026-06-01T09:00:00+09:00',
     deletedAt: '2026-06-02T10:00:00+09:00',

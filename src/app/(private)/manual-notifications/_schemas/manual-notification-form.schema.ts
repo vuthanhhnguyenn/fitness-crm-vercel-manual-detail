@@ -11,12 +11,9 @@ import {
 } from '../_constants/manual-notification.constants';
 
 const optionalNumber = (message: string, maximum?: { value: number; message: string }) => {
-  let schema = z.coerce.number().int().positive(message);
+  let schema = z.number().int().positive(message);
   if (maximum) schema = schema.max(maximum.value, maximum.message);
-  return z.preprocess(
-    (value) => (value === '' || value === null || value === undefined ? undefined : value),
-    schema.optional(),
-  );
+  return schema.optional();
 };
 
 const targetSchema = z.discriminatedUnion('type', [
@@ -36,7 +33,7 @@ const targetSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('membership_duration'),
     condition: z.enum(['within', 'at_least']),
-    months: z.coerce.number().int().min(1, '1以上の月数を入力してください').max(60),
+    months: z.number().int().min(1, '1以上の月数を入力してください').max(60),
   }),
   z.object({
     type: z.literal('dynamic_attribute'),
@@ -72,38 +69,36 @@ const timingSchema = z.discriminatedUnion('type', [
     intervalUnit: z.enum(['day', 'week', 'month']).optional(),
     endDate: z.date().optional(),
     maxOccurrences: optionalNumber('1以上の配信回数を入力してください'),
-    endMode: z.enum(['none', 'date', 'count']).default('none'),
+    endMode: z.enum(['none', 'date', 'count']),
   }),
 ]);
 
 export const manualNotificationFormSchema = z
   .object({
-    intent: z.enum(['save', 'submit']).default('save'),
+    intent: z.enum(['save', 'submit']),
     title: z.string().trim().max(255),
     target: targetSchema,
     channels: z.array(z.enum(MANUAL_NOTIFICATION_CHANNEL_OPTIONS)),
     contents: z.object({
       sms: z.object({
-        body: z.string().max(670, 'SMS本文は670文字以内で入力してください').default(''),
+        body: z.string().max(670, 'SMS本文は670文字以内で入力してください'),
       }),
       push: z.object({
-        title: z.string().default(''),
+        title: z.string(),
         body: z
           .string()
-          .max(TEXTAREA_MAX_LENGTH, `通知本文は${TEXTAREA_MAX_LENGTH}文字以内で入力してください`)
-          .default(''),
+          .max(TEXTAREA_MAX_LENGTH, `通知本文は${TEXTAREA_MAX_LENGTH}文字以内で入力してください`),
       }),
       email: z.object({
-        subject: z.string().default(''),
-        body: z.string().max(10000, 'メール本文は10000文字以内で入力してください').default(''),
+        subject: z.string(),
+        body: z.string().max(10000, 'メール本文は10000文字以内で入力してください'),
       }),
       in_app: z.object({
-        title: z.string().default(''),
+        title: z.string(),
         body: z
           .string()
-          .max(TEXTAREA_MAX_LENGTH, `通知本文は${TEXTAREA_MAX_LENGTH}文字以内で入力してください`)
-          .default(''),
-        linkUrl: z.string().trim().default(''),
+          .max(TEXTAREA_MAX_LENGTH, `通知本文は${TEXTAREA_MAX_LENGTH}文字以内で入力してください`),
+        linkUrl: z.string().trim(),
       }),
     }),
     timing: timingSchema,
@@ -251,7 +246,7 @@ export const manualNotificationFormSchema = z
 
 export type ManualNotificationFormValues = z.infer<typeof manualNotificationFormSchema>;
 
-function manualNotificationTargetToRequest(
+export function manualNotificationTargetToRequest(
   target: ManualNotificationFormValues['target'],
 ): ManualNotificationUpsertBody['target'] {
   if (target.type === 'stores') {

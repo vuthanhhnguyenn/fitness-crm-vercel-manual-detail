@@ -22,7 +22,7 @@ import {
   MANUAL_NOTIFICATION_TARGET_OPTIONS,
   type ManualNotificationChannel,
 } from '../_constants/manual-notification.constants';
-import type { useManualNotificationFilters } from '../_hooks/use-manual-notification-filters';
+import type { useManualNotificationFilters } from '../_hooks/use-manual-notification-filters.hook';
 
 type ManualNotificationFiltersHook = ReturnType<typeof useManualNotificationFilters>;
 
