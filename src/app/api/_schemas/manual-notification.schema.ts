@@ -2,6 +2,8 @@ import { isSafeHttpsUrl } from '@/utils/url.util';
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
+import { MANUAL_NOTIFICATION_BRANDS } from '@/lib/utils/manual-notification-target.util';
+
 extendZodWithOpenApi(z);
 
 export const ManualNotificationStatusSchema = z
@@ -16,12 +18,10 @@ export const ManualNotificationChannelSchema = z.enum(['sms', 'push', 'email', '
   description: 'Manual notification delivery channel',
 });
 
-export const ManualNotificationBrandSchema = z
-  .enum(['joyfit_all', 'joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus', 'fit365'])
-  .openapi({
-    title: 'ManualNotificationBrand',
-    description: 'Brand or JOYFIT sub-brand defined by I-03',
-  });
+export const ManualNotificationBrandSchema = z.enum(MANUAL_NOTIFICATION_BRANDS).openapi({
+  title: 'ManualNotificationBrand',
+  description: 'Brand or JOYFIT sub-brand defined by I-03',
+});
 
 /**
  * Aligned with the /crm/members ContractTypeSchema (member.schema.ts) so that
@@ -58,7 +58,7 @@ export const ManualNotificationTargetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('all_members') }),
   z.object({
     type: z.literal('brands'),
-    brands: z.array(ManualNotificationBrandSchema),
+    brands: z.array(ManualNotificationBrandSchema).max(1),
   }),
   z.object({
     type: z.literal('stores'),
@@ -95,7 +95,7 @@ export const ManualNotificationTargetInputSchema = z
     z.object({ type: z.literal('all_members') }),
     z.object({
       type: z.literal('brands'),
-      brands: z.array(ManualNotificationBrandSchema),
+      brands: z.array(ManualNotificationBrandSchema).max(1),
     }),
     z.object({ type: z.literal('stores'), storeIds: z.array(z.string().min(1)) }),
     z.object({

@@ -1,9 +1,9 @@
+import { MANUAL_NOTIFICATION_JOYFIT_SUB_BRANDS } from '@/lib/utils/manual-notification-target.util';
+
 import type { DbType } from '../_db.types';
 import { MANUAL_NOTIFICATION_SEED } from '../seeds/manual-notification.seed';
 import type { ManualNotificationsType } from '../types';
 import type { ManualNotificationRow } from '../types/manual-notifications.type';
-
-const JOYFIT_STORE_BRANDS = ['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus'] as const;
 
 function cloneContents(contents: ManualNotificationRow['contents']) {
   return {
@@ -38,7 +38,7 @@ function getSeedTargetStoreIds(row: ManualNotificationRow, db: DbType): string[]
   if (row.target.type === 'brands') {
     const selectedBrands = new Set(
       row.target.brands.flatMap((brand) =>
-        brand === 'joyfit_all' ? [...JOYFIT_STORE_BRANDS] : [brand],
+        brand === 'joyfit_all' ? [...MANUAL_NOTIFICATION_JOYFIT_SUB_BRANDS] : [brand],
       ),
     );
     stores = stores.filter((store) => selectedBrands.has(store.brand));

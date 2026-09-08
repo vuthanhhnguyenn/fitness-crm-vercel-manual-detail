@@ -1,5 +1,6 @@
 import { TEXTAREA_MAX_LENGTH } from '@/constants/app.constants';
 import { isSafeHttpsUrl } from '@/utils/url.util';
+import { endOfDay } from 'date-fns';
 import { z } from 'zod';
 
 import type { ManualNotificationDetail, ManualNotificationUpsertBody } from '@/lib/api/types.gen';
@@ -20,7 +21,9 @@ const targetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('all_members') }),
   z.object({
     type: z.literal('brands'),
-    brands: z.array(z.enum(MANUAL_NOTIFICATION_BRAND_OPTIONS)),
+    brands: z
+      .array(z.enum(MANUAL_NOTIFICATION_BRAND_OPTIONS))
+      .max(1, 'ブランドは1つだけ選択してください'),
   }),
   z.object({
     type: z.literal('stores'),
@@ -271,12 +274,6 @@ export const emptyManualNotificationFormValues: ManualNotificationFormValues = {
   },
   timing: { type: 'immediate' },
 };
-
-function endOfDay(date: Date): Date {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
-}
 
 export function manualNotificationFormValuesToRequestBody(
   values: ManualNotificationFormValues,

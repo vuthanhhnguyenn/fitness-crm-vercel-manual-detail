@@ -5,15 +5,13 @@ import { DataTableColumnHeader } from '@/components/common/data-table/data-table
 import { Badge } from '@/components/ui/badge';
 
 import {
-  MANUAL_NOTIFICATION_BRAND_LABELS,
   MANUAL_NOTIFICATION_CHANNEL_LABELS,
-  MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
   type ManualNotificationRow,
-  getManualNotificationDynamicAttributeLabel,
   getManualNotificationStatusClass,
   getManualNotificationStatusLabel,
 } from '../_constants/manual-notification.constants';
+import { formatManualNotificationTarget } from '../_utils/manual-notification-target-display.util';
 import { ManualNotificationRowActions } from './manual-notification-row-actions';
 
 const CHANNEL_ICONS = {
@@ -22,32 +20,6 @@ const CHANNEL_ICONS = {
   email: Mail,
   in_app: Smartphone,
 } as const;
-
-function targetDetail(row: ManualNotificationRow): string {
-  switch (row.target.type) {
-    case 'all_members':
-      return '全会員対象';
-    case 'brands':
-      return (
-        row.target.brands.map((brand) => MANUAL_NOTIFICATION_BRAND_LABELS[brand]).join(' · ') ||
-        '配信対象未設定'
-      );
-    case 'stores':
-      return row.target.stores.map((store) => store.name).join(' · ') || '配信対象未設定';
-    case 'contract_type':
-      return MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[row.target.contractType];
-    case 'membership_duration':
-      return row.target.condition === 'within'
-        ? `入会後${row.target.months}ヶ月以内`
-        : `入会後${row.target.months}ヶ月以上`;
-    case 'dynamic_attribute':
-      return getManualNotificationDynamicAttributeLabel(row.target.attribute);
-    case 'members':
-      return row.target.members.length > 0
-        ? `${row.target.members.length}名を指定`
-        : '配信対象未設定';
-  }
-}
 
 function targetBadgeClass(type: ManualNotificationRow['target']['type']): string {
   if (type === 'all_members') return 'border-transparent bg-neutral-900 text-white';
@@ -81,7 +53,7 @@ export function getManualNotificationsTableColumns(): ColumnDef<ManualNotificati
     },
     {
       id: 'target',
-      accessorFn: (row) => targetDetail(row),
+      accessorFn: (row) => formatManualNotificationTarget(row.target),
       header: '配信対象',
       cell: ({ row }) => (
         <div className="flex min-w-[120px] flex-col gap-0.5">
@@ -91,7 +63,9 @@ export function getManualNotificationsTableColumns(): ColumnDef<ManualNotificati
           >
             {MANUAL_NOTIFICATION_TARGET_LABELS[row.original.target.type]}
           </Badge>
-          <span className="text-muted-foreground text-[10px]">{targetDetail(row.original)}</span>
+          <span className="text-muted-foreground text-[10px]">
+            {formatManualNotificationTarget(row.original.target)}
+          </span>
         </div>
       ),
       meta: { className: 'w-[120px] min-w-[120px]' },

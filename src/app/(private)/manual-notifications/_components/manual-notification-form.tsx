@@ -8,6 +8,7 @@ import { Bell, Mail, MessageSquare, Smartphone } from 'lucide-react';
 
 import { useScrollToFirstError } from '@/hooks/use-scroll-to-first-error';
 
+import { RequiredMark } from '@/components/common/field-marker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -169,7 +170,7 @@ export function ManualNotificationForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  タイトル（管理用） <span className="text-destructive">*</span>
+                  タイトル（管理用） <RequiredMark />
                 </FormLabel>
                 <FormControl>
                   <Input

@@ -34,7 +34,7 @@ export class Authentication {
             }
         });
     }
-
+    
     /**
      * Get current user
      *
@@ -3642,7 +3642,7 @@ export class NotificationCrud {
             }
         });
     }
-
+    
     /**
      * Get members available for manual notification targeting
      *
@@ -3651,7 +3651,7 @@ export class NotificationCrud {
     public static getCrmNotificationsTargetOptionsMembers<ThrowOnError extends boolean = false>(options?: Options<GetCrmNotificationsTargetOptionsMembersData, ThrowOnError>) {
         return (options?.client ?? client).get<GetCrmNotificationsTargetOptionsMembersResponses, GetCrmNotificationsTargetOptionsMembersErrors, ThrowOnError>({ url: '/crm/notifications/target-options/members', ...options });
     }
-
+    
     /**
      * Get stores available for manual notification targeting
      *
@@ -3660,7 +3660,7 @@ export class NotificationCrud {
     public static getCrmNotificationsTargetOptionsStores<ThrowOnError extends boolean = false>(options?: Options<GetCrmNotificationsTargetOptionsStoresData, ThrowOnError>) {
         return (options?.client ?? client).get<GetCrmNotificationsTargetOptionsStoresResponses, GetCrmNotificationsTargetOptionsStoresErrors, ThrowOnError>({ url: '/crm/notifications/target-options/stores', ...options });
     }
-
+    
     /**
      * Preview manual notification recipient count
      *

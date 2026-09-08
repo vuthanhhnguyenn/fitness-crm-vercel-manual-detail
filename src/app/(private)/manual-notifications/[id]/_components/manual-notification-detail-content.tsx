@@ -20,15 +20,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { GetCrmNotificationsByIdResponse } from '@/lib/api/types.gen';
 
 import {
-  MANUAL_NOTIFICATION_BRAND_LABELS,
   MANUAL_NOTIFICATION_CHANNEL_LABELS,
-  MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS,
   MANUAL_NOTIFICATION_FREQUENCY_LABELS,
   MANUAL_NOTIFICATION_INTERVAL_UNIT_LABELS,
   MANUAL_NOTIFICATION_STATUS_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
-  getManualNotificationDynamicAttributeLabel,
 } from '../../_constants/manual-notification.constants';
+import { formatManualNotificationTarget } from '../../_utils/manual-notification-target-display.util';
 
 type Detail = GetCrmNotificationsByIdResponse['item'];
 type Channel = Detail['channels'][number];
@@ -61,30 +59,6 @@ export function timingName(timing: Detail['timing']) {
   if (timing.type === 'immediate') return '即時';
   if (timing.type === 'scheduled') return '予約';
   return '繰り返し';
-}
-
-function formatTarget(target: Detail['target']) {
-  switch (target.type) {
-    case 'all_members':
-      return '全会員対象';
-    case 'brands':
-      return (
-        target.brands.map((brand) => MANUAL_NOTIFICATION_BRAND_LABELS[brand]).join(' · ') ||
-        '配信対象未設定'
-      );
-    case 'stores':
-      return target.stores.map((store) => store.name).join(' · ') || '配信対象未設定';
-    case 'contract_type':
-      return MANUAL_NOTIFICATION_CONTRACT_TYPE_LABELS[target.contractType];
-    case 'membership_duration':
-      return target.condition === 'within'
-        ? `入会後${target.months}ヶ月以内`
-        : `入会後${target.months}ヶ月以上`;
-    case 'dynamic_attribute':
-      return getManualNotificationDynamicAttributeLabel(target.attribute);
-    case 'members':
-      return target.members.length > 0 ? `${target.members.length}名を指定` : '配信対象未設定';
-  }
 }
 
 function statusTone(status: Detail['status']): StatusTone {
@@ -298,7 +272,7 @@ export function ManualNotificationDetailContent({ item, isDeliveryActive }: Read
               </div>
               <div>
                 <p className="text-muted-foreground mb-1 text-xs">対象詳細</p>
-                <p className="text-sm">{formatTarget(item.target)}</p>
+                <p className="text-sm">{formatManualNotificationTarget(item.target)}</p>
               </div>
               <div className="bg-muted/50 flex items-center gap-3 rounded-lg p-3">
                 <Users className="text-muted-foreground size-5" />

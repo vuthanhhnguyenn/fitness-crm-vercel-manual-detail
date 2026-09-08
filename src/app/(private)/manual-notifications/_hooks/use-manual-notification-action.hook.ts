@@ -3,24 +3,14 @@
 import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { z } from 'zod';
 
 import {
   getCrmNotificationsByIdQueryKey,
   getCrmNotificationsQueryKey,
   patchCrmNotificationsByIdActionMutation,
 } from '@/lib/api/@tanstack/react-query.gen';
-import type { PatchCrmNotificationsByIdActionData } from '@/lib/api/types.gen';
 
-export type ManualNotificationAction = NonNullable<
-  PatchCrmNotificationsByIdActionData['body']
->['action'];
-
-export const manualNotificationReturnReasonSchema = z
-  .string()
-  .trim()
-  .min(1, '差し戻し理由を入力してください')
-  .max(500, '差し戻し理由は500文字以内で入力してください');
+import type { ManualNotificationAction } from '../_utils/manual-notification-action.util';
 
 export function useManualNotificationAction() {
   const queryClient = useQueryClient();

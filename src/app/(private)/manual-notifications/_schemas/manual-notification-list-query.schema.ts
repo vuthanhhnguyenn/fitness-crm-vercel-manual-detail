@@ -13,7 +13,7 @@ export const ManualNotificationListQuerySchema = z.object({
     .number()
     .int()
     .refine((value) => MANUAL_NOTIFICATION_PAGE_SIZE_OPTIONS.some((option) => option === value)),
-  q: z.string().max(100).optional(),
+  q: z.string().trim().max(100).optional(),
   status: z.enum(MANUAL_NOTIFICATION_STATUS_OPTIONS).optional(),
   channel: z.enum(MANUAL_NOTIFICATION_CHANNEL_OPTIONS).optional(),
   targetType: z.enum(MANUAL_NOTIFICATION_TARGET_OPTIONS).optional(),

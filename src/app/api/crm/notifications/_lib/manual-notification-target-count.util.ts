@@ -7,10 +7,11 @@ import type {
 } from '@/app/api/_schemas/manual-notification.schema';
 
 import {
+  MANUAL_NOTIFICATION_BRANDS,
   type ManualNotificationTargetLike,
   type NotificationMemberLike,
   getMatchingMemberIds,
-} from '@/lib/manual-notification-target.util';
+} from '@/lib/utils/manual-notification-target.util';
 
 type TargetPreviewCounts = GetManualNotificationFormConfigResponse['targetPreviewCounts'];
 
@@ -61,16 +62,8 @@ function countByStore(allowedStoreIds: readonly string[] | null): Record<string,
 }
 
 function countByBrand(allowedStoreIds: readonly string[] | null): TargetPreviewCounts['brands'] {
-  const brands: Array<keyof TargetPreviewCounts['brands']> = [
-    'joyfit_all',
-    'joyfit',
-    'joyfit24',
-    'joyfit_yoga',
-    'joyfit_plus',
-    'fit365',
-  ];
   return Object.fromEntries(
-    brands.map((brand) => [
+    MANUAL_NOTIFICATION_BRANDS.map((brand) => [
       brand,
       countMembersForTarget({ type: 'brands', brands: [brand] }, allowedStoreIds),
     ]),

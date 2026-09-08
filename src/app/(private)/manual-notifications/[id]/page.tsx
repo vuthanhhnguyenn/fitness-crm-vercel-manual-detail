@@ -1,48 +1,38 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
 import { useParams, useRouter } from 'next/navigation';
 
 import { formatDateYYYYMMDD_HHMM } from '@/utils/date.util';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Pencil, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
+import { Check, Pencil, RotateCcw, Trash2, Undo2 } from 'lucide-react';
 
 import { BackLink } from '@/components/common/back-link';
 import { DataStateBoundary } from '@/components/common/data-state-boundary';
 import { PageHeader } from '@/components/common/page-header';
 import { RoleGatedButton } from '@/components/common/role-gated-button';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 
 import { getCrmNotificationsByIdOptions } from '@/lib/api/@tanstack/react-query.gen';
 import { navigate } from '@/lib/routes/routes.util';
 
 import { Permission } from '@/types/permission.type';
 
+import { ManualNotificationConfirmDialog } from '../_components/manual-notification-confirm-dialog';
+import { ManualNotificationReturnDialog } from '../_components/manual-notification-return-dialog';
 import {
   MANUAL_NOTIFICATION_STATUS_CLASSES,
   MANUAL_NOTIFICATION_STATUS_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
 } from '../_constants/manual-notification.constants';
+import { useManualNotificationAction } from '../_hooks/use-manual-notification-action.hook';
+import type { ManualNotificationReturnReason } from '../_schemas/manual-notification-action.schema';
 import {
   type ManualNotificationAction,
-  manualNotificationReturnReasonSchema,
-  useManualNotificationAction,
-} from '../_hooks/use-manual-notification-action.hook';
-import { getManualNotificationActionPolicy } from '../_utils/manual-notification-action.util';
+  getManualNotificationActionPolicy,
+} from '../_utils/manual-notification-action.util';
 import {
   ManualNotificationDetailContent,
   timingName,
@@ -54,15 +44,70 @@ function isNotificationNotFoundError(error: unknown): boolean {
   return (error as { status?: unknown }).status === 404;
 }
 
+type ManualNotificationConfirmAction = Exclude<ManualNotificationAction, 'return'>;
+
+interface ConfirmDialogContent {
+  readonly title: string;
+  readonly description: string;
+  readonly confirmLabel: string;
+  readonly contentClassName?: string;
+  readonly descriptionClassName?: string;
+  readonly confirmClassName?: string;
+}
+
+function getConfirmDialogContent(
+  action: ManualNotificationConfirmAction,
+  displayTitle: string,
+  approvalTiming: string,
+  approvalTarget: string,
+): ConfirmDialogContent {
+  switch (action) {
+    case 'approve':
+      return {
+        title: 'この通知を承認しますか？',
+        description: `承認後に指定タイミング（${approvalTiming}）で配信が実行されます。対象: ${approvalTarget}`,
+        confirmLabel: '承認する',
+        contentClassName: 'gap-4 sm:max-w-sm',
+        descriptionClassName: 'leading-5',
+      };
+    case 'delete':
+      return {
+        title: '通知を削除しますか？',
+        description: `「${displayTitle}」を削除します。この操作は元に戻せません。`,
+        confirmLabel: '削除する',
+        confirmClassName: 'bg-destructive text-destructive-foreground',
+      };
+    case 'request_approval':
+      return {
+        title: '承認依頼を送信しますか？',
+        description: '通知内容を確定し、承認者に確認を依頼します。',
+        confirmLabel: '依頼する',
+        contentClassName: 'gap-4 sm:max-w-sm',
+        descriptionClassName: 'leading-5',
+      };
+    case 'send':
+      return {
+        title: 'この通知を配信しますか？',
+        description: `指定タイミング（${approvalTiming}）で配信が実行されます。対象: ${approvalTarget}`,
+        confirmLabel: '配信する',
+        contentClassName: 'gap-4 sm:max-w-sm',
+        descriptionClassName: 'leading-5',
+      };
+    case 'resubmit':
+      return {
+        title: '再申請しますか？',
+        description: '通知内容を再確定し、承認者に確認を依頼します。',
+        confirmLabel: '再申請する',
+        contentClassName: 'gap-4 sm:max-w-sm',
+        descriptionClassName: 'leading-5',
+      };
+  }
+}
+
 export default function ManualNotificationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [dialog, setDialog] = useState<
-    'approve' | 'return' | 'delete' | 'send' | 'request_approval' | 'resubmit' | null
-  >(null);
-  const [returnReason, setReturnReason] = useState('');
-  const [returnError, setReturnError] = useState<string | null>(null);
-  const returnReasonRef = useRef<HTMLTextAreaElement>(null);
+  const [dialog, setDialog] = useState<ManualNotificationAction | null>(null);
   const actionMutation = useManualNotificationAction();
   const query = useQuery({ ...getCrmNotificationsByIdOptions({ path: { id } }) });
 
@@ -119,14 +164,12 @@ export default function ManualNotificationDetailPage() {
   const { canRequestApproval, canSend, canApprove, canReturn, canResubmit, canEdit, canDelete } =
     getManualNotificationActionPolicy(item);
   const isDeliveryActive = item.status === 'sending' || item.status === 'sent';
-  const runAction = (action: ManualNotificationAction, reason?: string) => {
+  const runAction = (action: ManualNotificationAction, reason?: ManualNotificationReturnReason) => {
     actionMutation.mutate(
       { path: { id }, body: { action, ...(reason ? { reason } : {}) } },
       {
         onSuccess: () => {
           setDialog(null);
-          setReturnReason('');
-          setReturnError(null);
           if (action === 'delete') {
             router.push(navigate('/manual-notifications'));
           }
@@ -134,6 +177,11 @@ export default function ManualNotificationDetailPage() {
       },
     );
   };
+  const confirmAction: ManualNotificationConfirmAction | null =
+    dialog && dialog !== 'return' ? dialog : null;
+  const confirmContent = confirmAction
+    ? getConfirmDialogContent(confirmAction, displayTitle, approvalTiming, approvalTarget)
+    : null;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -251,183 +299,38 @@ export default function ManualNotificationDetailPage() {
       />
 
       <ManualNotificationDetailContent item={item} isDeliveryActive={isDeliveryActive} />
-      <AlertDialog open={dialog === 'approve'} onOpenChange={(open) => !open && setDialog(null)}>
-        <AlertDialogContent className="gap-4 sm:max-w-sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>この通知を承認しますか？</AlertDialogTitle>
-            <AlertDialogDescription className="leading-5">
-              {`承認後に指定タイミング（${approvalTiming}）で配信が実行されます。対象: ${approvalTarget}`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => runAction('approve')}
-              disabled={actionMutation.isPending}
-            >
-              承認する
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={dialog === 'delete'} onOpenChange={(open) => !open && setDialog(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>通知を削除しますか？</AlertDialogTitle>
-            <AlertDialogDescription>
-              「{displayTitle}」を削除します。この操作は元に戻せません。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground"
-              onClick={() => runAction('delete')}
-              disabled={actionMutation.isPending}
-            >
-              削除する
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog
-        open={dialog === 'request_approval'}
-        onOpenChange={(open) => !open && setDialog(null)}
-      >
-        <AlertDialogContent className="gap-4 sm:max-w-sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>承認依頼を送信しますか？</AlertDialogTitle>
-            <AlertDialogDescription className="leading-5">
-              通知内容を確定し、承認者に確認を依頼します。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => runAction('request_approval')}
-              disabled={actionMutation.isPending}
-            >
-              依頼する
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={dialog === 'send'} onOpenChange={(open) => !open && setDialog(null)}>
-        <AlertDialogContent className="gap-4 sm:max-w-sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>この通知を配信しますか？</AlertDialogTitle>
-            <AlertDialogDescription className="leading-5">
-              {`指定タイミング（${approvalTiming}）で配信が実行されます。対象: ${approvalTarget}`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => runAction('send')}
-              disabled={actionMutation.isPending}
-            >
-              配信する
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={dialog === 'resubmit'} onOpenChange={(open) => !open && setDialog(null)}>
-        <AlertDialogContent className="gap-4 sm:max-w-sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>再申請しますか？</AlertDialogTitle>
-            <AlertDialogDescription className="leading-5">
-              通知内容を再確定し、承認者に確認を依頼します。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => runAction('resubmit')}
-              disabled={actionMutation.isPending}
-            >
-              再申請する
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog
-        open={dialog === 'return'}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDialog(null);
-            setReturnReason('');
-            setReturnError(null);
-          }
-        }}
-      >
-        <AlertDialogContent className="gap-3 sm:max-w-sm">
-          <AlertDialogHeader className="relative place-items-start pr-8 text-left">
-            <AlertDialogTitle>通知を差し戻し</AlertDialogTitle>
-            <button
-              type="button"
-              aria-label="閉じる"
-              className="text-muted-foreground hover:text-foreground absolute top-0 right-0 rounded-md p-1 transition-colors"
-              onClick={() => {
-                setDialog(null);
-                setReturnReason('');
-                setReturnError(null);
-              }}
-            >
-              <X className="size-4" />
-            </button>
-          </AlertDialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="return-reason" className="text-sm font-medium">
-              差し戻し理由<span className="text-destructive ml-1">*</span>
-            </Label>
-            <Textarea
-              id="return-reason"
-              value={returnReason}
-              onChange={(event) => {
-                setReturnReason(event.target.value);
-                if (returnError) setReturnError(null);
-              }}
-              rows={3}
-              className="min-h-16 resize-none"
-              placeholder="例：キャンペーン期間の記載に誤りがあります。修正のうえ再度承認依頼してください。"
-              maxLength={500}
-              ref={returnReasonRef}
-              aria-invalid={returnError ? true : undefined}
-              aria-describedby={returnError ? 'return-reason-error' : undefined}
-            />
-            {returnError ? (
-              <p id="return-reason-error" className="text-destructive text-xs">
-                {returnError}
-              </p>
-            ) : null}
-            <p className="text-muted-foreground text-xs">
-              差し戻し理由は通知作成者に送信されます。
-            </p>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive/10 text-destructive hover:bg-destructive/20"
-              disabled={actionMutation.isPending}
-              onClick={(event) => {
-                const result = manualNotificationReturnReasonSchema.safeParse(returnReason);
-                if (!result.success) {
-                  event.preventDefault();
-                  setReturnError(
-                    result.error.issues[0]?.message ?? '差し戻し理由を入力してください',
-                  );
-                  returnReasonRef.current?.focus();
-                  return;
-                }
-                runAction('return', result.data);
-              }}
-            >
-              差し戻す
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {confirmAction && confirmContent ? (
+        <ManualNotificationConfirmDialog
+          open={dialog === confirmAction}
+          onOpenChange={(open) => !open && setDialog(null)}
+          title={confirmContent.title}
+          description={confirmContent.description}
+          confirmLabel={confirmContent.confirmLabel}
+          contentClassName={confirmContent.contentClassName}
+          descriptionClassName={confirmContent.descriptionClassName}
+          confirmClassName={confirmContent.confirmClassName}
+          onConfirm={() => runAction(confirmAction)}
+          isPending={actionMutation.isPending}
+        />
+      ) : null}
+      {dialog === 'return' ? (
+        <ManualNotificationReturnDialog
+          open
+          onOpenChange={(open) => !open && setDialog(null)}
+          inputId="return-reason"
+          title="通知を差し戻し"
+          placeholder="例：キャンペーン期間の記載に誤りがあります。修正のうえ再度承認依頼してください。"
+          helperText="差し戻し理由は通知作成者に送信されます。"
+          confirmLabel="差し戻す"
+          showCloseButton
+          contentClassName="gap-3 sm:max-w-sm"
+          headerClassName="relative place-items-start pr-8 text-left"
+          labelClassName="text-sm font-medium"
+          confirmClassName="bg-destructive/10 text-destructive hover:bg-destructive/20"
+          isPending={actionMutation.isPending}
+          onConfirm={(reason) => runAction('return', reason)}
+        />
+      ) : null}
     </div>
   );
 }

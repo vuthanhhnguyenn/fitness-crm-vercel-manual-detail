@@ -15,6 +15,8 @@ import {
 import { registerRoute } from '@/app/api/_scripts/register-route';
 import { hasPermissions } from '@/utils/permission.util';
 
+import { getManualNotificationSelectedBrand } from '@/lib/utils/manual-notification-target.util';
+
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
 
@@ -83,7 +85,7 @@ function targetSearchText(item: ManualNotificationRow): string {
     case 'all_members':
       return '全会員';
     case 'brands':
-      return item.target.brands.join(' ');
+      return getManualNotificationSelectedBrand(item.target.brands) ?? '';
     case 'stores':
       return item.target.stores.map((store) => `${store.id} ${store.name}`).join(' ');
     case 'contract_type':

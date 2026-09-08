@@ -1,8 +1,8 @@
 'use client';
 
-import { ChevronDown, ChevronUp, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, SlidersHorizontal } from 'lucide-react';
 
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { FilterResultBanner } from '@/components/common/filter-result-banner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,7 +63,7 @@ export function ManualNotificationsFilters({
     filters.status ? MANUAL_NOTIFICATION_STATUS_LABELS[filters.status] : null,
     filters.channel ? CHANNEL_FILTER_LABELS[filters.channel] : null,
     filters.targetType ? MANUAL_NOTIFICATION_TARGET_LABELS[filters.targetType] : null,
-  ].filter(Boolean);
+  ].filter((value): value is string => Boolean(value));
 
   return (
     <div className="flex flex-col gap-3">
@@ -183,25 +183,14 @@ export function ManualNotificationsFilters({
         </div>
       )}
 
-      {hasActiveFilters && (
-        <Alert className="-mx-4 flex flex-col gap-2 rounded-none border-x-0 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-          <AlertDescription className="text-xs">
-            全 {totalAllItems} 件中 {filteredTotal} 件を抽出中
-            {summary.length > 0 ? (
-              <span className="text-muted-foreground ml-1">：{summary.join('・')}</span>
-            ) : null}
-          </AlertDescription>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={clearFilters}
-          >
-            <X className="size-3.5" />
-            条件をクリア
-          </Button>
-        </Alert>
-      )}
+      <FilterResultBanner
+        show={hasActiveFilters}
+        totalCount={totalAllItems}
+        filteredCount={filteredTotal}
+        filterSummary={summary}
+        onClear={clearFilters}
+        className="-mx-4 rounded-none border-x-0"
+      />
     </div>
   );
 }

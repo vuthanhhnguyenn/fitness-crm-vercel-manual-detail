@@ -1,4 +1,11 @@
-import type { GetCrmNotificationsResponse } from '@/lib/api/types.gen';
+import type {
+  GetCrmNotificationsResponse,
+  PatchCrmNotificationsByIdActionData,
+} from '@/lib/api/types.gen';
+
+export type ManualNotificationAction = NonNullable<
+  PatchCrmNotificationsByIdActionData['body']
+>['action'];
 
 type ManualNotificationRow = GetCrmNotificationsResponse['items'][number];
 

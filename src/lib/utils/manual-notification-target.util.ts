@@ -12,11 +12,17 @@
 const MANUAL_NOTIFICATION_ACTIVE_STATUSES = ['active'] as const;
 const MANUAL_NOTIFICATION_PENDING_WITHDRAWAL_STATUSES = ['pending_withdrawal'] as const;
 
-const MANUAL_NOTIFICATION_JOYFIT_SUB_BRANDS = [
+export const MANUAL_NOTIFICATION_JOYFIT_SUB_BRANDS = [
   'joyfit',
   'joyfit24',
   'joyfit_yoga',
   'joyfit_plus',
+] as const;
+
+export const MANUAL_NOTIFICATION_BRANDS = [
+  'joyfit_all',
+  ...MANUAL_NOTIFICATION_JOYFIT_SUB_BRANDS,
+  'fit365',
 ] as const;
 
 /** FR-003: 「直近90日間来館がない」 — dormant members are active/pending members with no visit in the window. */
@@ -47,6 +53,12 @@ export type ManualNotificationTargetLike =
     }
   | { type: 'members'; memberIds: string[] };
 
+export function getManualNotificationSelectedBrand<TBrand extends string>(
+  brands: readonly TBrand[] | undefined,
+): TBrand | undefined {
+  return brands?.[0];
+}
+
 export function manualNotificationRequiresApproval(
   target: Pick<ManualNotificationTargetLike, 'type'> & {
     brands?: readonly string[];
@@ -55,10 +67,8 @@ export function manualNotificationRequiresApproval(
   if (target.type === 'all_members') return true;
   if (target.type !== 'brands') return false;
 
-  const brands = target.brands ?? [];
-  if (brands.some((brand) => brand === 'joyfit_all' || brand === 'fit365')) return true;
-
-  return MANUAL_NOTIFICATION_JOYFIT_SUB_BRANDS.every((brand) => brands.includes(brand));
+  const selectedBrand = getManualNotificationSelectedBrand(target.brands);
+  return selectedBrand === 'joyfit_all' || selectedBrand === 'fit365';
 }
 
 interface ManualNotificationTargetMatchOptions {

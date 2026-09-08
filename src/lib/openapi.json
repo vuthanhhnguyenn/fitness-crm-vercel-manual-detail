@@ -57,7 +57,8 @@
                       ],
                       "title": "ManualNotificationBrand",
                       "description": "Brand or JOYFIT sub-brand defined by I-03"
-                    }
+                    },
+                    "maxItems": 1
                   }
                 },
                 "required": ["type", "brands"]
@@ -461,7 +462,8 @@
                           ],
                           "title": "ManualNotificationBrand",
                           "description": "Brand or JOYFIT sub-brand defined by I-03"
-                        }
+                        },
+                        "maxItems": 1
                       }
                     },
                     "required": ["type", "brands"]
@@ -867,7 +869,8 @@
                       ],
                       "title": "ManualNotificationBrand",
                       "description": "Brand or JOYFIT sub-brand defined by I-03"
-                    }
+                    },
+                    "maxItems": 1
                   }
                 },
                 "required": ["type", "brands"]
@@ -1151,7 +1154,8 @@
                           ],
                           "title": "ManualNotificationBrand",
                           "description": "Brand or JOYFIT sub-brand defined by I-03"
-                        }
+                        },
+                        "maxItems": 1
                       }
                     },
                     "required": ["type", "brands"]
@@ -1550,7 +1554,8 @@
                   ],
                   "title": "ManualNotificationBrand",
                   "description": "Brand or JOYFIT sub-brand defined by I-03"
-                }
+                },
+                "maxItems": 1
               }
             },
             "required": ["type", "brands"]
@@ -1686,7 +1691,8 @@
                       ],
                       "title": "ManualNotificationBrand",
                       "description": "Brand or JOYFIT sub-brand defined by I-03"
-                    }
+                    },
+                    "maxItems": 1
                   }
                 },
                 "required": ["type", "brands"]
@@ -2198,7 +2204,8 @@
                             ],
                             "title": "ManualNotificationBrand",
                             "description": "Brand or JOYFIT sub-brand defined by I-03"
-                          }
+                          },
+                          "maxItems": 1
                         }
                       },
                       "required": ["type", "brands"]
@@ -2714,7 +2721,8 @@
                           ],
                           "title": "ManualNotificationBrand",
                           "description": "Brand or JOYFIT sub-brand defined by I-03"
-                        }
+                        },
+                        "maxItems": 1
                       }
                     },
                     "required": ["type", "brands"]
@@ -119980,7 +119988,8 @@
                                     ],
                                     "title": "ManualNotificationBrand",
                                     "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                  }
+                                  },
+                                  "maxItems": 1
                                 }
                               },
                               "required": ["type", "brands"]
@@ -120402,7 +120411,8 @@
                                     ],
                                     "title": "ManualNotificationBrand",
                                     "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                  }
+                                  },
+                                  "maxItems": 1
                                 }
                               },
                               "required": ["type", "brands"]
@@ -120917,7 +120927,8 @@
                               ],
                               "title": "ManualNotificationBrand",
                               "description": "Brand or JOYFIT sub-brand defined by I-03"
-                            }
+                            },
+                            "maxItems": 1
                           }
                         },
                         "required": ["type", "brands"]
@@ -121215,7 +121226,8 @@
                                     ],
                                     "title": "ManualNotificationBrand",
                                     "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                  }
+                                  },
+                                  "maxItems": 1
                                 }
                               },
                               "required": ["type", "brands"]
@@ -122088,7 +122100,8 @@
                                       ],
                                       "title": "ManualNotificationBrand",
                                       "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                    }
+                                    },
+                                    "maxItems": 1
                                   }
                                 },
                                 "required": ["type", "brands"]
@@ -122492,7 +122505,8 @@
                               ],
                               "title": "ManualNotificationBrand",
                               "description": "Brand or JOYFIT sub-brand defined by I-03"
-                            }
+                            },
+                            "maxItems": 1
                           }
                         },
                         "required": ["type", "brands"]
@@ -122790,7 +122804,8 @@
                                     ],
                                     "title": "ManualNotificationBrand",
                                     "description": "Brand or JOYFIT sub-brand defined by I-03"
-                                  }
+                                  },
+                                  "maxItems": 1
                                 }
                               },
                               "required": ["type", "brands"]
@@ -123684,7 +123699,8 @@
                           ],
                           "title": "ManualNotificationBrand",
                           "description": "Brand or JOYFIT sub-brand defined by I-03"
-                        }
+                        },
+                        "maxItems": 1
                       }
                     },
                     "required": ["type", "brands"]

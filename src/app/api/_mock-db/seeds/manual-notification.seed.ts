@@ -45,7 +45,17 @@ export const MANUAL_NOTIFICATION_FORM_CONFIG_SEED = {
   ],
 } as const;
 
-type SeedInput = Omit<ManualNotificationRow, 'targetStoreIds' | 'contents'> & {
+type ManualNotificationTarget = ManualNotificationRow['target'];
+type ManualNotificationBrandTarget = Extract<ManualNotificationTarget, { type: 'brands' }>;
+type ManualNotificationSeedTarget =
+  | Exclude<ManualNotificationTarget, ManualNotificationBrandTarget>
+  | (Omit<ManualNotificationBrandTarget, 'brands'> & {
+      // Zod's max cardinality is not reflected in its inferred array type, so enforce it for seeds.
+      brands: [] | [ManualNotificationBrandTarget['brands'][number]];
+    });
+
+type SeedInput = Omit<ManualNotificationRow, 'targetStoreIds' | 'contents' | 'target'> & {
+  target: ManualNotificationSeedTarget;
   targetStoreIds?: string[];
   bodies?: Partial<Record<ManualNotificationChannel, string>>;
 };
@@ -214,10 +224,10 @@ export const MANUAL_NOTIFICATION_SEED: ManualNotificationRow[] = [
   notification({
     id: 'N-007',
     title: '年末感謝キャンペーン',
-    target: { type: 'brands', brands: ['joyfit', 'fit365'] },
+    target: { type: 'all_members' },
     channels: ['sms', 'push', 'email', 'in_app'],
     timing: { type: 'scheduled', scheduledAt: '2026-12-01T09:00:00+09:00' },
-    targetCount: 7157,
+    targetCount: 42580,
     status: 'returned',
     requiresApproval: true,
     createdByUserId: STAFF_IDS.manager,

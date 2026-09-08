@@ -5,6 +5,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { CalendarClock, Clock, RotateCcw } from 'lucide-react';
 
 import { DateTimePicker } from '@/components/common/date-time-picker';
+import { RequiredMark } from '@/components/common/field-marker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
@@ -37,10 +38,6 @@ const TIMING_OPTIONS = [
   { value: 'recurring', label: '繰り返し配信', icon: RotateCcw },
 ] as const;
 type TimingType = ManualNotificationFormValues['timing']['type'];
-
-function RequiredMark() {
-  return <span className="text-destructive ml-0.5">*</span>;
-}
 
 function createTiming(type: TimingType): ManualNotificationFormValues['timing'] {
   if (type === 'immediate') return { type };

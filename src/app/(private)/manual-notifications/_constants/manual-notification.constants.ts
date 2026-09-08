@@ -1,6 +1,10 @@
 import type { GetCrmNotificationsResponse } from '@/lib/api/types.gen';
+import { MANUAL_NOTIFICATION_BRANDS } from '@/lib/utils/manual-notification-target.util';
 
-export { manualNotificationRequiresApproval } from '@/lib/manual-notification-target.util';
+export {
+  getManualNotificationSelectedBrand,
+  manualNotificationRequiresApproval,
+} from '@/lib/utils/manual-notification-target.util';
 
 export type ManualNotificationRow = GetCrmNotificationsResponse['items'][number];
 type ManualNotificationStatus = ManualNotificationRow['status'];
@@ -45,14 +49,8 @@ export const MANUAL_NOTIFICATION_TARGET_OPTIONS = [
   'members',
 ] as const satisfies readonly ManualNotificationTargetType[];
 
-export const MANUAL_NOTIFICATION_BRAND_OPTIONS = [
-  'joyfit_all',
-  'joyfit',
-  'joyfit24',
-  'joyfit_yoga',
-  'joyfit_plus',
-  'fit365',
-] as const satisfies readonly ManualNotificationBrand[];
+export const MANUAL_NOTIFICATION_BRAND_OPTIONS =
+  MANUAL_NOTIFICATION_BRANDS satisfies readonly ManualNotificationBrand[];
 
 export const MANUAL_NOTIFICATION_STATUS_LABELS: Record<ManualNotificationStatus, string> = {
   draft: '下書き',

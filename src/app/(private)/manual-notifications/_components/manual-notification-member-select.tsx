@@ -92,7 +92,7 @@ export function ManualNotificationMemberSelect({
       query: {
         page: 1,
         limit: 15,
-        q: debouncedSearch || undefined,
+        q: debouncedSearch.trim() || undefined,
         brandGroup: brand === 'all' ? undefined : brand,
         contractType: contractType === 'all' ? undefined : contractType,
       },

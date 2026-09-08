@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 
 import { parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
 
-import { useDebounce } from '@/hooks/use-debounce.hook';
+import { useDebouncedUrlSearch } from '@/hooks/use-debounced-url-search.hook';
 
 import type { GetCrmNotificationsData } from '@/lib/api/types.gen';
 
@@ -33,30 +33,17 @@ export function useManualNotificationFilters() {
     { history: 'push', shallow: false },
   );
 
-  const [searchInput, setSearchInputState] = useState(() => filters.q);
-  const debouncedSearch = useDebounce(searchInput, 500);
-  const lastUrlSearch = useRef(filters.q);
-
-  const setSearchInput = useCallback((value: string) => {
-    setSearchInputState(value);
-  }, []);
-
-  useEffect(() => {
-    if (filters.q !== lastUrlSearch.current) {
-      lastUrlSearch.current = filters.q;
-      setSearchInputState(filters.q);
-    }
-  }, [filters.q]);
-
-  useEffect(() => {
-    if (debouncedSearch === filters.q) return;
-    lastUrlSearch.current = debouncedSearch;
-    void setFilters({ q: debouncedSearch || null, page: 1 });
-  }, [debouncedSearch, filters.q, setFilters]);
+  const { searchInput, setSearchInput } = useDebouncedUrlSearch(
+    filters.q,
+    (value) => void setFilters({ q: value || null, page: 1 }),
+    {
+      delay: 500,
+      normalize: (value) => value.trim(),
+    },
+  );
 
   const clearFilters = useCallback(() => {
-    lastUrlSearch.current = '';
-    setSearchInputState('');
+    setSearchInput('');
     void setFilters({
       page: 1,
       limit: 50,
@@ -67,7 +54,7 @@ export function useManualNotificationFilters() {
       sort: 'updatedAt',
       order: 'desc',
     });
-  }, [setFilters]);
+  }, [setFilters, setSearchInput]);
 
   const hasActiveFilters =
     searchInput.trim().length > 0 ||
@@ -91,7 +78,7 @@ export function useManualNotificationFilters() {
         includeTotalAll: true,
         page: parsedQuery.data.page,
         limit: parsedQuery.data.limit,
-        q: parsedQuery.data.q,
+        q: parsedQuery.data.q || undefined,
         status: parsedQuery.data.status ? [parsedQuery.data.status] : undefined,
         channel: parsedQuery.data.channel ? [parsedQuery.data.channel] : undefined,
         targetType: parsedQuery.data.targetType ? [parsedQuery.data.targetType] : undefined,

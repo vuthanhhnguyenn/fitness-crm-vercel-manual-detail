@@ -6,15 +6,17 @@ import type {
   ManualNotificationUpsertBody,
 } from '@/app/api/_schemas/manual-notification.schema';
 
-import { manualNotificationRequiresApproval } from '@/lib/manual-notification-target.util';
+import {
+  MANUAL_NOTIFICATION_JOYFIT_SUB_BRANDS,
+  manualNotificationRequiresApproval,
+} from '@/lib/utils/manual-notification-target.util';
 
 /**
  * Spec FR-006 & Prototype:
  * HQ Approval is required when target is:
  *  - "全会員" (all_members)
  *  - a whole brand: "JOYFIT全体" (joyfit_all) or "FIT365" (fit365)
- *  - all JOYFIT sub-brands individually selected (equivalent to joyfit_all)
- * NOTE: Keep in sync with src/app/(private)/manual-notifications/_constants/manual-notification.constants.ts
+ * Individual JOYFIT sub-brands do not require approval.
  */
 export function getManualNotificationTargetStoreIds(
   target: ManualNotificationTargetInput,
@@ -35,9 +37,10 @@ export function getManualNotificationTargetStoreIds(
     .getList()
     .filter((store) => allowedStoreIds === null || allowedStoreIds.includes(store.id));
   if (target.type === 'brands') {
-    const JOYFIT_SUB_BRANDS = ['joyfit', 'joyfit24', 'joyfit_yoga', 'joyfit_plus'];
     const brandSet = new Set(
-      target.brands.flatMap((b) => (b === 'joyfit_all' ? JOYFIT_SUB_BRANDS : [b])),
+      target.brands.flatMap((brand) =>
+        brand === 'joyfit_all' ? MANUAL_NOTIFICATION_JOYFIT_SUB_BRANDS : [brand],
+      ),
     );
     return stores.filter((store) => brandSet.has(store.brand)).map((store) => store.id);
   }

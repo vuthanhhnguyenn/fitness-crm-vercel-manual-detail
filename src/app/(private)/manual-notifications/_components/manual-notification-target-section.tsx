@@ -9,6 +9,7 @@ import { Bell, ChevronsUpDown, Users } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce.hook';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll.hook';
 
+import { RequiredMark } from '@/components/common/field-marker';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +41,7 @@ import {
   MANUAL_NOTIFICATION_DYNAMIC_ATTRIBUTE_OPTIONS,
   MANUAL_NOTIFICATION_MEMBERSHIP_DURATION_CONDITION_LABELS,
   MANUAL_NOTIFICATION_TARGET_LABELS,
+  getManualNotificationSelectedBrand,
 } from '../_constants/manual-notification.constants';
 import {
   type ManualNotificationFormValues,
@@ -68,8 +70,10 @@ function getTargetPreviewCount(
   switch (target.type) {
     case 'all_members':
       return targetPreviewCounts.allMembers;
-    case 'brands':
-      return target.brands.reduce((sum, b) => sum + (targetPreviewCounts.brands[b] ?? 0), 0);
+    case 'brands': {
+      const selectedBrand = getManualNotificationSelectedBrand(target.brands);
+      return selectedBrand ? (targetPreviewCounts.brands[selectedBrand] ?? 0) : 0;
+    }
     case 'stores':
       // server-side: `targetPreviewCounts.stores` is a per-store map keyed by
       // store id. Sum the entries the user actually selected instead of
@@ -137,7 +141,7 @@ function ManualNotificationStoreSelect({
       query: {
         page: 1,
         limit: 30,
-        q: debouncedSearch || undefined,
+        q: debouncedSearch.trim() || undefined,
       },
     }),
     enabled: open,
@@ -537,7 +541,7 @@ export function ManualNotificationTargetSection({
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                配信対象 <span className="text-destructive">*</span>
+                配信対象 <RequiredMark />
               </FormLabel>
               <FormControl>
                 <RadioGroup

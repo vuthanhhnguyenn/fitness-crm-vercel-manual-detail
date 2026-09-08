@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 
 import { TEXTAREA_MAX_LENGTH, TEXT_MAX_LENGTH } from '@/constants/app.constants';
 
+import { RequiredMark } from '@/components/common/field-marker';
 import { RoleGatedButton } from '@/components/common/role-gated-button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -168,7 +169,7 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                通知タイトル <span className="text-destructive">*</span>
+                通知タイトル <RequiredMark />
               </FormLabel>
               <FormControl>
                 <Input
@@ -190,7 +191,7 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                件名 <span className="text-destructive">*</span>
+                件名 <RequiredMark />
               </FormLabel>
               <FormControl>
                 <Input
@@ -212,7 +213,7 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                通知タイトル <span className="text-destructive">*</span>
+                通知タイトル <RequiredMark />
               </FormLabel>
               <FormControl>
                 <Input
@@ -233,7 +234,7 @@ function ChannelContentFields({ channel }: { readonly channel: ManualNotificatio
           <FormItem>
             <div className="flex items-center justify-between">
               <FormLabel>
-                {bodyLabel} <span className="text-destructive">*</span>
+                {bodyLabel} <RequiredMark />
               </FormLabel>
               {channel === 'sms' ? (
                 <Badge

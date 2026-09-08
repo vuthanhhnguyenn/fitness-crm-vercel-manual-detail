@@ -11,7 +11,7 @@ import {
 import { registerRoute } from '@/app/api/_scripts/register-route';
 import { hasPermissions } from '@/utils/permission.util';
 
-import { manualNotificationRequiresApproval } from '@/lib/manual-notification-target.util';
+import { manualNotificationRequiresApproval } from '@/lib/utils/manual-notification-target.util';
 
 import { Permission } from '@/types/permission.type';
 import type { UserRole } from '@/types/permission.type';
